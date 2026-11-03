@@ -3,6 +3,16 @@
 reports/*
 !reports/.gitkeep
 
+# Portable diagnostic packages (smoke_package.py): one scrubbed .zip per run,
+# built in packages/ (its .staging_* folder is removed after zipping), and the
+# main-container inbox/ where --import extracts packages and writes MATRIX.md.
+# Both carry run data from other installs, so neither is tracked; keep the
+# folders via their .gitkeep (docker cp into inbox/ needs it to exist).
+packages/*
+!packages/.gitkeep
+inbox/*
+!inbox/.gitkeep
+
 # Probe sandboxes: each run_tier2() mints a UUID-owned run_<uuid>/ directory
 # under _sandbox/, writes only its own T2.1/T2.2 fixtures there, and removes
 # exactly that directory in a guaranteed cleanup path (never a recursive wipe of

@@ -11,7 +11,7 @@ designs the test, this file decides what the result means.
 **The one rule under all the rules.** Never iterate toward a desired finding. Every
 device below — pre-committed interpretation, labeled tests, bounded budgets, recording
 nulls — exists to close the garden-of-forking-paths gap (Gelman & Loken 2013 —
-https://atticusli.com/replication-crisis/garden-of-forking-paths/), where data-
+https://sites.stat.columbia.edu/gelman/research/unpublished/p_hacking.pdf), where data-
 dependent analytic choices act as hidden multiple comparisons that invalidate
 inference even without explicit p-hacking. The ledger (`agent_reference/TRIANGULATION_PROTOCOL.md`)
 is the arbiter; interpretation is measured against what was pre-committed there, not
@@ -48,9 +48,11 @@ both candidate readings in the ledger and let the researcher adjudicate.
 
 Independently of status, every test carries one of four labels describing *when it was
 specified relative to seeing the data it uses*. The label caps how strongly the result
-may be interpreted (registered-reports / preregistration tradition — its known limit is
-that pre-registering a hypothesis leaves the *how-tested* forks open, which the pre-
-committed interpretation rule closes; https://experimentology.io/011-prereg.html).
+may be interpreted (registered-reports / preregistration tradition — its known limit,
+that pre-registering a hypothesis alone leaves the *how-tested* forks open (Gelman &
+Loken 2013), is closed by the pre-committed interpretation rule;
+https://experimentology.io/011-prereg.html for the preregistration/registered-reports
+background).
 
 | Label | Specified… | Interpretation consequence |
 |-------|-----------|----------------------------|
@@ -106,7 +108,8 @@ When a challenge enumerates alternatives (Family 6 spec grids, but also multi-
 denominator, multi-operationalization, multi-window sweeps), summarize the resulting
 distribution of estimates with a fixed contract rather than cherry-picking a point on
 it. The contract mirrors the established `specr` summary (verified from
-https://masurp.github.io/specr/articles/specr.html) plus the multiverse framing
+https://masurp.github.io/specr/articles/getting-started.html), plus the DAAF additions
+marked below, plus the multiverse framing
 (Steegen et al. 2016 — https://sites.stat.columbia.edu/gelman/research/published/multiverse_published.pdf).
 
 **Required summary statistics** (over all specifications in the pre-committed grid):
@@ -115,7 +118,8 @@ https://masurp.github.io/specr/articles/specr.html) plus the multiverse framing
 - **min** and **max** estimate
 - **q25** and **q75** (interquartile range of estimates)
 - **share of specifications** that are same-signed as the median, and the share that are
-  same-signed *and* significant at the pre-committed α
+  same-signed *and* significant at the pre-committed α (DAAF addition — not part of
+  specr's `summary()` output)
 - median / min / max **sample size** across specs (a spec that silently drops data is a
   Family 9 signal, not a robustness win)
 
@@ -176,8 +180,8 @@ attention should go.
 
 ## References
 
-- Gelman & Loken (2013), Garden of Forking Paths — https://atticusli.com/replication-crisis/garden-of-forking-paths/
-- Preregistration / registered reports (and their how-tested limitation) — https://experimentology.io/011-prereg.html
+- Gelman, A. & Loken, E. (2013). "The garden of forking paths: Why multiple comparisons can be a problem, even when there is no 'fishing expedition' or 'p-hacking' and the research hypothesis was posited ahead of time." Unpublished manuscript, Columbia University — https://sites.stat.columbia.edu/gelman/research/unpublished/p_hacking.pdf
+- Preregistration / registered reports (background) — https://experimentology.io/011-prereg.html
 - minP multiplicity adjustment across specifications — https://arxiv.org/pdf/2401.11537
 - Steegen et al. (2016), Multiverse analysis — https://sites.stat.columbia.edu/gelman/research/published/multiverse_published.pdf
-- `specr` summary contract (median/MAD/min/max/q25/q75, curve + choice panel, variance decomposition) — https://masurp.github.io/specr/articles/specr.html
+- `specr` summary contract (median/MAD/min/max/q25/q75, curve + choice panel, variance decomposition) — https://masurp.github.io/specr/articles/getting-started.html

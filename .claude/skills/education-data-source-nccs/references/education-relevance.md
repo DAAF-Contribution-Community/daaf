@@ -26,7 +26,7 @@ Private nonprofit colleges and universities operate as tax-exempt organizations 
 
 Most private colleges are classified as:
 - **IRS Subsection**: 501(c)(3)
-- **Foundation Code**: 11 (School under 170(b)(1)(A)(ii)) or 15/21 (publicly supported)
+- **Foundation Code**: 11 (School under 170(b)(1)(A)(ii)); other affiliates 15/16 or 17/21-24 (supporting organizations)
 - **NTEE Codes**: B40-B50 (higher education)
 
 ### What's Included in NCCS
@@ -118,7 +118,7 @@ This makes filtering easier (full NCCS data only, not Portal):
 import polars as pl
 
 # Filter for universities using NTEEV2 industry group
-universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 ```
 
 ```r
@@ -126,7 +126,7 @@ library(dplyr)
 library(stringr)
 
 # Filter for universities using NTEEV2 industry group
-universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities <- df |> filter(str_starts(nteev2, "UNI-"))
 ```
 
 ### Using Foundation Code
@@ -135,45 +135,51 @@ Many colleges have foundation code 11 (School):
 ```python
 import polars as pl
 
-# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only
-schools = bmf.filter(pl.col("FNDNCD") == "11")
+# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only (Unified BMF foundation_code;
+# cast to integer because the dictionaries disagree on its storage: character in the Unified BMF,
+# integer in the harmonized legacy BMF)
+schools = bmf.filter(pl.col("foundation_code").cast(pl.Int64, strict=False) == 11)
 ```
 
 ```r
-# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only
-schools <- bmf |> filter(FNDNCD == "11")
+# Schools under 170(b)(1)(A)(ii) — full NCCS BMF data only (Unified BMF foundation_code;
+# cast to integer because the dictionaries disagree on its storage: character in the Unified BMF,
+# integer in the harmonized legacy BMF)
+schools <- bmf |> filter(suppressWarnings(as.integer(foundation_code)) == 11L)
 ```
 
 ### Filtering Strategy
 
-> **Note:** These filters apply to **full NCCS BMF/Core data**, not the Portal dataset. The Portal dataset (`nccs/colleges_nccs_all`) is already pre-filtered to higher education institutions matched to IPEDS UNITIDs — no NTEE filtering needed.
+> **Note:** These filters apply to the **full NCCS Unified BMF** (no harmonized Core file has an NTEE column), not the Portal dataset. The Portal dataset (`nccs/colleges_nccs_all`) is already pre-filtered to higher education institutions matched to IPEDS UNITIDs — no NTEE filtering needed. The blocks below assume `bmf` was read with every column as a string (as in the BMF download example in `nonprofit-data.md`); with default type inference `subsection_code` can be read as a number (`3`), and the `"03"` comparison then fails or matches nothing.
 
 Recommended approach for full NCCS data:
 ```python
 import polars as pl
 
-# Step 1: Filter by NTEE
-higher_ed = bmf.filter(pl.col("NTEECC").str.contains(r"^B4[0-9]|^B50"))
+# Step 1: Filter by NTEE (Unified BMF standardized 3-character code)
+higher_ed = bmf.filter(pl.col("ntee_code_clean").str.contains(r"^B4[0-9]|^B50"))
 
 # Step 2: Verify 501(c)(3) status
-higher_ed = higher_ed.filter(pl.col("SUBSECCD") == "03")
+higher_ed = higher_ed.filter(pl.col("subsection_code") == "03")
 
-# Step 3: Exclude tiny organizations (likely support orgs, not colleges)
-higher_ed = higher_ed.filter(pl.col("INCOME_AMT") > 1_000_000)  # >$1M revenue
+# Step 3: Exclude tiny organizations (likely support orgs, not colleges);
+# income_amount is total income in dollars, stored as character
+higher_ed = higher_ed.filter(pl.col("income_amount").cast(pl.Float64, strict=False) > 1_000_000)  # >$1M income
 ```
 
 ```r
 library(dplyr)
 library(stringr)
 
-# Step 1: Filter by NTEE
-higher_ed <- bmf |> filter(str_detect(NTEECC, "^B4[0-9]|^B50"))
+# Step 1: Filter by NTEE (Unified BMF standardized 3-character code)
+higher_ed <- bmf |> filter(str_detect(ntee_code_clean, "^B4[0-9]|^B50"))
 
 # Step 2: Verify 501(c)(3) status
-higher_ed <- higher_ed |> filter(SUBSECCD == "03")
+higher_ed <- higher_ed |> filter(subsection_code == "03")
 
-# Step 3: Exclude tiny organizations (likely support orgs, not colleges)
-higher_ed <- higher_ed |> filter(INCOME_AMT > 1000000)
+# Step 3: Exclude tiny organizations (likely support orgs, not colleges);
+# income_amount is total income in dollars, stored as character
+higher_ed <- higher_ed |> filter(suppressWarnings(as.numeric(income_amount)) > 1000000)
 ```
 
 ---
@@ -184,10 +190,10 @@ higher_ed <- higher_ed |> filter(INCOME_AMT > 1000000)
 
 | System | Identifier | Format |
 |--------|------------|--------|
-| NCCS/IRS | EIN | 9-digit number (e.g., 123456789) |
+| NCCS/IRS | `ein` / `EIN2` (direct NCCS); `ein` (Portal) | `XX-XXXXXXX` (Unified BMF, harmonized Core); `EIN-XX-XXXXXXX` (`EIN2`: Unified BMF, Classic Core, Efile); 9-digit padded, e.g. `042104327` (Portal `ein`, Efile `ORG_EIN`, raw legacy files) |
 | IPEDS | UNITID | 6-digit number (e.g., 110635) |
 
-There is **no official crosswalk** between EIN and UNITID. Linking requires:
+IPEDS Institutional Characteristics (Portal `ipeds/directory`, column `ein`) carries an institution-reported EIN, which is the first-choice EIN-UNITID link. It is not a validated crosswalk: system offices, foundations, and consolidated filers make many-to-one matches common, so validate before relying on it. Linking options:
 
 ### Linking Methods
 
@@ -223,8 +229,8 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", "nccs/colleges_nccs_all", ".", mirror$format))
-ipeds <- read_parquet(paste0(mirror$root_url, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nccs/colleges_nccs_all", ".", mirror$format))
+ipeds <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
 
 # Direct join on unitid and year
 combined <- nccs |>
@@ -234,7 +240,7 @@ combined <- nccs |>
 
 **2. Full NCCS Data (Fuzzy Matching Required)**
 
-When working with the full NCCS universe (outside Portal), linking requires fuzzy name/location matching since there is no official EIN-UNITID crosswalk:
+When working with the full NCCS universe (outside Portal), start from the IPEDS `ein` column (institution-reported, not a validated crosswalk) and fall back to fuzzy name/location matching for unmatched or many-to-one cases:
 
 ```python
 # Fuzzy matching on name and location (uses rapidfuzz or fuzzywuzzy)
@@ -261,18 +267,22 @@ Use geocoded addresses to narrow matches:
 import polars as pl
 
 # Match on city + state first, then name (full NCCS data)
+# ipeds_df: Portal IPEDS directory (columns city, state_abbr);
+# nccs_city / nccs_state: Unified BMF org_addr_city / org_addr_state (two-letter abbreviation)
 same_location = ipeds_df.filter(
-    (pl.col("CITY") == nccs_city) &
-    (pl.col("STABBR") == nccs_state)
+    (pl.col("city") == nccs_city) &
+    (pl.col("state_abbr") == nccs_state)
 )
 ```
 
 ```r
 # Match on city + state first, then name (full NCCS data)
-same_location <- ipeds_df |> filter(CITY == nccs_city, STABBR == nccs_state)
+# ipeds_df: Portal IPEDS directory (columns city, state_abbr);
+# nccs_city / nccs_state: Unified BMF org_addr_city / org_addr_state (two-letter abbreviation)
+same_location <- ipeds_df |> filter(city == nccs_city, state_abbr == nccs_state)
 ```
 
-**3. Published Crosswalks**
+**4. Published Crosswalks**
 
 Some researchers have created EIN-UNITID crosswalks:
 - Check data repositories (ICPSR, Dataverse)
@@ -310,19 +320,19 @@ NCCS provides individual-level compensation data:
 
 ```python
 # Get compensation for college presidents
-# Use Efile Part VII or Schedule J data
+# Efile Part VII Section A table (F9-P07-T01-COMPENSATION); Schedule J Part II is SJ-P02-T01-COMPENSATION-DTK
 import polars as pl
 
 compensation = efile_partVII.filter(
-    pl.col("TITLE").str.contains("(?i)President|Chancellor")
+    pl.col("F9_07_COMP_DTK_TITLE").str.contains("(?i)President|Chancellor")
 )
 ```
 
 ```r
 # Get compensation for college presidents
-# Use Efile Part VII or Schedule J data
+# Efile Part VII Section A table (F9-P07-T01-COMPENSATION); Schedule J Part II is SJ-P02-T01-COMPENSATION-DTK
 compensation <- efile_partVII |>
-  filter(str_detect(TITLE, regex("President|Chancellor", ignore_case = TRUE)))
+  filter(str_detect(F9_07_COMP_DTK_TITLE, regex("President|Chancellor", ignore_case = TRUE)))
 ```
 
 **Research questions**:
@@ -335,28 +345,34 @@ compensation <- efile_partVII |>
 Schedule D provides endowment details not in IPEDS:
 
 ```python
-# Endowment data from Schedule D Part V
+# Endowment data from Schedule D Part V, current-year column (A)
+# (Efile table SD-P05-T00-ENDOWMENT; names from the Efile data dictionary)
 endowment_cols = [
-    'F9_SD_05_ENDOWMENT_BOY',      # Beginning balance
-    'F9_SD_05_ENDOWMENT_CONTRIB',   # Contributions
-    'F9_SD_05_ENDOWMENT_INVEST',    # Investment return
-    'F9_SD_05_ENDOWMENT_GRANTS',    # Grants/scholarships
-    'F9_SD_05_ENDOWMENT_ADMIN',     # Admin expenses
-    'F9_SD_05_ENDOWMENT_EOY'        # Ending balance
+    'SD_05_ENDOW_BALANCE_BOY_CY',   # Beginning of year balance (line 1a)
+    'SD_05_ENDOW_CONTR_CY',         # Contributions (line 1b)
+    'SD_05_ENDOW_INVEST_CY',        # Investment earnings or losses (line 1c)
+    'SD_05_ENDOW_GRANT_CY',         # Grants or scholarships (line 1d)
+    'SD_05_ENDOW_EXP_OTH_CY',       # Other expenditures (line 1e)
+    'SD_05_ENDOW_EXP_ADMIN_CY',     # Administrative expenses (line 1f)
+    'SD_05_ENDOW_BALANCE_EOY_CY'    # End of year balance (line 1g)
 ]
 ```
 
 ```r
-# Endowment data from Schedule D Part V
+# Endowment data from Schedule D Part V, current-year column (A)
+# (Efile table SD-P05-T00-ENDOWMENT; names from the Efile data dictionary)
 endowment_cols <- c(
-  "F9_SD_05_ENDOWMENT_BOY",      # Beginning balance
-  "F9_SD_05_ENDOWMENT_CONTRIB",  # Contributions
-  "F9_SD_05_ENDOWMENT_INVEST",   # Investment return
-  "F9_SD_05_ENDOWMENT_GRANTS",   # Grants/scholarships
-  "F9_SD_05_ENDOWMENT_ADMIN",    # Admin expenses
-  "F9_SD_05_ENDOWMENT_EOY"       # Ending balance
+  "SD_05_ENDOW_BALANCE_BOY_CY",   # Beginning of year balance (line 1a)
+  "SD_05_ENDOW_CONTR_CY",         # Contributions (line 1b)
+  "SD_05_ENDOW_INVEST_CY",        # Investment earnings or losses (line 1c)
+  "SD_05_ENDOW_GRANT_CY",         # Grants or scholarships (line 1d)
+  "SD_05_ENDOW_EXP_OTH_CY",       # Other expenditures (line 1e)
+  "SD_05_ENDOW_EXP_ADMIN_CY",     # Administrative expenses (line 1f)
+  "SD_05_ENDOW_BALANCE_EOY_CY"    # End of year balance (line 1g)
 )
 ```
+
+The same table carries Part V columns (B) to (E) under suffixes `_M1` to `_M4` (e.g. `SD_05_ENDOW_BALANCE_EOY_CY_M1` = line 1g, column B, per the Efile data dictionary; present in the 2024 file header).
 
 **Research questions**:
 - What is the endowment spending rate?
@@ -368,26 +384,26 @@ endowment_cols <- c(
 NCCS uniquely provides governance data:
 
 ```python
-# Governance indicators from Part VI
+# Governance indicators from Part VI (Efile table F9-P06-T00-GOVERNANCE)
 governance_vars = [
-    'F9_PC_06_VOTING_MEMBERS',          # Board size
-    'F9_PC_06_INDEP_VOTING_MEMBERS',    # Independent members
-    'F9_PC_06_FAMILY_RELATIONSHIP',     # Family on board
-    'F9_PC_06_CONFLICT_POLICY',         # COI policy
-    'F9_PC_06_WHISTLEBLOWER',           # Whistleblower policy
-    'F9_PC_06_CEO_COMP_REVIEW'          # CEO comp reviewed
+    'F9_06_GVRN_NUM_VOTING_MEMB',        # Number of voting governing body members (line 1a)
+    'F9_06_GVRN_NUM_VOTING_MEMB_IND',    # Number of independent voting members (line 1b)
+    'F9_06_GVRN_DTK_FAMBIZ_RELATION_X',  # Family or business relationship among officers etc. (line 2)
+    'F9_06_POLICY_COI_X',                # Conflict of interest policy (line 12a)
+    'F9_06_POLICY_WHSTLBLWR_X',          # Whistleblower policy (line 13)
+    'F9_06_POLICY_COMP_PROCESS_CEO_X'    # Compensation process for CEO (line 15a)
 ]
 ```
 
 ```r
-# Governance indicators from Part VI
+# Governance indicators from Part VI (Efile table F9-P06-T00-GOVERNANCE)
 governance_vars <- c(
-  "F9_PC_06_VOTING_MEMBERS",          # Board size
-  "F9_PC_06_INDEP_VOTING_MEMBERS",    # Independent members
-  "F9_PC_06_FAMILY_RELATIONSHIP",     # Family on board
-  "F9_PC_06_CONFLICT_POLICY",         # COI policy
-  "F9_PC_06_WHISTLEBLOWER",           # Whistleblower policy
-  "F9_PC_06_CEO_COMP_REVIEW"          # CEO comp reviewed
+  "F9_06_GVRN_NUM_VOTING_MEMB",        # Number of voting governing body members (line 1a)
+  "F9_06_GVRN_NUM_VOTING_MEMB_IND",    # Number of independent voting members (line 1b)
+  "F9_06_GVRN_DTK_FAMBIZ_RELATION_X",  # Family or business relationship among officers etc. (line 2)
+  "F9_06_POLICY_COI_X",                # Conflict of interest policy (line 12a)
+  "F9_06_POLICY_WHSTLBLWR_X",          # Whistleblower policy (line 13)
+  "F9_06_POLICY_COMP_PROCESS_CEO_X"    # Compensation process for CEO (line 15a)
 )
 ```
 
@@ -404,12 +420,13 @@ Functional expense allocation enables efficiency analysis:
 import polars as pl
 
 # Calculate fundraising efficiency
+# df: Efile F9-P08-T00-REVENUE joined to F9-P09-T00-EXPENSES on URL (the unique filing key)
 df = df.with_columns(
-    (pl.col("F9_PC_09_FUNC_EXP_FUNDRAISING")
-     / pl.col("F9_PC_08_CONTRIBUTIONS")).alias("fundraising_ratio"),
+    (pl.col("F9_09_EXP_TOT_FUNDR").cast(pl.Float64, strict=False)
+     / pl.col("F9_08_REV_CONTR_TOT").cast(pl.Float64, strict=False)).alias("fundraising_ratio"),
     # Program expense ratio
-    (pl.col("F9_PC_09_FUNC_EXP_PROGRAM")
-     / pl.col("F9_PC_09_FUNC_EXP_TOTAL")).alias("program_ratio"),
+    (pl.col("F9_09_EXP_TOT_PROG").cast(pl.Float64, strict=False)
+     / pl.col("F9_09_EXP_TOT_TOT").cast(pl.Float64, strict=False)).alias("program_ratio"),
 )
 ```
 
@@ -417,12 +434,15 @@ df = df.with_columns(
 library(dplyr)
 
 # Calculate fundraising efficiency
+# df: Efile F9-P08-T00-REVENUE joined to F9-P09-T00-EXPENSES on URL (the unique filing key)
 df <- df |>
   mutate(
-    fundraising_ratio = F9_PC_09_FUNC_EXP_FUNDRAISING / F9_PC_08_CONTRIBUTIONS,
-    program_ratio = F9_PC_09_FUNC_EXP_PROGRAM / F9_PC_09_FUNC_EXP_TOTAL
+    fundraising_ratio = as.numeric(F9_09_EXP_TOT_FUNDR) / as.numeric(F9_08_REV_CONTR_TOT),
+    program_ratio = as.numeric(F9_09_EXP_TOT_PROG) / as.numeric(F9_09_EXP_TOT_TOT)
   )
 ```
+
+Zero contributions or zero total expenses give an infinite ratio (`inf` / `Inf`); filter or guard the denominators before summarizing. Efile tables, not Classic Core, are used here because the Classic dictionary (`CORE-HRMN_dd.csv`) has no `F9_09_EXP_TOT_PROG` or `F9_09_EXP_TOT_MGMT`, and lists `F9_09_EXP_TOT_FUNDR` only for 501CE PZ files.
 
 ### 5. Related Party Analysis
 
@@ -505,7 +525,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter to California (FIPS = 6) - note: integer codes!
 ca_institutions <- nccs |> filter(fips == 6)
@@ -553,11 +573,11 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 NCCS_PATH <- "nccs/colleges_nccs_all"
-nccs <- read_parquet(paste0(mirror$root_url, "/", NCCS_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", NCCS_PATH, ".", mirror$format))
 
 # IPEDS directory for institution names
 IPEDS_PATH <- "ipeds/colleges_ipeds_directory"
-ipeds <- read_parquet(paste0(mirror$root_url, "/", IPEDS_PATH, ".", mirror$format))
+ipeds <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", IPEDS_PATH, ".", mirror$format))
 
 # Join on unitid and year
 combined <- nccs |>
@@ -567,22 +587,22 @@ combined <- nccs |>
 
 ### Using Direct NCCS Data
 
-> **Note:** These examples use full NCCS data downloaded directly (not the Portal mirror). Variable names are UPPERCASE. For Portal data, use the lowercase Portal variable names shown in the "Using Education Data Portal" section above.
+> **Note:** These examples use full NCCS data downloaded directly (not the Portal mirror). Column names differ by product: the Unified BMF uses lowercase names (`ein`, `org_name_display`, `org_addr_state`, `subsection_code`, `ntee_code_clean`, `income_amount`, `asset_amount`; amounts are stored as character) plus an uppercase `EIN2` alias, the Classic-format harmonized Core files (`CORE-…-HRMN-V1.csv`) use uppercase `F9_*` names keyed by `EIN2`, and the Efile v2_1 tables use `F9_*` / `SD_*` / `SJ_*` names, also with `EIN2` (NCCS Unified BMF and Core HRMN data dictionaries; Efile table headers). NCCS's EIN format convention lists `EIN2` (`EIN-XX-XXXXXXX`, e.g. `EIN-04-2104327`) as the key of the "harmonized CORE marts, Unified BMF, NODC `efile_v2_1`", so these three join on `EIN2` directly. The Portal `ein` is the 9-digit padded form and needs reformatting before it can join them. For Portal data, use the lowercase Portal variable names shown in the "Using Education Data Portal" section above.
 
 **Find All Private Universities in a State:**
 
 ```python
 import polars as pl
 
-# Load BMF
-bmf = pl.read_csv("BMF_UNIFIED_V1.1.csv")
+# Load BMF (all columns as strings: codes such as subsection_code "03" keep their leading zero)
+bmf = pl.read_csv("bmf_unified.csv", infer_schema_length=0)
 
 # Filter to California private universities
 ca_universities = bmf.filter(
-    (pl.col("STATE") == "CA") &
-    (pl.col("SUBSECCD") == "03") &  # 501(c)(3)
-    (pl.col("NTEECC").str.contains(r"^B4[0-3]")) &
-    (pl.col("INCOME_AMT") > 1_000_000)  # Revenue > $1M
+    (pl.col("org_addr_state") == "CA") &
+    (pl.col("subsection_code") == "03") &  # 501(c)(3)
+    (pl.col("ntee_code_clean").str.contains(r"^B4[0-3]")) &
+    (pl.col("income_amount").cast(pl.Float64, strict=False) > 1_000_000)  # Total income > $1M
 )
 
 print(f"Found {ca_universities.height} private universities in California")
@@ -592,16 +612,16 @@ print(f"Found {ca_universities.height} private universities in California")
 library(dplyr)
 library(stringr)
 
-# Load BMF
-bmf <- read.csv("BMF_UNIFIED_V1.1.csv")
+# Load BMF (all columns as character: codes such as subsection_code "03" keep their leading zero)
+bmf <- read.csv("bmf_unified.csv", colClasses = "character")
 
 # Filter to California private universities
 ca_universities <- bmf |>
   filter(
-    STATE == "CA",
-    SUBSECCD == "03",
-    str_detect(NTEECC, "^B4[0-3]"),
-    INCOME_AMT > 1000000
+    org_addr_state == "CA",
+    subsection_code == "03",
+    str_detect(ntee_code_clean, "^B4[0-3]"),
+    suppressWarnings(as.numeric(income_amount)) > 1000000  # Total income > $1M
   )
 
 cat(sprintf("Found %d private universities in California\n", nrow(ca_universities)))
@@ -611,111 +631,119 @@ cat(sprintf("Found %d private universities in California\n", nrow(ca_universitie
 
 ```python
 # Find Stanford University
-stanford = bmf.filter(pl.col("NAME").str.contains("(?i)STANFORD UNIVERSITY"))
-stanford_ein = stanford["EIN"][0]
+stanford = bmf.filter(pl.col("org_name_display").str.contains("(?i)stanford university"))
+stanford_ein2 = stanford["EIN2"][0]
 
-# Load Core data
-core = pl.read_csv("CHARITIES_PC_2021.csv")
-stanford_990 = core.filter(pl.col("EIN") == stanford_ein)
+# Load Core data (harmonized file: uppercase F9_* names keyed by EIN2)
+core = pl.read_csv("CORE-2021-501C3-CHARITIES-PC-HRMN-V1.csv", infer_schema_length=0)
+# ASSUMES: BMF EIN2 and Core EIN2 share the EIN-XX-XXXXXXX format (NCCS EIN format convention; see the note above)
+stanford_990 = core.filter(pl.col("EIN2") == stanford_ein2)
 
-print(f"Total Revenue: ${stanford_990['TOTREV'][0]:,.0f}")
-print(f"Total Assets: ${stanford_990['TOTASS'][0]:,.0f}")
+print(f"Total Revenue: ${float(stanford_990['F9_08_REV_TOT_TOT'][0]):,.0f}")
+print(f"Total Assets: ${float(stanford_990['F9_10_ASSET_TOT_EOY'][0]):,.0f}")
 ```
 
 ```r
 # Find Stanford University
-stanford <- bmf |> filter(grepl("STANFORD UNIVERSITY", NAME, ignore.case = TRUE))
-stanford_ein <- stanford$EIN[1]
+stanford <- bmf |> filter(grepl("stanford university", org_name_display, ignore.case = TRUE))
+stanford_ein2 <- stanford$EIN2[1]
 
-# Load Core data
-core <- read.csv("CHARITIES_PC_2021.csv")
-stanford_990 <- core |> filter(EIN == stanford_ein)
+# Load Core data (harmonized file: uppercase F9_* names keyed by EIN2)
+core <- read.csv("CORE-2021-501C3-CHARITIES-PC-HRMN-V1.csv", colClasses = "character")
+# ASSUMES: BMF EIN2 and Core EIN2 share the EIN-XX-XXXXXXX format (NCCS EIN format convention; see the note above)
+stanford_990 <- core |> filter(EIN2 == stanford_ein2)
 
-cat(sprintf("Total Revenue: $%s\n", format(stanford_990$TOTREV[1], big.mark = ",")))
-cat(sprintf("Total Assets: $%s\n", format(stanford_990$TOTASS[1], big.mark = ",")))
+cat(sprintf("Total Revenue: $%s\n", format(as.numeric(stanford_990$F9_08_REV_TOT_TOT[1]), big.mark = ",", scientific = FALSE)))
+cat(sprintf("Total Assets: $%s\n", format(as.numeric(stanford_990$F9_10_ASSET_TOT_EOY[1]), big.mark = ",", scientific = FALSE)))
 ```
 
 **Compare Endowments Across Institutions:**
 
 ```python
-# Load Efile Schedule D data
-sched_d = pl.read_csv("efile_schedule_d_part_v.csv")
+# Load Efile Schedule D Part V table (one file per year: SD-P05-T00-ENDOWMENT-{YEAR}.CSV)
+sched_d = pl.read_csv("SD-P05-T00-ENDOWMENT-2021.CSV", infer_schema_length=0)
 
-# Join with BMF for institution names
+# Join with BMF for institution names (Efile and Unified BMF both carry EIN2, EIN-XX-XXXXXXX)
 endowments = sched_d.join(
-    bmf.select(["EIN", "NAME", "STATE"]),
-    on="EIN"
+    bmf.select(["EIN2", "org_name_display", "org_addr_state"]),
+    on="EIN2"
 )
 
 # Filter to higher ed
-endowments = endowments.filter(pl.col("EIN").is_in(ca_universities["EIN"]))
+endowments = endowments.filter(pl.col("EIN2").is_in(ca_universities["EIN2"]))
 
-# Sort by endowment size
-endowments = endowments.sort("ENDOWMENT_EOY", descending=True)
+# Sort by end-of-year endowment balance (Schedule D Part V line 1g, current year)
+endowments = endowments.sort(
+    pl.col("SD_05_ENDOW_BALANCE_EOY_CY").cast(pl.Float64, strict=False), descending=True
+)
 ```
 
 ```r
 library(dplyr)
 
-# Load Efile Schedule D data
-sched_d <- read.csv("efile_schedule_d_part_v.csv")
+# Load Efile Schedule D Part V table (one file per year: SD-P05-T00-ENDOWMENT-{YEAR}.CSV)
+sched_d <- read.csv("SD-P05-T00-ENDOWMENT-2021.CSV", colClasses = "character")
 
-# Join with BMF for institution names
+# Join with BMF for institution names (Efile and Unified BMF both carry EIN2, EIN-XX-XXXXXXX)
 # (inner_join matches the Python twin: Polars .join() defaults to how="inner")
 endowments <- sched_d |>
-  inner_join(bmf |> select(EIN, NAME, STATE), by = "EIN")
+  inner_join(bmf |> select(EIN2, org_name_display, org_addr_state), by = "EIN2")
 
 # Filter to higher ed
-endowments <- endowments |> filter(EIN %in% ca_universities$EIN)
+endowments <- endowments |> filter(EIN2 %in% ca_universities$EIN2)
 
-# Sort by endowment size
-endowments <- endowments |> arrange(desc(ENDOWMENT_EOY))
+# Sort by end-of-year endowment balance (Schedule D Part V line 1g, current year)
+endowments <- endowments |> arrange(desc(as.numeric(SD_05_ENDOW_BALANCE_EOY_CY)))
 ```
+
+The yearly files are linked from the NCCS Efile catalog (`https://nccs-efile.s3.us-east-1.amazonaws.com/public/efile_v2_1/SD-P05-T00-ENDOWMENT-2021.CSV`). The Efile tables also carry the filer's name (`ORG_NAME_L1`), so the BMF join is needed only for BMF fields such as state or NTEE code.
 
 **Analyze Executive Compensation:**
 
 ```python
-# Load Part VII compensation data
-part_vii = pl.read_csv("efile_part_vii.csv")
+# Load Schedule J Part II compensation table (one row per listed person: SJ-P02-T01-COMPENSATION-DTK-{YEAR}.CSV)
+sched_j = pl.read_csv("SJ-P02-T01-COMPENSATION-DTK-2021.CSV", infer_schema_length=0)
 
-# Filter to presidents/chancellors at universities
-presidents = part_vii.filter(
-    (pl.col("TITLE").str.contains("(?i)President|Chancellor")) &
-    (pl.col("EIN").is_in(higher_ed["EIN"]))
+# Filter to presidents/chancellors at universities (EIN2 on both Efile and Unified BMF)
+presidents = sched_j.filter(
+    (pl.col("SJ_02_COMP_DTK_TITLE").str.contains("(?i)President|Chancellor")) &
+    (pl.col("EIN2").is_in(higher_ed["EIN2"]))
 )
 
-# Calculate total compensation
+# Total compensation from the filing organization: Schedule J Part II column (E),
+# the total of base (B)(i), bonus (B)(ii), other (B)(iii), deferred (C) and nontaxable benefits (D)
 presidents = presidents.with_columns(
-    (pl.col("BASE_COMP") + pl.col("BONUS") + pl.col("OTHER_COMP")
-     + pl.col("DEFERRED_COMP") + pl.col("NONTAXABLE"))
-    .alias("TOTAL_COMP")
+    pl.col("SJ_02_COMP_DTK_TOT_ORG").cast(pl.Float64, strict=False).alias("total_comp_org")
 )
 
 # Summary statistics
-print(presidents["TOTAL_COMP"].describe())
+print(presidents["total_comp_org"].describe())
 ```
 
 ```r
 library(dplyr)
 library(stringr)
 
-# Load Part VII compensation data
-part_vii <- read.csv("efile_part_vii.csv")
+# Load Schedule J Part II compensation table (one row per listed person: SJ-P02-T01-COMPENSATION-DTK-{YEAR}.CSV)
+sched_j <- read.csv("SJ-P02-T01-COMPENSATION-DTK-2021.CSV", colClasses = "character")
 
-# Filter to presidents/chancellors at universities
-presidents <- part_vii |>
+# Filter to presidents/chancellors at universities (EIN2 on both Efile and Unified BMF)
+presidents <- sched_j |>
   filter(
-    str_detect(TITLE, regex("President|Chancellor", ignore_case = TRUE)),
-    EIN %in% higher_ed$EIN
+    str_detect(SJ_02_COMP_DTK_TITLE, regex("President|Chancellor", ignore_case = TRUE)),
+    EIN2 %in% higher_ed$EIN2
   )
 
-# Calculate total compensation
+# Total compensation from the filing organization: Schedule J Part II column (E),
+# the total of base (B)(i), bonus (B)(ii), other (B)(iii), deferred (C) and nontaxable benefits (D)
 presidents <- presidents |>
-  mutate(TOTAL_COMP = BASE_COMP + BONUS + OTHER_COMP + DEFERRED_COMP + NONTAXABLE)
+  mutate(total_comp_org = as.numeric(SJ_02_COMP_DTK_TOT_ORG))
 
 # Summary statistics
-summary(presidents$TOTAL_COMP)
+summary(presidents$total_comp_org)
 ```
+
+Schedule J, not Part VII, holds the compensation components (base, bonus, other, deferred, nontaxable benefits: `SJ_02_COMP_DTK_BASE_ORG`, `_BONUS_ORG`, `_OTH_ORG`, `_DEFERRED_ORG`, `_BENFIT_ORG` (sic), total `_TOT_ORG`); Part VII Section A has only reportable compensation from the organization and from related organizations plus other compensation (`F9_07_COMP_DTK_COMP_ORG`, `_COMP_RLTD`, `_COMP_OTH`). Only some filers attach Schedule J, and the `_ORG` columns exclude compensation from related organizations (the `_RLTD` columns hold it).
 
 ---
 
@@ -739,7 +767,7 @@ summary(presidents$TOTAL_COMP)
 
 ### For Governance Research
 
-1. Note that governance questions were added in 2008 redesign
+1. The 2008 redesign added Part VI (independent board members, whistleblower and document-retention policies, compensation-review process); the 2007 form already asked board size, family/business relationships, and whether a written conflict-of-interest policy existed.
 2. Board composition data is self-reported
 3. Policy existence doesn't indicate implementation quality
 4. Compare across similar institution types

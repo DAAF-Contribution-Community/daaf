@@ -1,108 +1,80 @@
 # Validation Checks
 
-The three-part QA model for the privacy-preserving synthetic-data workflow. Because the real data never enters the container, DAAF cannot recompute statistics against the source file (the usual Data Onboarding QA move). QA is restructured into three independent checks, each guarding a different failure mode:
+The QA model for the privacy-preserving synthetic-data workflow. Because the real data never enters the container, DAAF cannot recompute statistics against the source file (the usual Data Onboarding QA move). Validation is restructured into three independent review checkpoints, each guarding a different failure mode, plus two in-script validators that halt on failure:
 
-- **(a) Disclosure-safety review** of the OUTBOUND profiling script — before the user runs it.
-- **(b) Internal-consistency validation** of the RETURNED report — at intake (DS-3).
-- **(c) Synthetic-vs-profile validation** of the GENERATED data — after generation (DS-5).
+- **(a) Disclosure-safety review** of the OUTBOUND profiling/synthesizer script — before the user runs it → **QAS-A** (DS-1).
+- **(b) Internal-consistency validation** of the RETURNED report — at intake → **CPS-INTAKE** (script) + **QAS-B** (review), DS-3.
+- **(c) Synthetic-vs-profile validation** of the GENERATED data — after generation → **CPS-GEN** (script) + **QAS-C** (review), DS-5.
 
 ## Contents
 
-- [(a) Disclosure-safety review of the outbound script](#a-disclosure-safety-review-of-the-outbound-script)
-- [(b) Internal-consistency validation of the returned report](#b-internal-consistency-validation-of-the-returned-report)
-- [(c) Synthetic-vs-profile validation](#c-synthetic-vs-profile-validation)
+- [Where the checks are defined](#where-the-checks-are-defined)
+- [The a/b/c letters and the canonical keys](#the-abc-letters-and-the-canonical-keys)
+- [Skill-local detail: forbidden emissions and tier specifics](#skill-local-detail-forbidden-emissions-and-tier-specifics)
 - [Tolerances](#tolerances)
-- [Severity mapping](#severity-mapping)
+- [Maintainer regression check](#maintainer-regression-check)
 
-## (a) Disclosure-safety review of the outbound script
+## Where the checks are defined
 
-**The single most important control in this workflow.** A disclosure leak is irreversible once the report is shared — so a *possible* leak is a BLOCKER, never a WARNING. Reviewed by code-reviewer against the chosen tier's forbidden-emissions list (`disclosure-tiers.md` § forbidden-emissions). This runs on the *configured script*, before the user executes it.
+**The check tables live in one place.** The per-check definitions — every check's stable key, what it validates, its BLOCKER condition, and the per-check statement of what is *not applicable* (`[SKIPPED]`) versus *not verifiable* (`[NOT VERIFIED]`) — are canonical in `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C). Read them there and use those keys verbatim. Do not paraphrase them here and do not re-derive them from memory: the whole value of the checkpoint is that its keys, outcome tokens, count line, and verdict are identical across every synthetic-path project. The severity overrides that make this path stricter than every other one are canonical in the same file, § QAS Severity Overrides (Synthetic Path).
 
-Checklist:
+| Checkpoint | Family | Where it runs | Verdict line | Canonical definition |
+|------------|--------|---------------|--------------|----------------------|
+| **QAS-A** (a-checks) | review | code-reviewer, DS-1 | `QAS-A RESULT: PASSED \| BLOCKER` (WARNING is not a legal QAS-A verdict) | `QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints > QAS-A |
+| **CPS-INTAKE** | script-halting | container script, DS-3 | `CPS-INTAKE VALIDATION: PASSED \| PASSED WITH WARNINGS \| FAILED` | `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints > CPS-INTAKE: Profile Report Intake Validation (DS-3) |
+| **QAS-B** (b-checks) | review | code-reviewer, DS-3 | `QAS-B RESULT: PASSED \| WARNING \| BLOCKER` | `QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints > QAS-B |
+| **CPS-GEN** | script-halting | container script, DS-5 | `CPS-GEN VALIDATION: PASSED \| PASSED WITH WARNINGS \| FAILED` | `VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints > CPS-GEN: Synthetic Generation Validation (DS-5) |
+| **QAS-C** (c-checks) | review | code-reviewer, DS-5 | `QAS-C RESULT: PASSED \| WARNING \| BLOCKER` | `QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints > QAS-C |
 
-| # | Check | Fails if |
-|---|-------|----------|
-| a1 | No raw min/max in any code path (T2+) | Any `min()`/`max()` of a value column reaches an emitted field |
-| a2 | No example values emitted (T2+) | Any category/string value other than through the suppressed-level or `__OTHER__` path reaches output; any "head"/"sample"/"first rows" emission |
-| a3 | Suppression is unconditional at T2+ | Any code path emits a categorical/cross-tab cell without the `< threshold` suppression gate |
-| a4 | Identifier columns get structure-only | Any column flagged identifier emits values, percentiles, or category lists |
-| a5 | Tier gate is correct | Relationship/cross-tab emission code is reachable at T1/T2; any statistic above the configured tier can be produced |
-| a6 | Edge cases can't leak | All-null column, single-row group, single distinct value, an identifier that slips the >95% heuristic — none produces a forbidden emission |
-| a7 | No raw-data side channel | No write of the input rows anywhere; no debug print of `df`; no path that copies the source file |
-| a8 | Binning cannot leave a sub-threshold `__OTHER__` | The roll-in loop is present: a residual `__OTHER__ < threshold` folds in the smallest retained levels (or fully suppresses the column). A bare `__OTHER__ = sum(binned)` with no roll-in is a leak |
-| a9 | Small-n / near-constant / all-missing numerics degrade | A numeric column with n < max(threshold,10) emits quartiles only; a single-distinct or SD=0 column withholds its value; an all-missing column emits no statistics (and does not crash `quantile([])`) |
-| a10 | Cross-tab suppression is complementary and `null`-coded (T3) | Suppressed cells are `null` (not `0`); complementary suppression runs so no row/col has a lone suppressed cell; a non-converging table is fully suppressed |
+**The script blocks are copied, never rewritten.** DS-3's intake validator and DS-5's generation validator are shipped code blocks. Copy the `# --- CPS-INTAKE Validation ---` / `# --- CPS-GEN Validation ---` block (Python and R) verbatim from `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints into the script's `# --- Validate ---` section, then set the values in the block's own `# --- Config ---` section (the only lines you change). Do not assign them anywhere else in the script: the block re-binds every config variable, so a value set outside it is overwritten. `WORKFLOW_PHASE_DO_SYNTHETIC.md` supplies the per-stage values and guidance; the block itself is maintained only in `VALIDATION_CHECKPOINTS.md`.
 
-a6 deserves emphasis: the common leak is not the main path but the edge case — a column with two distinct values where one has count 3 must suppress that cell even though the column "looks" safe. Trace every emission for the smallest-cell case.
+**The user-side script validators are separate.** The profiler embedded in `assets/profile_data_template.{py,R}` prints its own `Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped` line followed by `PROFILE VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`; the T4 synthesizer in `assets/synthesize_local_template.{py,R}` prints the same count line followed by `SYNTHESIS VALIDATION: …`. In the JSON report, `validation.checks[].status` takes the wire enum `PASS | FAIL | NOT_APPLICABLE | NOT_VERIFIED`. Those are the user's claims about their own run; QAS-B re-derives them from the report's own numbers rather than trusting `all_passed`.
 
-If any item is uncertain (not clearly safe), treat it as a failure and fix the script before the user runs it.
+## The a/b/c letters and the canonical keys
 
-## (b) Internal-consistency validation of the returned report
+The historical a1-a11 (a11 new this revision) / b1-b12 / c1-c11 letters survive as labels in the canonical tables, but the **stable check key** (`no_subthreshold_cells`, `other_bucket_preserved`, …) is what a script emits and what a `not_applicable` mapping is keyed by. QAS-A gained **a11** (`t4_log_aggregate_only`): the T4 shareable synthesis log contains no per-variable utility or comparison output, only an aggregate statistic. CPS-INTAKE and CPS-GEN implement the computable subset of the b- and c-checks under their own key lists, documented in the Usage Notes of their `VALIDATION_CHECKPOINTS.md` section.
 
-At intake (DS-3), verify the returned report is internally coherent — the checks the outbound script also embedded (`profiling-script-spec.md` § embedded validation), re-verified on this side because the embedded `all_passed` is the user's claim, not DAAF's verification. Confirm both that the checks are present AND that they actually hold on re-computation from the report's own numbers.
+Three rules from the canonical overrides are worth restating because they bind every author of a synthetic-path script:
 
-| # | Check | Fails if |
-|---|-------|----------|
-| b1 | `report_version` recognized | Version not in the supported set (schema may have drifted) |
-| b2 | Percentiles monotone | For any numeric column, the p1..p99 sequence is not non-decreasing |
-| b3 | Category counts ≤ row count | Any level count, or the sum of a column's level counts (incl. `__OTHER__`), exceeds `row_count` |
-| b4 | Missingness rates in [0,1] | Any `missing_rate` outside the unit interval |
-| b5 | No sub-threshold cells present | Any **visible** count — categorical level, `__OTHER__`, or a non-`null` cross-tab cell — is in `(0, suppression_threshold)`. Walk every emitted count; `null` cross-tab cells are suppressed and skipped. A sub-threshold `__OTHER__` also fails here (the roll-in must have cleared it) |
-| b6 | Correlation matrices well-formed (T3) | Non-square, non-symmetric, off-unit diagonal, or entries outside [-1,1] |
-| b7 | Correlation PSD-tolerant (T3) | Smallest eigenvalue below `-eps` (mild negatives are OK — rounding; large ones signal corruption) |
-| b8 | Suppression settings recorded | `settings.tier` / `settings.suppression_threshold` missing; `settings.relationship_spec` is neither `null` nor a list of pairs |
-| b9 | Column blocks match roles | A column's present stat block doesn't match its `role`. **T1**: column is exactly `{name, dtype}` (any extra field is a leak). **T2+ numeric**: exactly one of the four shapes — full (`mean`+`sd`+`percentiles` p1..p99), `small_n` (quartiles+`n`), `near_constant` (`n` only), `all_missing` (`n:0`) |
-| b10 | Embedded validation present and passing | `validation.all_passed` absent or false |
-| b11 | Cross-tab schema well-formed (T3) | `cells` length ≠ `rows`×`cols`; a suppressed cell is `0` instead of `null`; `cells_suppressed` ≠ the count of `null` cells |
-| b12 | No lone suppressed cross-tab cell (T3) | Any row or column has exactly one `null` cell (complementary suppression failed) — unless the entry is marked `"collapsed": true` (whole table suppressed) |
+- **Non-declarable keys.** No `not_applicable` entry may exist for any QAS-A key, for QAS-B `no_subthreshold_cells` / `crosstab_schema_wellformed` / `no_lone_suppressed_cell`, or for QAS-C `other_bucket_preserved` / `no_fabricated_categories` / `identifier_scaffolds_typed_value_free`. Declaring one is itself the finding. The CPS blocks enforce the same rule (with `[FAIL]`) over their own non-declarable sets, which are not a key-for-key copy of these six — CPS-GEN, for one, also makes `seed_recorded` non-declarable; read those sets from `agent_reference/VALIDATION_CHECKPOINTS.md` § CPS Usage Notes.
+- **Aggregate-only evidence.** A `[PASS]` on a disclosure check carries counts and the threshold, never a cell value, a minimum, or a level label with its count.
+- **`[NOT VERIFIED]` escalates here.** Any not-verified item in QAS-A is a BLOCKER, as is a not-verified item on the six per-check keys above. On this path an unproven-safe emission path is an unsafe one.
 
-b2, b3, b5 are the load-bearing consistency checks: they catch a report that was hand-edited, truncated, or produced by a tampered script. A report that fails b5 (a small cell slipped through) is *also* a disclosure event — flag it as BLOCKER and tell the user their shared report contains a sub-threshold cell.
+## Skill-local detail: forbidden emissions and tier specifics
 
-## (c) Synthetic-vs-profile validation
+QAS-A is reviewed against the chosen tier's **forbidden-emissions list** in `disclosure-tiers.md` § The forbidden-emissions list (for disclosure-safety review), which is the authority for *what* may not cross the boundary at each tier; QA_CHECKPOINTS.md is the authority for *how* the review is counted and reported. T4 adds one item to that list: per-variable utility or comparison output (`compare()` / `utility.gen` marginal tables, frequency counts, histograms) must never reach the shareable synthesis log — see `local-synthesis-t4.md`.
 
-After generation (DS-5), verify the synthetic data faithfully reflects the profile — within tolerance, because profile-based synthesis is approximate by design.
+Tier-specific and support-specific nuances the canonical tables assume but do not teach:
 
-| # | Check | Fails if |
-|---|-------|----------|
-| c1 | Row count matched | `nrow(synthetic)` ≠ `report.row_count` |
-| c2 | Column set + types matched | Column names/dtypes differ from the report |
-| c3 | Numeric marginals within tolerance | Synthetic percentiles deviate from reported percentiles beyond tolerance (see below) |
-| c4 | Categorical proportions within tolerance | Synthetic level proportions deviate from reported proportions beyond tolerance |
-| c5 | `__OTHER__` preserved as a bucket | Synthetic data invented real-looking rare values instead of keeping `__OTHER__` |
-| c6 | Correlations reproduced within tolerance (T3) | Synthetic correlation matrix deviates from reported beyond tolerance (looser for binary/low-cardinality — see caveats in the generation refs) |
-| c7 | Suppressed categories absent | Any synthetic categorical value equals a level the profile suppressed (impossible if generation only draws from emitted levels — this is a guard against generation bugs) |
-| c8 | Identifiers structurally shaped, value-free | Synthetic identifier values resemble anything real, or collide with a routable domain/format |
-| c9 | Missingness rate within tolerance | Synthetic per-column null rate deviates from reported rate beyond tolerance |
-| c10 | Seed recorded | Generation log lacks the seed (synthetic data not reproducible) |
-| c11 | Named relationship reproduced (T3) | For each `relationships.named` entry, the synthetic OLS slope of `outcome ~ predictor` deviates from the reported slope beyond tolerance (default ±10% of the reported slope; R² within ±0.10) |
+- **Trace the smallest categorical cell and each statistic's usable support separately.** A categorical level with count 3 is suppressed; a numeric binary mean of .003 over 1,000 usable observations is eligible, and .002 missingness over 1,000 records is not a small-cell violation. Do not withhold whole columns on those numerators. The support unit is records, not automatically distinct individuals — confirm that assumption with the researcher.
+- **Trace candidate validation and I/O, not just the statistics.** Typed rounded/suppressed values must be the source of both the embedded checks and both output files; no recomputed raw statistics, no hardcoded symmetry PASS. A validation failure writes no report; the output preflight refuses prior targets; success is announced only after both new files finish. An I/O failure can leave a partial new pair, which must not be shared.
+- **Report `2.0` shapes.** Apply percentile monotonicity to every *released* full/reduced grid (constants have no grid); require unique expected percentile keys and one finite real scalar per field. Apply category-count checks to candidate counts, unique emitted labels, and `categorical.n`, including total equality when levels are released; missingness must agree with `nonmissing_n` after rounding. Apply the correlation checks only to `available:true` matrices, declaring unavailable ones with the report's own recorded reason. Unavailable entries must not carry value statistics. Intake can check candidate support metadata for consistency but can never verify raw support or pair variances it never received.
+- **Generation-side inventory before comparison.** All-missing/withheld distributions and unavailable relationships have NOT_APPLICABLE fidelity with explicit reasons, never a fabricated PASS; reduced numerics carry only quartile targets; a supported constant has an exact shared-value target within released rounding precision. Structural, type, and seed checks apply to every column including typed placeholders. Missingness stays a separately eligible target even where value summaries are withheld — inject it after marginal/relationship generation. T1 carries no marginal/missingness/relationship fidelity targets.
 
-c5, c7, c8 are disclosure-adjacent: they confirm generation did not *fabricate* withheld structure or produce anything resembling a real identifier.
+Every synthetic dataset that passes carries forward the scaffold-not-substitute caveat regardless of how clean the validation is — passing validation means "structurally faithful to the profile," never "analytically valid."
 
 ## Tolerances
 
-Profile-based synthesis is approximate; tolerances make "within reason" concrete. These are defaults — tighten or loosen per the use case and record the choice.
+Profile-based synthesis is approximate; tolerances make "within reason" concrete. These are the defaults the canonical QAS-C and CPS-GEN definitions refer to as § Tolerances — tighten or loosen per the use case and record the choice in the script's config stanza.
 
 | Quantity | Default tolerance |
 |----------|-------------------|
-| Numeric percentiles (c3) | each reproduced percentile within ±5% of the reported value's range span, or ±0.1·IQR, whichever is larger |
+| Numeric percentiles (c3) | relative tolerance of 0.10 on each reproduced percentile against the reported value, with a floor of 1.0 absolute for values near zero — the shipped CPS-GEN `numeric_tolerance` default |
 | Categorical proportions (c4) | each level proportion within ±0.02 absolute (2 percentage points) |
-| Correlation coefficients — continuous (c6) | within ±0.10 of the reported coefficient |
-| Correlation coefficients — binary/low-cardinality (c6) | within ±0.20 (Gaussian copula recovers these less faithfully) |
+| Correlation coefficients (c6) | within ±0.10 of the reported coefficient, for every released pair — the shipped CPS-GEN `correlation_tolerance` default, the only correlation band the block applies |
+| Correlation coefficients — binary/low-cardinality pairs (c6, **QAS-C reviewer allowance only**) | the reviewer may accept up to ±0.20 (Gaussian copula recovers these less faithfully). CPS-GEN does not apply this band: such a pair outside ±0.10 is still a CPS-GEN `[WARNING]`, which QAS-C explains under the allowance |
 | Missingness rate (c9) | within ±0.01 absolute |
 | Named relationship slope (c11) | within ±10% of the reported slope; R² within ±0.10 |
 | Correlation PSD tolerance (b7) | smallest eigenvalue ≥ −1e-6 |
 
-## Severity mapping
+The numeric row states what the shipped CPS-GEN block actually computes. The older wording — "±5% of the reported value's range span, or ±0.1·IQR, whichever is larger" — is **retired**: it was never implemented, and a span/IQR rule cannot be evaluated from a report that releases no range. A project that needs a tighter bound sets `numeric_tolerance` in the CPS-GEN config stanza (and records why); the three other `*_tolerance` scalars in that stanza correspond to the categorical row, the first correlation row, and the missingness row above. The binary/low-cardinality correlation row has **no** config scalar and no CPS-GEN counterpart: it is a reviewer allowance applied in QAS-C, never a second tolerance inside the block.
 
-| Finding | Severity |
-|---------|----------|
-| Any (a) disclosure-safety failure or uncertainty | **BLOCKER** — fix before the user runs the script |
-| (b) b5 sub-threshold cell present in a shared report | **BLOCKER** — a disclosure event; notify the user |
-| (b) other consistency failures (b2/b3/b4/b6/b9) | **BLOCKER** — report is corrupt/untrustworthy; do not generate from it |
-| (b) b7 mild non-PSD | WARNING — project to nearest PD, note the perturbation |
-| (c) c1/c2/c7/c8 failures | **BLOCKER** — generation bug or disclosure risk |
-| (c) c3/c4/c6/c9/c11 out of tolerance | WARNING — investigate; may be an acceptable approximation limit, may be a bug |
-| (b) b11/b12 cross-tab schema or lone-cell failure | **BLOCKER** — b12 is a disclosure event (a lone suppressed cell is recoverable by differencing); b11 signals a malformed/tampered report |
-| (c) c10 missing seed | **BLOCKER** by default — reproducibility is the rule; the one narrow exception is the researcher-authorized T4 missing-seed path (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant), which proceeds only with explicit gate authorization and yields a labeled "non-reproducible T4 synthetic artifact" |
+## Maintainer regression check
 
-Every synthetic dataset that passes carries forward the scaffold-not-substitute caveat regardless of how clean the validation is — passing validation means "structurally faithful to the profile," never "analytically valid."
+The reusable maintainer CLI is `/daaf/scripts/check_profile_templates.py`. Run it through a **fresh captured driver**, not by capturing/executing the reusable utility or shipped assets in place. The driver invokes this CLI with `--base-dir /daaf --work-dir {PROJECT_DIR}/scripts/scratch/{fresh_run_name} --languages python r --suite all`; use a separate fresh work directory with `--suite adjudication` for the targeted follow-up cases. Capture the driver with `bash /daaf/scripts/run_with_capture.sh {absolute_driver_path}`. Keep the driver outside scratch (a Framework Development workspace's `scripts/`) and let the CLI's stdout reach the driver's own output, so the per-case `PASS`/`FAIL` lines and the summary line land in the driver's appended execution log: that log is the run's durable record. Inspect the current CLI before constructing the driver; it is maintained separately from the templates.
+
+The checker now adjudicates each embedded check against the **four-state expectation model** — `PASS | FAIL | NOT_APPLICABLE | NOT_VERIFIED`, the same wire enum the report carries (`check_profile_templates.py` § `inspect_report`) — and models the expected status per check per fixture, so a fixture that releases no numeric columns expects the profiler's own fixed-reason skip rather than a silent pass. It also asserts that stdout carries the `Checks:` count line and a `PROFILE VALIDATION:` verdict, and that the verdict is `FAILED` whenever `all_passed` is false. Read the case count off the run's own `REGRESSION_SUMMARY total=N passed=N failed=0` line (N was 130 when the four-state model landed) rather than assuming a fixed number, and review actual per-case outcomes, not only the overall exit code.
+
+The work directory must not already exist and must be under a research project's `scripts/scratch/` (the CLI refuses any other path). The checker uses fabricated Parquet, fresh configured asset copies, project-local TMPDIR, captured executions and source hashes, and leaves its result and runner logs (`results.json`, `*.runner.log`; every suite but `adjudication` also writes `inventory.json`) in the work directory. That directory is scratch: kept, but never relied on. Cite the driver's execution log; if a note or review must cite a file inside the work directory (a failing case's runner log, `results.json`), first move the whole work directory to a named home, `probes/` in a Framework Development workspace, so the run's files stay together, and cite the new path (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check). No raw sensitive data, network, installation, or CI changes are needed. Never rewrite failed historical evidence.
+
+Regression coverage must include per-field scalar/unique-name validation (NULL/vector percentile compensation and string lengths), Python optimized-mode refusal even for ordinary input, exact integer precision refusal around ±2^53 before conversion, unique reserved-category pooling (A20 + literal OTHER10 + rare3 + rare3 → A20/OTHER16 and three levels binned), paired factor zero-margin removal, identifier unavailable-structure logging for every dtype, and the disclosure-safety negative fixtures (a categorical column whose categorical block is missing must FAIL scan completeness; an entry carrying `cells_suppressed` without `cells` must never PASS; a check with an empty reason is NOT_VERIFIED and `all_passed` false), plus two declaration-free assertions: neither template carries a researcher `not_applicable` setting, and every embedded reason in every accepted report is in CPS-INTAKE's vocabulary (`candidate_fields_checked` for PASS, one of the intake's fixed forms for NOT_APPLICABLE). Keep supported 5/5,000 constants, missingness 2/1,000, and binary mean 3/1,000 as positive controls. The existing R 2×2 continuity correction remains intentional. Expected precision refusals must include a clear diagnostic and no reports; an unrelated crash is not a passing refusal test.

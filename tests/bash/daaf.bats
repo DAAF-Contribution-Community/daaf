@@ -30,6 +30,11 @@ setup() {
 }
 
 teardown() {
+    # Tier 13's unreadable-settings tests chmod the fixture to 000; give it its
+    # permissions back so the fixture tree is left in a normal state for removal.
+    if [ -e "${TEST_DIR}/environment_settings.txt" ]; then
+        chmod 644 "${TEST_DIR}/environment_settings.txt" 2>/dev/null || true
+    fi
     common_teardown
 }
 
@@ -52,6 +57,39 @@ teardown() {
     assert_failure
     assert_output --partial "ERROR"
     assert_output --partial "docker-compose.yml"
+}
+
+@test "daaf.sh exits with a permissions message when environment_settings.txt is unreadable" {
+    # The startup load runs before the ERR/pause traps are registered, so the
+    # panel names the file and the fix rather than ending on bash's bare line.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    run env DAAF_DRY_RUN=1 bash -c 'echo q | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"'
+    assert_failure
+    assert_output --partial "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it."
+    assert_output --partial "Fix that (or move the file aside), then start the DAAF Control Panel again."
+    refute_output --partial "DAAF Control Panel hit an unexpected failure"
+    refute_output --partial "Permission denied"
+}
+
+@test "daaf.sh startup does not hide a loader error that is not a failed open" {
+    # The loader's open check silences only the failed open, and the startup
+    # call keeps its stderr. So a bug inside the loader (here an unbound
+    # variable injected just after the open check, in a copy of the library)
+    # must reach the user -- it runs before the ERR/pause traps exist, so
+    # nothing else would report it -- and must not be mislabeled "Cannot read".
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    mkdir -p "${TEST_DIR}/hostcopy"
+    cp "${REPO_ROOT}/scripts/host/daaf.sh" "${TEST_DIR}/hostcopy/daaf.sh"
+    sed 's/^    local key val line$/    local key val line; : "${_DAAF_TEST_INJECTED_UNBOUND}"/' \
+        "${REPO_ROOT}/scripts/host/daaf_lib.sh" > "${TEST_DIR}/hostcopy/daaf_lib.sh"
+    # The seam must have landed exactly once, or the test proves nothing.
+    [ "$(grep -c '_DAAF_TEST_INJECTED_UNBOUND' "${TEST_DIR}/hostcopy/daaf_lib.sh")" -eq 1 ]
+    run env -u _DAAF_TEST_INJECTED_UNBOUND DAAF_DRY_RUN=1 bash -c 'echo q | bash "'"${TEST_DIR}"'/hostcopy/daaf.sh"'
+    assert_failure
+    assert_output --partial "_DAAF_TEST_INJECTED_UNBOUND: unbound variable"
+    refute_output --partial "Cannot read environment_settings.txt"
 }
 
 @test "daaf.sh fails when docker command is not found" {
@@ -267,7 +305,8 @@ teardown() {
         '    8) Restore from Backup' \
         '    9) Check for Updates' \
         '   10) Rebuild Container' \
-        '   11) Stop Web Services')
+        '   11) Restart Container' \
+        '   12) Stop Web Services')
     [ "$manage_block" = "$expected_manage_block" ]
 
     assert_output --partial "h) Help"
@@ -336,7 +375,7 @@ teardown() {
     STATUS_PORT_2720=false
 
     run display_menu
-    assert_output --partial "5 updates available"
+    assert_output --partial "5 updates available as of the last update check"
 }
 
 @test "display_menu shows up to date when no updates" {
@@ -351,7 +390,7 @@ teardown() {
     STATUS_PORT_2720=false
 
     run display_menu
-    assert_output --partial "up to date"
+    assert_output --partial "up to date as of the last update check"
 }
 
 @test "display_menu shows never when no backups" {
@@ -445,13 +484,28 @@ teardown() {
     assert_output --partial "CALLED_SHELL"
 }
 
-@test "dispatch_choice routes option 11 to handle_stop_services" {
-    handle_stop_services() { echo "CALLED_STOP_SERVICES"; }
-    export -f handle_stop_services
+@test "dispatch_choice routes option 11 to handle_restart" {
+    handle_restart() { echo "CALLED_RESTART"; }
+    export -f handle_restart
 
     run dispatch_choice "11"
     assert_success
+    assert_output --partial "CALLED_RESTART"
+}
+
+@test "dispatch_choice routes option 12 to handle_stop_services" {
+    handle_stop_services() { echo "CALLED_STOP_SERVICES"; }
+    export -f handle_stop_services
+
+    run dispatch_choice "12"
+    assert_success
     assert_output --partial "CALLED_STOP_SERVICES"
+}
+
+@test "dispatch_choice names the full 1-12 range in the invalid-choice message" {
+    run dispatch_choice "13"
+    assert_success
+    assert_output --partial "Please enter a number (1-12), h, or q."
 }
 
 @test "dispatch_choice routes h to handle_help" {
@@ -634,16 +688,78 @@ teardown() {
     assert_output --partial "Starting notebook browser"
 }
 
-@test "handle_notebooks calls open_url" {
-    # Pin the host-published port to the default so the assertion is independent
-    # of the container's environment. daaf.sh:44 reads DAAF_PORT_MARIMO from the
-    # env (default 2718); a custom-port host (e.g. 3718) would otherwise leak in.
-    export DAAF_PORT_MARIMO=2718
+@test "handle_notebooks opens the URL on the HOST-published port (PANEL_PORT_MARIMO)" {
+    # Pin a NON-default host-published port (set_panel_ports in daaf.sh derives
+    # PANEL_PORT_MARIMO from DAAF_PORT_MARIMO, default 2718), so a URL hardcoded
+    # to the container port 2718 fails here. The container-side probe stays 2718.
+    PANEL_PORT_MARIMO=3718
     mock_port_check "2718:yes"
+    # launch_marimo.sh --print-token answers with the running server's token.
+    MOCK_DOCKER_EXEC_OUTPUT="feedc0de42"
 
     run handle_notebooks
     assert_success
-    assert_output --partial "http://localhost:2718"
+    assert_output --partial "http://localhost:3718/?access_token=feedc0de42"
+    refute_output --partial "localhost:2718"
+}
+
+@test "handle_notebooks asks launch_marimo.sh --print-token for the token over a TTY-less exec" {
+    run grep -A1 'docker compose exec -T daaf-docker' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_output --partial "launch_marimo.sh --print-token"
+}
+
+@test "handle_notebooks refuses to open an older --no-token server (print-token exit 5)" {
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 5 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "without an access token"
+    assert_output --partial "12) Stop Web Services"
+    refute_output --partial "http://localhost:"
+}
+
+@test "handle_notebooks names an unknown token (print-token exit 6) and opens nothing" {
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 6 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "access token is unknown"
+    refute_output --partial "http://localhost:"
+}
+
+@test "handle_notebooks falls back to the bare URL with a hint when no token is readable yet" {
+    PANEL_PORT_MARIMO=3718
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 4 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "If the browser asks for an access token, choose 4 again"
+    assert_output --partial "http://localhost:3718"
+    refute_output --partial "access_token="
 }
 
 @test "handle_vscode skips start when service already running" {
@@ -654,16 +770,31 @@ teardown() {
     assert_output --partial "already running"
 }
 
-@test "handle_vscode calls open_url with port 2720" {
-    # Pin the host-published port to the default so the assertion is independent
-    # of the container's environment. daaf.sh:46 reads DAAF_PORT_VSCODE from the
-    # env (default 2720); a custom-port host (e.g. 3720) would otherwise leak in.
-    export DAAF_PORT_VSCODE=2720
+@test "handle_vscode opens the URL on the HOST-published port (PANEL_PORT_VSCODE)" {
+    # Pin a NON-default host-published port (set_panel_ports in daaf.sh derives
+    # PANEL_PORT_VSCODE from DAAF_PORT_VSCODE, default 2720), so a URL hardcoded
+    # to the container port 2720 fails here. The container-side probe stays 2720.
+    PANEL_PORT_VSCODE=3720
     mock_port_check "2720:yes"
 
     run handle_vscode
     assert_success
-    assert_output --partial "http://localhost:2720"
+    assert_output --partial "http://localhost:3720"
+    refute_output --partial "localhost:2720"
+}
+
+@test "handle_logs opens the viewer URL on the HOST-published port (PANEL_PORT_LOGVIEWER)" {
+    # Non-default host port (default 2719), so a hardcoded container port fails.
+    # The discovery exec lists only the archive; the user picks it (1).
+    PANEL_PORT_LOGVIEWER=3719
+    mock_port_check "2719:yes"
+    ensure_container() { return 0; }
+    export MOCK_DOCKER_EXEC_OUTPUT="ARCHIVE|3"
+
+    run handle_logs <<< "1"
+    assert_success
+    assert_output --partial "http://localhost:3719/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
+    refute_output --partial "localhost:2719"
 }
 
 @test "handle_stop_services reports no services when none running" {
@@ -695,6 +826,74 @@ teardown() {
     )' 2>/dev/null
     # Structural check: the function should show running services
     assert_output --partial "Running services"
+}
+
+@test "handle_stop_services lists running services on their HOST-published ports" {
+    # User report 2026-10-30: with Marimo published on host port 3718
+    # (DAAF_PORT_MARIMO), option 12 listed it as "port 2718", the fixed
+    # container-side port. The probes must stay on the container ports (the mock
+    # answers only 2718/2719/2720, so probing 3718 would find nothing), and the
+    # listing must show the host ports the user opens, like the status dashboard.
+    PANEL_PORT_MARIMO=3718
+    PANEL_PORT_LOGVIEWER=3719
+    PANEL_PORT_VSCODE=3720
+    mock_port_check "2718:yes 2719:yes 2720:yes"
+
+    run handle_stop_services <<< "0"
+    assert_success
+    assert_output --partial "Running services"
+    assert_output --partial "Notebooks    localhost:3718"
+    assert_output --partial "Log Viewer   localhost:3719"
+    assert_output --partial "VS Code      localhost:3720"
+    refute_output --partial "2718"
+    refute_output --partial "2719"
+    refute_output --partial "2720"
+}
+
+@test "handle_stop_services 'Stop all' stops the container ports and reports each by service name" {
+    # The stop payload runs INSIDE the container, so it must target the fixed
+    # container ports 2718/2719/2720 and must not print them to the user as if
+    # they were the host ports: each result line names the service instead.
+    PANEL_PORT_MARIMO=3718
+    mock_port_check "2718:yes"
+    # Save the payload (the last argument of the `compose exec ... bash -c` call)
+    # verbatim, newlines included, so it can be parsed below. It is never run:
+    # here it would kill this container's real listeners.
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            "compose exec -T daaf-docker bash -c "*) printf '%s' "${!#}" > "${TEST_DIR}/stop_payload.sh" ;;
+        esac
+        return 0
+    }
+
+    run handle_stop_services <<< "1"
+    assert_success
+    assert_output --partial "Notebooks    localhost:3718"
+    assert_output --partial "Stopping services"
+    assert_output --partial "Done."
+
+    local payload
+    payload=$(cat "${TEST_DIR}/stop_payload.sh")
+    [[ "$payload" == *'for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do'* ]]
+    [[ "$payload" == *'Stopped $name (PID $pid)'* ]]
+    [[ "$payload" == *'Could not stop $name (PID $pid)'* ]]
+    [[ "$payload" != *'on port $port'* ]]
+    run bash -n "${TEST_DIR}/stop_payload.sh"
+    assert_success
+}
+
+@test "Stop Web Services shows the host port from environment_settings.txt end to end" {
+    # The full path the user took: the settings loader reads DAAF_PORT_MARIMO,
+    # set_panel_ports derives the display port, and option 12 lists the service
+    # there (dry-run: check_port answers from DAAF_MOCK_PORTS, container ports).
+    printf 'DAAF_PORT_MARIMO=3718\n' > "${TEST_DIR}/environment_settings.txt"
+    run env -u DAAF_PORT_MARIMO DAAF_DRY_RUN=1 DAAF_MOCK_PORTS="2718:yes" \
+        bash -c 'printf "12\n0\nq\n" | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"'
+    assert_success
+    assert_output --partial "Running services"
+    assert_output --partial "Notebooks    localhost:3718"
+    refute_output --partial "port 2718"
 }
 
 # =========================================================================
@@ -731,7 +930,24 @@ teardown() {
     assert_output --partial "Restore from Backup"
     assert_output --partial "Check for Updates"
     assert_output --partial "Rebuild Container"
-    assert_output --partial "Stop Web Services"
+    assert_output --partial "  11) Restart Container"
+    assert_output --partial "environment_settings.txt"
+    assert_output --partial "no image build"
+    assert_output --partial "  12) Stop Web Services"
+}
+
+@test "handle_help names the HOST-published VS Code and notebook ports" {
+    # Same remapped-port class as option 12: help said "port 2720"/"port 2718"
+    # (the container ports) even when the user opens 3720/3718.
+    PANEL_PORT_MARIMO=3718
+    PANEL_PORT_VSCODE=3720
+
+    run handle_help <<< ""
+    assert_success
+    assert_output --partial "Open code-server (port 3720)"
+    assert_output --partial "Open the marimo notebook browser (port 3718)"
+    refute_output --partial "port 2718"
+    refute_output --partial "port 2720"
 }
 
 @test "handle_quit exits with code 0" {
@@ -846,19 +1062,26 @@ teardown() {
     assert_output --partial "Returned to DAAF Control Panel"
 }
 
-@test "handle_vscode displays the code-server password" {
+@test "handle_vscode says where the code-server password is set" {
     mock_port_check "2720:yes"
     run handle_vscode
     assert_success
     assert_output --partial "Password:"
-    assert_output --partial "daaf"
+    assert_output --partial "the PASSWORD set in environment_settings.txt (default: daaf)"
 }
 
-@test "handle_vscode honors a PASSWORD override in the displayed password" {
+@test "handle_vscode never shows a host-shell PASSWORD as the password" {
+    # code-server reads PASSWORD from the container environment
+    # (environment_settings.txt via env_file), not from the panel's shell.
     mock_port_check "2720:yes"
     PASSWORD="hunter2" run handle_vscode
     assert_success
-    assert_output --partial "hunter2"
+    refute_output --partial "hunter2"
+}
+
+@test "daaf.sh's unexpected-failure banner says where to report the bug" {
+    run grep -F 'https://github.com/DAAF-Contribution-Community/daaf/issues' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
 }
 
 @test "handle_logs starts the server against the selected source, not always --archive" {
@@ -886,4 +1109,672 @@ teardown() {
 @test "daaf.sh registers an ERR trap for diagnostics" {
     run grep -E "trap .* ERR" "${REPO_ROOT}/scripts/host/daaf.sh"
     assert_success
+}
+
+# =========================================================================
+# Tier 13 -- Restart Container (option 11)
+# =========================================================================
+# run_restart <answer> [settings-after-startup]
+# Sources daaf.sh (test mode) in a clean subshell with every whitelisted DAAF_*
+# key unset, so the panel starts exactly as on a fresh install with whatever
+# ./environment_settings.txt the test wrote beforehand. It then (optionally)
+# rewrites the settings file -- the user's edit AFTER the panel started -- and
+# answers the confirmation prompt with <answer>. The docker mock echoes each call
+# ("DOCKER: <args>") so tests can assert which compose commands ran and in what
+# order. After the handler returns, the panel's port and project values are
+# printed for assertions.
+#
+# The subshell keeps daaf.sh's `set -Eeuo pipefail`, and a marker ERR trap
+# ("PANEL_ERR_TRAP: <command>") stands in for the panel's real one (registered
+# only outside test mode). An unguarded failure in the handler would therefore
+# print the marker AND end the subshell before the AFTER_* lines -- which is how
+# the real panel dies -- so "AFTER_* present, no PANEL_ERR_TRAP" proves the
+# handler returned to the menu.
+#
+# Knobs (exported by the test, unset afterwards):
+#   <answer> = __EOF__        handle_restart reads from </dev/null (a real EOF;
+#                             a herestring always delivers a line, read rc 0)
+#   RESTART_EXPORT_PROJECT    DAAF_PROJECT_NAME the user exported before launch
+#   RESTART_CHMOD             chmod mode applied to ./environment_settings.txt
+#                             after startup (e.g. 000 = made unreadable later)
+#   MOCK_DOWN_EXIT / MOCK_UP_EXIT       make `down` / `up` fail
+#   MOCK_DOWN_CHMOD           chmod mode applied to the settings file during
+#                             `down` (file becomes unreadable mid-restart)
+#   MOCK_DOWN_SETTINGS        printf %b content written to the settings file
+#                             during `down` (the user edits it mid-restart);
+#                             __DELETE__ removes the file instead
+#   RESTART_SECOND            after the first handler returns, write this
+#                             content (printf %b) to the settings file and choose
+#                             Restart Container again in the SAME panel, with
+#                             MOCK_DOWN_* switched off ("SECOND_RESTART" marks
+#                             the boundary; AFTER2_* lines follow)
+#   MOCK_RELOAD_CHMOD         chmod mode applied to the settings file at the
+#                             START of a reload_daaf_settings call (a wrapper
+#                             around the real one), so the file turns unreadable
+#                             at the moment that call reads it.
+#                             MOCK_RELOAD_CHMOD_AT picks which call: "guard" (the
+#                             project-guard probe, before `down`) or "after_down"
+#                             (the post-down reload; the default)
+#   MOCK_LOADER_STDERR        the real load_daaf_settings also writes
+#                             "INJECTED_LOADER_STDERR" to stderr just after its
+#                             open check (a stand-in for a loader bug)
+#   MOCK_READY_EXIT          `exec -T daaf-docker true` fails (and writes a
+#                             Docker-style line to stderr)
+#   MOCK_READY_STDERR         printf %b content the failing readiness probe
+#                             writes to stderr instead of that line
+#   MOCK_VERIFY_EXIT          `exec -T daaf-docker test -f ...` fails
+# `sleep` is stubbed to print "SLEEP: <args>" so the 30 x 2s readiness poll
+# runs instantly and can be counted.
+run_restart() {
+    run bash -c '
+        unset DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE \
+              DAAF_DEV DAAF_BRANCH DAAF_DATA_VOLUME_NAME DAAF_DRY_RUN _DAAF_LIB_LOADED
+        if [ -n "${RESTART_EXPORT_PROJECT:-}" ]; then
+            export DAAF_PROJECT_NAME="${RESTART_EXPORT_PROJECT}"
+        fi
+        export DAAF_TEST_MODE=1
+        source "$1/scripts/host/daaf.sh"
+        unset DAAF_TEST_MODE
+        trap "echo \"PANEL_ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        if [ -n "${MOCK_RELOAD_CHMOD:-}" ]; then
+            # Keep the real reload under another name (declare -f copy; bash 3.2
+            # cannot `source <(...)`), then wrap it. The guard probe runs in a
+            # $( ) subshell, so "has down run" is a variable the main shell sets.
+            eval "$(declare -f reload_daaf_settings | sed "1s/^reload_daaf_settings/_real_reload_daaf_settings/")"
+            reload_daaf_settings() {
+                case "${MOCK_RELOAD_CHMOD_AT:-after_down}:${_MOCK_DOWN_RAN:-0}" in
+                    guard:0|after_down:1) chmod "${MOCK_RELOAD_CHMOD}" ./environment_settings.txt ;;
+                esac
+                _real_reload_daaf_settings "$@"
+            }
+        fi
+        if [ -n "${MOCK_LOADER_STDERR:-}" ]; then
+            # Re-define the real loader (declare -f copy, as above) with one
+            # extra stderr line just after its open check, standing in for any
+            # loader error that is not a failed open.
+            eval "$(declare -f load_daaf_settings | sed "s/local key val line;/local key val line; echo \"INJECTED_LOADER_STDERR\" >\&2;/")"
+            declare -f load_daaf_settings | grep -q INJECTED_LOADER_STDERR || echo "LOADER_SEAM_FAILED"
+        fi
+        docker() {
+            echo "DOCKER: $*"
+            case "$*" in
+                "compose down"*)
+                    _MOCK_DOWN_RAN=1
+                    if [ -n "${MOCK_DOWN_CHMOD:-}" ]; then
+                        chmod "${MOCK_DOWN_CHMOD}" ./environment_settings.txt
+                    fi
+                    if [ "${MOCK_DOWN_SETTINGS:-}" = "__DELETE__" ]; then
+                        rm -f ./environment_settings.txt
+                    elif [ -n "${MOCK_DOWN_SETTINGS:-}" ]; then
+                        printf "%b" "${MOCK_DOWN_SETTINGS}" > ./environment_settings.txt
+                    fi
+                    return "${MOCK_DOWN_EXIT:-0}"
+                    ;;
+                "compose up"*) return "${MOCK_UP_EXIT:-0}" ;;
+                "compose exec -T daaf-docker true"*)
+                    if [ "${MOCK_READY_EXIT:-0}" != "0" ]; then
+                        if [ -n "${MOCK_READY_STDERR:-}" ]; then
+                            printf "%b" "${MOCK_READY_STDERR}" >&2
+                        else
+                            echo "Error response from daemon: container mock123 is restarting" >&2
+                        fi
+                    fi
+                    return "${MOCK_READY_EXIT:-0}"
+                    ;;
+                "compose exec -T daaf-docker test -f"*) return "${MOCK_VERIFY_EXIT:-0}" ;;
+            esac
+            return 0
+        }
+        sleep() { echo "SLEEP: $*"; }
+        if [ -n "$3" ]; then
+            printf "%b" "$3" > ./environment_settings.txt
+        fi
+        if [ -n "${RESTART_CHMOD:-}" ]; then
+            chmod "${RESTART_CHMOD}" ./environment_settings.txt
+        fi
+        if [ "$2" = "__EOF__" ]; then
+            handle_restart </dev/null
+        else
+            handle_restart <<< "$2"
+        fi
+        echo "AFTER_PORT_MARIMO=${PANEL_PORT_MARIMO}"
+        echo "AFTER_PROJECT=${DAAF_PROJECT_NAME:-daaf}"
+        echo "AFTER_ENV_PORT_MARIMO=${DAAF_PORT_MARIMO:-}"
+        echo "AFTER_ENV_PORT_VSCODE=${DAAF_PORT_VSCODE:-}"
+        echo "AFTER_TRACKER=${_DAAF_KEYS_FROM_FILE:-}"
+        if [ -n "${RESTART_SECOND:-}" ]; then
+            echo "SECOND_RESTART"
+            unset MOCK_DOWN_CHMOD MOCK_DOWN_SETTINGS
+            chmod 644 ./environment_settings.txt 2>/dev/null || true
+            printf "%b" "${RESTART_SECOND}" > ./environment_settings.txt
+            handle_restart <<< "y"
+            echo "AFTER2_PORT_MARIMO=${PANEL_PORT_MARIMO}"
+            echo "AFTER2_PROJECT=${DAAF_PROJECT_NAME:-daaf}"
+        fi
+    ' _ "${REPO_ROOT}" "$1" "${2:-}"
+}
+
+# first_restart_output -- the part of $output before the SECOND_RESTART marker
+# (the whole output when there is no second restart).
+first_restart_output() {
+    printf '%s\n' "$output" | sed '/^SECOND_RESTART$/q'
+}
+
+# skip_unless_chmod_blocks_reads <file>
+# The unreadable-settings tests need `chmod 000` to actually stop reads. Running
+# as root (or with CAP_DAC_OVERRIDE) the file stays readable, so the scenario
+# cannot be staged: skip with the reason. Leaves the file readable either way.
+skip_unless_chmod_blocks_reads() {
+    chmod 000 "$1"
+    if [ -r "$1" ]; then
+        chmod 644 "$1"
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    chmod 644 "$1"
+}
+
+@test "handle_restart: answering n cancels without any docker down/up" {
+    run_restart "n"
+    assert_success
+    assert_output --partial "Restart cancelled"
+    refute_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+}
+
+@test "handle_restart: an empty answer (default No) cancels without any docker down/up" {
+    run_restart ""
+    assert_success
+    assert_output --partial "Restart cancelled"
+    refute_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+}
+
+@test "handle_restart: confirming runs compose down BEFORE compose up -d, never -v" {
+    run_restart "y"
+    assert_success
+    assert_output --partial "Container restarted"
+    local down_line up_line volume_flags
+    down_line=$(printf '%s\n' "$output" | grep -n '^DOCKER: compose down' | head -1 | cut -d: -f1)
+    up_line=$(printf '%s\n' "$output" | grep -n '^DOCKER: compose up -d' | head -1 | cut -d: -f1)
+    [ -n "${down_line}" ]
+    [ -n "${up_line}" ]
+    [ "${down_line}" -lt "${up_line}" ]
+    # No compose down may ever carry the volume-deleting flag.
+    volume_flags=$(printf '%s\n' "$output" | grep '^DOCKER: compose down' | grep -cE -- '(^| )(-v|--volumes)( |$)' || true)
+    [ "${volume_flags}" -eq 0 ]
+}
+
+@test "handle_restart: waits for readiness and verifies DAAF files after up -d" {
+    run_restart "y"
+    assert_success
+    assert_output --partial "DOCKER: compose exec -T daaf-docker true"
+    assert_output --partial "DOCKER: compose exec -T daaf-docker test -f /daaf/CLAUDE.md"
+}
+
+@test "handle_restart: a changed DAAF_PROJECT_NAME aborts before any docker command" {
+    run_restart "y" 'DAAF_PROJECT_NAME=otherinstall\n'
+    assert_success
+    assert_output --partial "Restart stopped"
+    assert_output --partial "otherinstall"
+    assert_output --partial "Running"
+    refute_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+    # The probe ran in a subshell: the panel still targets the original project.
+    assert_output --partial "AFTER_PROJECT=daaf"
+}
+
+@test "handle_restart: a port added to the file after startup is reflected in the panel" {
+    # No settings file at startup, so the panel defaulted DAAF_PORT_MARIMO to 2718.
+    # That display default must not block the newly added file value on reload.
+    run_restart "y" 'DAAF_PORT_MARIMO=3001\n'
+    assert_success
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PORT_MARIMO=3001"
+}
+
+@test "handle_restart: a port changed in the file after startup is reflected in the panel" {
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    run_restart "y" 'DAAF_PORT_MARIMO=3002\n'
+    assert_success
+    assert_output --partial "AFTER_PORT_MARIMO=3002"
+}
+
+@test "handle_restart: a failed compose down returns to the menu without compose up" {
+    export MOCK_DOWN_EXIT=1
+    run_restart "y"
+    unset MOCK_DOWN_EXIT
+    assert_success
+    assert_output --partial "Could not stop the container"
+    refute_output --partial "DOCKER: compose up"
+    refute_output --partial "Container restarted"
+}
+
+@test "handle_restart: a failed compose up returns to the menu with guidance" {
+    export MOCK_UP_EXIT=1
+    run_restart "y"
+    unset MOCK_UP_EXIT
+    assert_success
+    assert_output --partial "could not be started again"
+    refute_output --partial "Container restarted"
+}
+
+@test "handle_restart: EOF at the confirmation prompt (</dev/null) cancels and returns to the menu" {
+    run_restart "__EOF__"
+    assert_success
+    assert_output --partial "Restart cancelled"
+    refute_output --partial "DOCKER:"
+    refute_output --partial "PANEL_ERR_TRAP"
+    # The handler returned normally: the lines after it still ran.
+    assert_output --partial "AFTER_PORT_MARIMO=2718"
+}
+
+@test "handle_restart: YES, ' Yes ', and a CRLF-typed yes all confirm (any case, ends trimmed)" {
+    # A herestring line is word-trimmed by `read` (spaces/tabs are IFS), so
+    # ' Yes ' passes either way; the trailing CR of "yes<CR>" is NOT IFS and is
+    # removed only by the handler's own end-trim.
+    local answer
+    for answer in "YES" " Yes " "$(printf 'yes\r')"; do
+        run_restart "${answer}"
+        assert_success
+        assert_output --partial "DOCKER: compose down"
+        assert_output --partial "DOCKER: compose up -d"
+        assert_output --partial "Container restarted"
+        refute_output --partial "PANEL_ERR_TRAP"
+    done
+}
+
+@test "handle_restart: no, nope, and 'y es' cancel (only the ends are trimmed)" {
+    local answer
+    for answer in "no" "nope" "y es"; do
+        run_restart "${answer}"
+        assert_success
+        assert_output --partial "Restart cancelled"
+        refute_output --partial "DOCKER:"
+        refute_output --partial "PANEL_ERR_TRAP"
+    done
+}
+
+@test "handle_restart: a readiness timeout reports 60 seconds and Docker's stderr, then returns" {
+    export MOCK_READY_EXIT=1
+    run_restart "y"
+    unset MOCK_READY_EXIT
+    assert_success
+    assert_output --partial "did not become ready within 60 seconds"
+    assert_output --partial "Docker reported:"
+    assert_output --partial "    Error response from daemon: container mock123 is restarting"
+    refute_output --partial "PANEL_ERR_TRAP"
+    refute_output --partial "Container restarted"
+    # No verify step after a timeout.
+    refute_output --partial "DOCKER: compose exec -T daaf-docker test -f"
+    # 30 visible polls (the 31st, stderr-capturing call sends stdout to /dev/null)
+    # with a 2s sleep between consecutive polls.
+    local polls sleeps
+    polls=$(printf '%s\n' "$output" | grep -c '^DOCKER: compose exec -T daaf-docker true$' || true)
+    sleeps=$(printf '%s\n' "$output" | grep -c '^SLEEP: 2$' || true)
+    [ "${polls}" -eq 30 ]
+    [ "${sleeps}" -eq 29 ]
+    assert_output --partial "AFTER_PORT_MARIMO="
+}
+
+@test "handle_restart: 'Docker reported:' skips blank lines in Docker's stderr, and is omitted when it is all blank" {
+    # Parity with daaf.ps1, which drops whitespace-only lines before the last five.
+    export MOCK_READY_EXIT=1
+    export MOCK_READY_STDERR='\n   \nError response from daemon: container mock123 is restarting\n\t\n\n'
+    run_restart "y"
+    assert_success
+    assert_output --partial "Docker reported:"
+    local block
+    block=$(printf '%s\n' "$output" | awk '/^  Docker reported:$/ {grab=1; next} /^  Check Docker Desktop for errors\.$/ {grab=0} grab {print}')
+    [ "${block}" = "    Error response from daemon: container mock123 is restarting" ]
+
+    # Whitespace-only stderr: no header, straight to the advice line.
+    export MOCK_READY_STDERR=' \n\n\t\n'
+    run_restart "y"
+    unset MOCK_READY_EXIT MOCK_READY_STDERR
+    assert_success
+    assert_output --partial "did not become ready within 60 seconds"
+    refute_output --partial "Docker reported:"
+    assert_output --partial "Check Docker Desktop for errors."
+    refute_output --partial "PANEL_ERR_TRAP"
+}
+
+@test "handle_restart: a failed DAAF-files check warns 'may not be intact' and returns" {
+    export MOCK_VERIFY_EXIT=1
+    run_restart "y"
+    unset MOCK_VERIFY_EXIT
+    assert_success
+    assert_output --partial "DOCKER: compose exec -T daaf-docker test -f /daaf/CLAUDE.md"
+    assert_output --partial "DAAF's files may not be intact"
+    refute_output --partial "Container restarted"
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "AFTER_PORT_MARIMO="
+}
+
+@test "handle_restart: guard proceeds when an exported DAAF_PROJECT_NAME outranks the file's value" {
+    # The user exported DAAF_PROJECT_NAME=foo before launching; the file says bar.
+    # Exported values win over the file (load + reload), so the project does not
+    # change and the restart must go ahead.
+    printf 'DAAF_PROJECT_NAME=bar\n' > "${TEST_DIR}/environment_settings.txt"
+    export RESTART_EXPORT_PROJECT=foo
+    run_restart "y"
+    unset RESTART_EXPORT_PROJECT
+    assert_success
+    refute_output --partial "Restart stopped"
+    assert_output --partial "DOCKER: compose down"
+    assert_output --partial "DOCKER: compose up -d"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=foo"
+}
+
+@test "handle_restart: guard proceeds when the file adds DAAF_PROJECT_NAME=daaf (the default)" {
+    run_restart "y" 'DAAF_PROJECT_NAME=daaf\n'
+    assert_success
+    refute_output --partial "Restart stopped"
+    assert_output --partial "DOCKER: compose down"
+    assert_output --partial "DOCKER: compose up -d"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=daaf"
+}
+
+# Review 51q SUGGESTION-1: the guard compares the names Docker Compose USES
+# (resolve_project_name), so an edit that normalizes to the same project is
+# not a different install.
+@test "handle_restart: guard proceeds when the edit normalizes to the same project (Work -> work, My.Proj -> myproj)" {
+    local pair from to
+    for pair in "Work:work" "My.Proj:myproj"; do
+        from="${pair%%:*}"
+        to="${pair#*:}"
+        printf 'DAAF_PROJECT_NAME=%s\n' "${from}" > "${TEST_DIR}/environment_settings.txt"
+        run_restart "y" "DAAF_PROJECT_NAME=${to}\n"
+        assert_success
+        refute_output --partial "Restart stopped"
+        refute_output --partial "DIFFERENT"
+        assert_output --partial "DOCKER: compose down"
+        assert_output --partial "DOCKER: compose up -d"
+        assert_output --partial "Container restarted"
+        assert_output --partial "AFTER_PROJECT=${to}"
+    done
+}
+
+@test "handle_restart: guard still refuses work -> play before any docker command" {
+    printf 'DAAF_PROJECT_NAME=work\n' > "${TEST_DIR}/environment_settings.txt"
+    run_restart "y" 'DAAF_PROJECT_NAME=play\n'
+    assert_success
+    assert_output --partial "Restart stopped -- nothing was changed."
+    assert_output --partial 'the project name "play" (the default is "daaf" when the'
+    assert_output --partial 'file does not set one) instead of "work".'
+    assert_output --partial "start a DIFFERENT one in its place"
+    refute_output --partial "DOCKER:"
+    assert_output --partial "AFTER_PROJECT=work"
+}
+
+@test "handle_restart: default path unchanged -- no file, and the file adding daaf, pass with no refusal text" {
+    run_restart "y"
+    assert_success
+    refute_output --partial "Restart stopped"
+    refute_output --partial "cannot use"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=daaf"
+    run_restart "y" 'DAAF_PROJECT_NAME=daaf\n'
+    assert_success
+    refute_output --partial "Restart stopped"
+    refute_output --partial "cannot use"
+    assert_output --partial "Container restarted"
+}
+
+@test "handle_restart: a file name that normalizes to nothing is refused before any docker command" {
+    run_restart "y" 'DAAF_PROJECT_NAME=___\n'
+    assert_success
+    assert_output --partial "Restart stopped -- nothing was changed."
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *"With your current environment_settings.txt, the project name would be \"___\", which Docker Compose cannot use. A project name may use lowercase letters, digits, '-' and '_', and must start with a letter or digit."* ]]
+    [[ "${flat}" == *'make environment_settings.txt use the project name "daaf" again'* ]]
+    refute_output --partial "DIFFERENT"
+    refute_output --partial "DOCKER:"
+    assert_output --partial "AFTER_PROJECT=daaf"
+}
+
+@test "handle_restart: the post-down re-check also compares normalized names (Work -> WORK proceeds, -> ___ stops before up)" {
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_SETTINGS='DAAF_PROJECT_NAME=WORK\n'
+    run_restart "y"
+    assert_success
+    refute_output --partial "now names a different project"
+    assert_output --partial "DOCKER: compose up -d"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=WORK"
+
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_SETTINGS='DAAF_PROJECT_NAME=___\n'
+    run_restart "y"
+    unset MOCK_DOWN_SETTINGS
+    assert_success
+    assert_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+    # An unusable name gets its own header; "a different project" would be wrong.
+    refute_output --partial "now names a different project"
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *"The container is stopped, but it was not started again -- environment_settings.txt now has a project name that cannot be used."* ]]
+    [[ "${flat}" == *'now gives the project name "___", which Docker Compose cannot use.'* ]]
+    refute_output --partial "Container restarted"
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "AFTER_PROJECT=Work"
+}
+
+@test "handle_restart: an unreadable settings file stops before any docker command" {
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"
+    export RESTART_CHMOD=000
+    run_restart "y"
+    unset RESTART_CHMOD
+    assert_success
+    assert_output --partial "Cannot read environment_settings.txt -- make sure it is not open in another"
+    assert_output --partial "program and that you have permission to read it."
+    assert_output --partial "Nothing was changed."
+    # Only the handler's own message: bash's raw redirection error is suppressed.
+    refute_output --partial "Permission denied"
+    refute_output --partial "DOCKER:"
+    refute_output --partial "PANEL_ERR_TRAP"
+    # The panel kept the settings it started with.
+    assert_output --partial "AFTER_PORT_MARIMO=3001"
+}
+
+@test "handle_restart: a settings file that becomes unreadable during down stops before up" {
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_CHMOD=000
+    run_restart "y" 'DAAF_PORT_MARIMO=3002\n'
+    unset MOCK_DOWN_CHMOD
+    assert_success
+    assert_output --partial "DOCKER: compose down"
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *"The container is stopped, but environment_settings.txt can no longer be read. Make sure it is not open in another program and that you have permission to read it, then choose Restart Container again (or Start Claude Code, which starts the container)."* ]]
+    refute_output --partial "Permission denied"
+    refute_output --partial "DOCKER: compose up"
+    refute_output --partial "Container restarted"
+    refute_output --partial "PANEL_ERR_TRAP"
+    # The failed reload's changes were undone, so the panel still shows the
+    # startup port and keeps its startup settings.
+    assert_output --partial "AFTER_PORT_MARIMO=3001"
+    assert_output --partial "AFTER_ENV_PORT_MARIMO=3001"
+    assert_output --partial "AFTER_TRACKER=DAAF_PORT_MARIMO"
+}
+
+@test "handle_restart: a read failure at the moment of the post-down reload stops before up and restores settings" {
+    # The file turns unreadable exactly when the post-down reload reads it, so
+    # only the reload's own non-zero return can catch it. Without the `if !`
+    # guard the panel's ERR trap would end the panel with the container stopped.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"
+    export MOCK_RELOAD_CHMOD=000 MOCK_RELOAD_CHMOD_AT=after_down
+    run_restart "y" 'DAAF_PORT_MARIMO=3002\n'
+    unset MOCK_RELOAD_CHMOD MOCK_RELOAD_CHMOD_AT
+    assert_success
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "DOCKER: compose down"
+    assert_output --partial "The container is stopped, but environment_settings.txt can no longer"
+    refute_output --partial "Permission denied"
+    refute_output --partial "DOCKER: compose up"
+    refute_output --partial "Container restarted"
+    # The reload had already unset the tracked key; the snapshot put it back.
+    assert_output --partial "AFTER_ENV_PORT_MARIMO=3001"
+    assert_output --partial "AFTER_TRACKER=DAAF_PORT_MARIMO"
+    assert_output --partial "AFTER_PORT_MARIMO=3001"
+}
+
+@test "handle_restart: a read failure at the moment of the guard probe stops before any docker command" {
+    printf 'DAAF_PROJECT_NAME=myproj\nDAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"
+    export MOCK_RELOAD_CHMOD=000 MOCK_RELOAD_CHMOD_AT=guard
+    run_restart "y"
+    unset MOCK_RELOAD_CHMOD MOCK_RELOAD_CHMOD_AT
+    assert_success
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "Cannot read environment_settings.txt -- make sure it is not open in another"
+    assert_output --partial "Nothing was changed."
+    refute_output --partial "Permission denied"
+    # Not the project-change message: an unreadable file names no project.
+    refute_output --partial "Restart stopped"
+    refute_output --partial "DOCKER:"
+    # The probe ran in a subshell, so the panel's settings are untouched.
+    assert_output --partial "AFTER_PROJECT=myproj"
+    assert_output --partial "AFTER_ENV_PORT_MARIMO=3001"
+    assert_output --partial "AFTER_TRACKER=DAAF_PROJECT_NAME DAAF_PORT_MARIMO"
+}
+
+@test "handle_restart: both reload calls keep the loader's stderr visible" {
+    # Only the loader's failed open is silent. Any other loader stderr must reach
+    # the user from BOTH reloads -- the guard probe and the post-down reload --
+    # so a loader bug is never hidden or mislabeled "Cannot read". The injected
+    # line is harmless, so the restart itself completes.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_LOADER_STDERR=1
+    run_restart "y" 'DAAF_PORT_MARIMO=3002\n'
+    unset MOCK_LOADER_STDERR
+    assert_success
+    refute_output --partial "LOADER_SEAM_FAILED"
+    refute_output --partial "PANEL_ERR_TRAP"
+    [ "$(printf '%s\n' "$output" | grep -c '^INJECTED_LOADER_STDERR$')" -eq 2 ]
+    refute_output --partial "Cannot read"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PORT_MARIMO=3002"
+}
+
+@test "handle_restart: a project name edited during down stops before up, keeps the original settings, and a retry proceeds" {
+    printf 'DAAF_PROJECT_NAME=myproj\nDAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    # The mid-down edit also ADDS a key the panel never had (DAAF_PORT_VSCODE), so
+    # the restore must unset what the reload adopted, not only re-export old values.
+    export MOCK_DOWN_SETTINGS='DAAF_PROJECT_NAME=other\nDAAF_PORT_MARIMO=3002\nDAAF_PORT_VSCODE=3999\n'
+    export RESTART_SECOND='DAAF_PROJECT_NAME=myproj\nDAAF_PORT_MARIMO=3003\n'
+    run_restart "y"
+    unset MOCK_DOWN_SETTINGS RESTART_SECOND
+    assert_success
+    refute_output --partial "PANEL_ERR_TRAP"
+
+    # First restart: down ran, up did not, and the user was told why.
+    local first ups
+    first=$(first_restart_output)
+    [[ "${first}" == *"DOCKER: compose down"* ]]
+    ups=$(printf '%s\n' "${first}" | grep -c '^DOCKER: compose up' || true)
+    [ "${ups}" -eq 0 ]
+    [[ "${first}" == *"The container is stopped, but it was not started again --"* ]]
+    [[ "${first}" == *"environment_settings.txt now names a different project."* ]]
+    # A different but usable name keeps that header, not the unusable-name one.
+    [[ "${first}" != *"now has a project name that cannot be used"* ]]
+    [[ "${first}" == *'name "other" (the default is "daaf"'* ]]
+    [[ "${first}" == *'name "myproj" again, then choose Restart Container again.'* ]]
+    [[ "${first}" != *"Container restarted"* ]]
+    # The panel's settings are exactly the pre-restart ones (env, tracker, display).
+    # Whole-line matches (grep -x): a substring match would also accept a tracker
+    # with the added key appended, or a non-empty AFTER_ENV_PORT_VSCODE.
+    grep -qx 'AFTER_PROJECT=myproj' <<< "${first}"
+    grep -qx 'AFTER_ENV_PORT_MARIMO=3001' <<< "${first}"
+    grep -qx 'AFTER_PORT_MARIMO=3001' <<< "${first}"
+    grep -qx 'AFTER_ENV_PORT_VSCODE=' <<< "${first}"
+    grep -qx 'AFTER_TRACKER=DAAF_PROJECT_NAME DAAF_PORT_MARIMO' <<< "${first}"
+
+    # Second restart (file names myproj again): the guard passes and up runs.
+    assert_output --partial "SECOND_RESTART"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER2_PROJECT=myproj"
+    assert_output --partial "AFTER2_PORT_MARIMO=3003"
+}
+
+@test "handle_restart: a settings file deleted during down stops before up (the default project would differ)" {
+    printf 'DAAF_PROJECT_NAME=myproj\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_SETTINGS=__DELETE__
+    run_restart "y"
+    unset MOCK_DOWN_SETTINGS
+    assert_success
+    assert_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+    assert_output --partial "environment_settings.txt now names a different project."
+    assert_output --partial 'name "daaf" (the default is "daaf"'
+    refute_output --partial "Container restarted"
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "AFTER_PROJECT=myproj"
+    assert_output --partial "AFTER_TRACKER=DAAF_PROJECT_NAME"
+}
+
+@test "handle_restart: the intro says the restart turns on the shim, and names DAAF_DEV and the Dockerfile/packages/docker-compose.yml list" {
+    run_restart "n"
+    assert_success
+    # The sentence wraps across lines, so compare with line breaks and runs of
+    # spaces collapsed.
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *'Turning on the provider shim takes effect with this restart.'* ]]
+    [[ "${flat}" == *'Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat}" != *"first time"* ]]
+    [[ "${flat}" != *"Alternative Providers"* ]]
+}
+
+@test "handle_help: Restart entry says 'rebuild required'; items 11 and 12 use a 5-space description indent" {
+    run bash -c 'echo "" | (
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        setup_colors
+        export DAAF_TEST_MODE=1
+        source "'"${REPO_ROOT}"'/scripts/host/daaf.sh"
+        unset DAAF_TEST_MODE
+        CYAN=""
+        RESET=""
+        handle_help
+    )'
+    assert_success
+
+    # Description block = the lines after an item heading, up to the blank line.
+    local desc11 desc12 flat11 bad
+    desc11=$(printf '%s\n' "$output" | awk '/^  11[)] Restart Container$/ {grab=1; next} grab && /^$/ {grab=0} grab {print}')
+    desc12=$(printf '%s\n' "$output" | awk '/^  12[)] Stop Web Services$/ {grab=1; next} grab && /^$/ {grab=0} grab {print}')
+    [ -n "${desc11}" ]
+    [ -n "${desc12}" ]
+
+    # The phrase is wrapped across two lines in the help text, so compare with
+    # line breaks and runs of spaces collapsed.
+    flat11=$(printf '%s\n' "${desc11}" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat11}" == *'Settings marked "rebuild required" there'* ]]
+    # Same examples and Rebuild list as the handler's intro text.
+    [[ "${flat11}" == *'there (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat11}" == *'provider settings including turning on the provider shim, ports'* ]]
+    [[ "${flat11}" == *'no image build. It ends any open Claude Code session or web service. Settings marked'* ]]
+    [[ "${flat11}" != *'web service first.'* ]]
+
+    # Every description line: exactly five spaces, then text.
+    bad=$(printf '%s\n%s\n' "${desc11}" "${desc12}" | grep -cvE '^     [^ ]' || true)
+    [ "${bad}" -eq 0 ]
+}
+
+@test "daaf.sh: dry-run restart completes, issues down then up -d, and writes nothing" {
+    run env DAAF_DRY_RUN=1 bash -c 'printf "11\ny\nq\n" | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"'
+    assert_success
+    assert_output --partial "[DRY-RUN] docker compose down"
+    assert_output --partial "[DRY-RUN] docker compose up -d"
+    assert_output --partial "Container restarted"
+    assert_output --partial "Goodbye"
+    # HSM5: the dry-run restart path creates nothing in the working directory.
+    run ls -A "${TEST_DIR}"
+    assert_output "docker-compose.yml"
 }

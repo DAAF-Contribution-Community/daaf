@@ -9,7 +9,7 @@ fits in the causal inference toolkit and how it relates to other designs -- see
 once you have decided mediation is the right design.
 
 **Recommended default:** The statsmodels `Mediation` class (see [statsmodels Mediation
-Class](#statsmodels-mediation-class)) implements the Imai, Keele, and Tingley (2010)
+Class](#statsmodels-mediation-class)) implements the Imai, Keele, and Tingley (2010a)
 framework with simulation-based inference. Start here for standard mediation analyses
 with OLS or GLM outcome models. For full control over the bootstrap or nonstandard
 model combinations, use the manual bootstrap approach.
@@ -27,7 +27,7 @@ model combinations, use the manual bootstrap approach.
 - [Sensitivity Analysis](#sensitivity-analysis)
 - [Complete Mediation Analysis Template](#complete-mediation-analysis-template)
 - [Gotchas](#gotchas)
-- [References](#references)
+- [References and Further Reading](#references-and-further-reading)
 
 ## When to Use Causal Mediation
 
@@ -45,7 +45,7 @@ all other channels).
 
 **Not appropriate when:**
 - The mediator is measured with substantial error (biases indirect effect toward zero)
-- Post-treatment confounders exist between M and Y (invalidates NDE/NIE decomposition)
+- Post-treatment confounders exist between M and Y (NDE/NIE are then not nonparametrically identified without an additional assumption; see Gotcha 1)
 - There is no theoretical basis for the causal ordering T -> M -> Y
 - The mediator is a collider (conditioning on it opens non-causal paths)
 - The goal is simply to test whether a total effect exists (use standard methods instead)
@@ -59,7 +59,7 @@ pathways; it does not establish causality on its own.
 
 ## Causal Framework
 
-The modern causal mediation framework follows Imai, Keele, and Tingley (2010) and
+The modern causal mediation framework follows Imai, Keele, and Tingley (2010a) and
 Pearl (2001, 2014), replacing the older Baron-Kenny (1986) "causal steps" approach.
 
 ### Effect Definitions
@@ -74,24 +74,35 @@ and Y(t, m) is the outcome under treatment t and mediator value m:
 | **Natural Direct Effect (NDE)** | E[Y(1, M(t)) - Y(0, M(t))] | Effect of treatment operating through *all other channels* (also called ADE) |
 | **Controlled Direct Effect (CDE)** | E[Y(1, m) - Y(0, m)] | Effect of treatment when mediator is held fixed at value m |
 
-**Exact decomposition:** Total Effect = NDE + NIE. This holds by definition under
-the potential outcomes framework, regardless of functional form.
+**Decomposition:** TE = NIE(t) + NDE(1 - t) for t = 0, 1 (Imai, Keele, and Yamamoto
+2010b, eq. 3). Averaging the two gives TE = average of NIE + average of NDE across
+the two treatment levels (Imai, Keele, and Tingley 2010a). The familiar
+TE = NDE + NIE with a common t holds only under no treatment-mediator interaction
+(NIE(0) = NIE(1) and NDE(0) = NDE(1); Imai, Keele, and Tingley 2010a), as in linear
+systems (Pearl 2014).
 
 **Proportion mediated:** NIE / TE gives the fraction of the total effect that operates
-through the mediator. This is interpretable only when the total effect and indirect
-effect have the same sign. When they have opposite signs (inconsistent mediation or
-suppression), the proportion can exceed 1 or be negative, which is a signal of
-complex causal dynamics, not an error.
+through the mediator. As a rule of thumb, this is interpretable only when the total
+effect and indirect effect have the same sign. When they have opposite signs
+(inconsistent mediation or suppression), the proportion can exceed 1 or be
+negative, which is a signal of complex causal dynamics, not an error.
 
 ### Baron-Kenny vs. Modern Framework
 
-The Baron-Kenny (1986) "causal steps" approach -- (1) show T affects Y, (2) show T
-affects M, (3) show M affects Y controlling for T, (4) check if T's effect on Y
-diminishes when M is included -- has no formal causal foundation. It conflates
-statistical associations with causal effects and can indicate mediation where none
-exists (and miss mediation where it does exist).
+The Baron-Kenny (1986) "causal steps" approach -- (1) show T affects M, (2) show T
+affects Y, (3) show M affects Y controlling for T, (4) T's effect on Y is smaller
+when M is included (Baron and Kenny 1986, p. 1177) -- belongs to the linear
+structural equation tradition, which lacks a definition of the causal mediation
+effect independent of a particular statistical model and cannot specify its key
+identification assumption (Imai, Keele, and Tingley 2010a). Its regression estimates
+have a causal reading under sequential ignorability, linearity, and no
+interaction (Imai, Keele, and Tingley 2010a). Its significance-testing steps have
+low power and can miss mediation: the causal steps strategy "cannot be recommended
+except in large samples" (Preacher and Hayes 2008). Zhao, Lynch, and Chen (2010)
+summarize further flaws in its logic.
 
-The modern framework (Imai et al. 2010; Pearl 2014) provides:
+The modern framework (Imai, Keele, and Tingley 2010a; Imai, Keele, and Yamamoto
+2010b; Pearl 2014) provides:
 - Clearly defined causal estimands (NDE, NIE) grounded in potential outcomes
 - Explicit identification assumptions (sequential ignorability)
 - Valid inference via simulation or bootstrap
@@ -104,7 +115,7 @@ it appears frequently in existing literature and reviewers may ask about it.
 ## Sequential Ignorability
 
 The key identification assumption for causal mediation is **sequential ignorability**
-(Imai, Keele, and Yamamoto 2010). It has two parts:
+(Imai, Keele, and Yamamoto 2010b). It has two parts:
 
 **SI-1 (Treatment ignorability):** Conditional on observed pre-treatment covariates X,
 treatment assignment is independent of potential outcomes and potential mediator values:
@@ -120,7 +131,7 @@ independence assumption (selection on observables) used in matching/regression.
 and treatment status T, the mediator is independent of potential outcomes:
 
 ```
-Y(t', m) independent of M | T = t, X = x
+Y(t', m) independent of M(t) | T = t, X = x   (for t, t' = 0, 1; positivity also assumed)
 ```
 
 This is the **critical and problematic** assumption. It requires that there are no
@@ -131,7 +142,8 @@ Even in an RCT, post-treatment confounders between M and Y can violate SI-2.
 **Why SI-2 is so demanding:**
 - Treatment randomization does not randomize the mediator
 - Conditioning on post-treatment variables (including M) can introduce collider bias
-- Any unmeasured common cause of M and Y invalidates the decomposition
+- Any unmeasured common cause of M and Y violates sequential ignorability (SI-2),
+  so the NDE/NIE are not identified without further assumptions
 - This assumption is **fundamentally untestable** from the data alone
 
 **Practical implication:** Because SI-2 cannot be tested or guaranteed, sensitivity
@@ -143,7 +155,7 @@ Analysis section below.
 
 The DAAF environment includes statsmodels 0.14.6, which provides
 `statsmodels.stats.mediation.Mediation` implementing the Imai, Keele, and Tingley
-(2010) simulation-based approach.
+(2010a) simulation-based approach.
 
 ### Basic Usage
 
@@ -176,9 +188,9 @@ print(result.summary())
 
 ### Reading the Output
 
-The `summary()` method returns a pandas DataFrame and prints a table. The DataFrame
-has a multi-level index with rows for control, treated, and average variants of each
-effect:
+The `summary()` method returns a pandas DataFrame with a single-level index; it does
+not print, so wrap it in `print()`. Rows give the control, treated, and average
+variants of each effect:
 
 | Row Index | What It Is |
 |-----------|------------|
@@ -186,7 +198,7 @@ effect:
 | `ACME (treated)` | NIE evaluated at treated treatment level |
 | `ADE (control)` | NDE evaluated at control treatment level |
 | `ADE (treated)` | NDE evaluated at treated treatment level |
-| `Total effect` | NDE + NIE = total causal effect |
+| `Total effect` | ACME (average) + ADE (average) = total causal effect (computed per draw as (ACME_ctrl + ACME_tx + ADE_ctrl + ADE_tx) / 2) |
 | `Prop. mediated (control)` | ACME / Total at control level |
 | `Prop. mediated (treated)` | ACME / Total at treated level |
 | `ACME (average)` | Average NIE across treatment levels |
@@ -194,6 +206,9 @@ effect:
 | `Prop. mediated (average)` | Average proportion mediated |
 
 Each row has four columns: `Estimate`, `Lower CI bound`, `Upper CI bound`, `P-value`.
+The `Prop. mediated` rows report the median of the simulation draws; all other rows
+report the mean. CI bounds are percentiles of the draws (statsmodels 0.14.6
+`mediation.py`).
 
 **Important:** The result object attributes like `result.ACME_avg`, `result.ADE_avg`,
 `result.total_effect`, and `result.prop_med_avg` exist but contain numpy arrays of
@@ -250,7 +265,7 @@ print(f"Prop. mediated:  {prop_med:.4f} [{prop_med_ci[0]:.4f}, {prop_med_ci[1]:.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `method` | `"parametric"` | `"parametric"` draws from fitted model distributions; `"bootstrap"` resamples data |
-| `n_rep` | 1000 | Number of simulation/bootstrap replications. Use 5000 for final results |
+| `n_rep` | 1000 | Number of simulation/bootstrap replications. Imai, Keele, and Tingley (2010a) found 1,000 sufficient in their examples; use more for small samples or complex models. DAAF convention: use 5000 for final reported results to reduce Monte Carlo error |
 
 ### Using GLM Models
 
@@ -275,8 +290,8 @@ med = Mediation(outcome_model, mediator_model, "treatment", "binary_mediator")
 result = med.fit(method="parametric", n_rep=1000)
 print(result.summary())
 # REASONING: The simulation-based approach in statsmodels handles nonlinear
-# models correctly, unlike the product-of-coefficients method which assumes
-# linearity for the TE = NDE + NIE decomposition.
+# models correctly, unlike the product-of-coefficients method, which relies on
+# linearity and no treatment-mediator interaction for TE = NDE + NIE.
 ```
 
 ## Manual Bootstrap: Product of Coefficients
@@ -289,6 +304,8 @@ The product-of-coefficients approach estimates the indirect effect as `a * b`, w
 - `b` = effect of mediator on outcome controlling for treatment (from Y ~ M + T + X)
 
 This decomposition is exact for linear models but approximate for nonlinear models.
+Preacher and Hayes (2008) note that the identity c = c' + ab holds in regression
+and SEM with continuous M and Y, but not when a dependent variable is binary.
 For nonlinear models, prefer the statsmodels `Mediation` simulation approach.
 
 ```python
@@ -296,7 +313,7 @@ import numpy as np
 import statsmodels.api as sm
 
 # --- Config ---
-N_BOOT = 5000
+N_BOOT = 5000  # DAAF convention for final results (Preacher and Hayes 2008: at least 1,000)
 SEED = 42
 rng = np.random.default_rng(SEED)
 
@@ -353,7 +370,7 @@ for i in range(N_BOOT):
     boot_indirect[i] = a_b * b_b
     boot_direct[i] = c_b
 
-# --- CIs (percentile method) ---
+# --- CIs (percentile method; see Preacher and Hayes 2008) ---
 ci_indirect = np.percentile(boot_indirect, [2.5, 97.5])
 ci_direct = np.percentile(boot_direct, [2.5, 97.5])
 se_indirect = boot_indirect.std()
@@ -368,8 +385,11 @@ print(f"Direct:   {direct:.4f} (SE: {se_direct:.4f}) "
 
 ### Bias-Corrected and Accelerated (BCa) Bootstrap
 
-The percentile bootstrap can have poor coverage in small samples. The BCa correction
-improves coverage but is more computationally intensive:
+Preacher and Hayes (2008) summarize simulation evidence in which bias-corrected (BC)
+and BCa intervals performed best in small to moderate samples, while the percentile
+method was slightly better where the bias-corrected method was slightly liberal. BCa
+may improve coverage, but bias-corrected intervals can be liberal, and BCa is more
+computationally intensive (it needs a jackknife):
 
 ```python
 from scipy.stats import norm
@@ -409,11 +429,12 @@ print(f"BCa 95% CI: [{ci_bca[0]:.4f}, {ci_bca[1]:.4f}]")
 The Sobel test is a legacy approach that tests H0: a*b = 0 using a first-order
 approximation to the standard error of the product. It assumes the sampling
 distribution of a*b is normal, which is often violated (the product of two normal
-variables is not normal, especially in small samples).
+variables is not normal, especially in small samples): "the sampling distribution
+of ab is normal only in large samples" (Preacher and Hayes 2008).
 
-**Prefer bootstrap CIs over the Sobel test.** The Sobel test is included here because
-it appears in older literature and some reviewers may request it. For new analyses,
-use the bootstrap or statsmodels `Mediation`.
+**Prefer bootstrap CIs over the Sobel test** (Preacher and Hayes 2008). The Sobel
+test is included here because it appears in older literature and some reviewers may
+request it. For new analyses, use the bootstrap or statsmodels `Mediation`.
 
 ```python
 from scipy.stats import norm
@@ -494,6 +515,7 @@ For more flexibility, compute conditional indirect effects manually:
 # And   b(w) = b1 + b4*w  (b1 = M coef, b4 = M*W interaction coef)
 
 # Index of moderated mediation = difference in indirect effects across W levels
+# (term from the moderated-mediation literature; not verified here)
 # IMM = a(1)*b(1) - a(0)*b(0)
 # Bootstrap the IMM for inference
 ```
@@ -530,8 +552,9 @@ for m_var in mediators:
 
 # REASONING: Including all mediators in the outcome model partials out
 # the effects of other mediators, giving the specific indirect effect
-# through each pathway. The sum of specific indirect effects plus the
-# direct effect equals the total effect.
+# through each pathway. In the linear case, the sum of specific indirect
+# effects plus the direct effect equals the total effect (Preacher and
+# Hayes 2008); with interactions or nonlinear models this need not hold.
 ```
 
 ### Sequential Mediators
@@ -556,9 +579,13 @@ in the DAAF environment.
 
 ### E-value for Mediation
 
-The E-value (VanderWeele and Ding 2017) computes the minimum strength of association
-that an unmeasured confounder would need to have with both the mediator and the outcome
-(on the risk ratio scale) to fully explain away the observed indirect effect. Higher
+The mediational E-value (Smith and VanderWeele 2019) is an approximate extension of
+the E-value (VanderWeele and Ding 2017), which was introduced for total effects, to
+unmeasured mediator-outcome confounding. It gives the minimum association, on the
+risk ratio scale, that an unmeasured confounder would need with both the mediator
+and the outcome to explain away the indirect effect. It assumes the confounder is
+independent of treatment given measured covariates. It is approximate: in the
+authors' numerical search, the bound held in over 99% of cases, not in all. Higher
 E-values indicate greater robustness to unmeasured confounding.
 
 ```python
@@ -566,8 +593,9 @@ import numpy as np
 
 # INTENT: Compute E-value for the indirect effect
 # REASONING: E-value requires converting to risk ratio scale.
-# For a continuous outcome, use the approximation from VanderWeele and Ding (2017):
-# RR approx exp(0.91 * beta / SD(Y)) for a 1-SD change in the exposure
+# For a continuous outcome: RR approx exp(0.91 * d), where d = effect / SD(Y) is a
+# standardized mean difference (VanderWeele and Ding 2017, Table 2; approximate).
+# Applying it to the indirect effect is a DAAF extrapolation.
 
 # From the mediation results:
 indirect_effect = acme  # Scalar from result.summary() (see "Extracting Results")
@@ -593,15 +621,16 @@ print(f"E-value for indirect effect: {e_value:.2f}")
 print(f"E-value for CI bound: {e_ci:.2f}")
 # REASONING: An E-value of 2.5 means an unmeasured confounder would need
 # to be associated with both M and Y by a factor of at least 2.5 (each)
-# to explain away the observed indirect effect. Compare this to the
+# to explain away the observed indirect effect (interpretation follows the
+# worked example in Smith and VanderWeele 2019). Compare this to the
 # strength of known confounders in your data to assess plausibility.
 ```
 
 ### Informal Sensitivity Checks
 
-When formal sensitivity analysis tools are unavailable (the R `mediation` package's
-`medsens()` function, which implements the Imai et al. rho-based sensitivity analysis,
-has no Python equivalent), these informal checks provide evidence about robustness:
+When formal sensitivity analysis tools are unavailable (no implementation of the
+Imai, Keele, and Yamamoto (2010b) rho-based sensitivity analysis is installed in the
+DAAF environment; see below), these informal checks provide evidence about robustness:
 
 ```python
 # --- Check 1: Coefficient stability ---
@@ -649,18 +678,22 @@ print(placebo_result.summary())
 # ASSUMES: placebo_variable is theoretically unrelated to the T->Y pathway
 ```
 
-### Imai et al. rho-based Sensitivity (R Only)
+### Imai, Keele, and Yamamoto (2010b) rho-based Sensitivity (R Only)
 
 The canonical sensitivity analysis for causal mediation (Imai, Keele, and Yamamoto
-2010) parametrizes the degree of violation of sequential ignorability by rho, the
-correlation between the error terms of the mediator and outcome models. At rho = 0,
-sequential ignorability holds exactly. The analysis reports how the ACME changes as
-rho moves away from zero.
+2010b) parametrizes the degree of violation of sequential ignorability by rho, the
+correlation between the error terms of the mediator and outcome models. Sequential
+ignorability implies rho = 0, so a nonzero rho indicates a violation (within the
+linear structural model, with treatment ignorable). The analysis reports how the
+ACME changes as rho moves away from zero.
 
-**This method has no Python implementation.** The R `mediation` package provides
-`medsens()` for this analysis. If rho-based sensitivity is essential for the
-project, consider using rpy2 to call R, or report E-values and informal checks
-as the sensitivity analysis, noting the limitation.
+**No implementation is installed in the DAAF environment.** No Python implementation
+is installed, and neither the R `mediation` package nor rpy2 is installed. The R
+`mediation` package's `medsens()` (Tingley et al. 2014) implements this analysis,
+but only for linear/probit model combinations, excluding a probit mediator with a
+probit outcome (Tingley et al. 2014, Table 2); running it would require a
+Dockerfile addition. Otherwise, report E-values and
+informal checks as the sensitivity analysis, noting the limitation.
 
 ## Complete Mediation Analysis Template
 
@@ -678,7 +711,7 @@ TREATMENT = "treatment"
 MEDIATOR = "mediator"
 OUTCOME = "outcome"
 COVARIATES = ["covariate1", "covariate2"]
-N_REP = 5000
+N_REP = 5000  # DAAF convention for final results; statsmodels default is 1000
 SEED = 42
 
 # --- Load ---
@@ -696,8 +729,8 @@ total_effect = total_model.params[TREATMENT]
 total_pval = total_model.pvalues[TREATMENT]
 print(f"Total effect of {TREATMENT} on {OUTCOME}: {total_effect:.4f} (p={total_pval:.4f})")
 # REASONING: A non-significant total effect does not preclude mediation
-# (suppression effects are possible), but the decomposition is most
-# interpretable when a total effect exists.
+# (suppression effects are possible; Preacher and Hayes 2008), but the
+# decomposition is most interpretable when a total effect exists.
 
 # --- Step 2: Verify treatment affects mediator (a-path) ---
 a_model = sm.OLS.from_formula(
@@ -706,7 +739,11 @@ a_model = sm.OLS.from_formula(
 a_path = a_model.params[TREATMENT]
 a_pval = a_model.pvalues[TREATMENT]
 print(f"a-path ({TREATMENT} -> {MEDIATOR}): {a_path:.4f} (p={a_pval:.4f})")
-assert a_pval < 0.10, f"WARNING: Treatment does not significantly affect mediator (p={a_pval:.4f})"
+# REASONING: Non-blocking by design. A significance gate on the a-path would
+# rebuild the causal-steps logic rejected above; inference rests on the ACME CI.
+if a_pval >= 0.10:
+    print(f"NOTE: a-path not significant at 0.10 (p={a_pval:.4f}; DAAF rule of "
+          f"thumb, non-blocking); inference rests on the ACME CI")
 
 # --- Step 3: Mediation analysis ---
 mediator_model = sm.OLS.from_formula(
@@ -771,18 +808,29 @@ print(f"\n=== Validation ===")
 print(f"N: {n}")
 print(f"Total effect (regression): {total_effect:.4f}")
 print(f"Total effect (ACME + ADE): {acme + ade:.4f}")
-print(f"Decomposition check: |diff| = {abs(total_effect - (acme + ade)):.6f}")
-assert abs(acme + ade - te) < 0.01, "Decomposition check failed: ACME + ADE != Total"
+# INTENT: Meaningful check -- compare the simulated decomposition with the
+# regression total effect, scaled by SD(Y) so the size is unit-free
+# REASONING: Differences reflect Monte Carlo error and model differences;
+# non-blocking (DAAF convention), inspect if large
+print(f"Decomposition vs regression total: |diff| / SD(Y) = "
+      f"{abs(total_effect - (acme + ade)) / sd_y:.6f}")
+# DAAF tautology check: statsmodels defines total_effect per draw as
+# (ACME_ctrl + ACME_tx + ADE_ctrl + ADE_tx) / 2, so ACME (average) + ADE
+# (average) equals Total effect by construction. This catches only
+# extraction errors (e.g., a wrong row label); relative tolerance.
+assert abs(acme + ade - te) <= 1e-8 * max(1.0, abs(te)), "Extraction error: ACME + ADE != Total"
 ```
 
 ## Gotchas
 
-### 1. Post-Treatment Confounding Invalidates NDE/NIE
+### 1. Post-Treatment Confounding Blocks Nonparametric Identification of NDE/NIE
 
 If any variable confounds the M -> Y relationship and is itself affected by treatment,
-the natural direct and indirect effects are not identified. No statistical adjustment
-can fix this -- the problem is structural. Before running mediation, draw the DAG and
-verify that no post-treatment variable confounds the mediator-outcome path.
+the natural direct and indirect effects are not nonparametrically identified without
+an additional assumption, such as the no-interaction assumption discussed by Imai,
+Keele, and Yamamoto (2010b); standard covariate adjustment cannot fix this. Before
+running mediation, draw the DAG and verify that no post-treatment variable confounds
+the mediator-outcome path.
 
 ### 2. Sequential Ignorability is Untestable
 
@@ -791,23 +839,28 @@ randomized experiment, treatment randomization does not randomize the mediator.
 Sensitivity analysis is not optional -- report how the conclusions change under
 plausible violations of SI-2.
 
-### 3. Baron-Kenny Has No Causal Foundation
+### 3. Baron-Kenny Lacks an Explicit Causal Estimand
 
-The Baron-Kenny (1986) "causal steps" approach can indicate mediation where none
-exists and miss mediation where it does exist. It conflates statistical significance
-of regression coefficients with causal mediation. Use the Imai et al. (2010) framework
-(statsmodels `Mediation` or manual bootstrap) instead. If a reviewer requests
-Baron-Kenny results, provide them alongside modern results with a note explaining
-the distinction.
+The Baron-Kenny (1986) "causal steps" approach tests the significance of regression
+coefficients without defining the causal mediation effect or stating its identifying
+assumption; its estimates have a causal reading under sequential ignorability,
+linearity, and no interaction (Imai, Keele, and Tingley 2010a). Its steps have low
+power and can miss mediation (Preacher and Hayes 2008). Use the Imai, Keele, and
+Tingley (2010a) framework (statsmodels `Mediation` or manual bootstrap) instead. If
+a reviewer requests Baron-Kenny results, provide them alongside modern results with
+a note explaining the distinction.
 
 ### 4. Measurement Error in Mediator Biases Indirect Effect Toward Zero
 
 Classical measurement error in the mediator variable attenuates the b-path coefficient
 (effect of M on Y) toward zero, which in turn attenuates the estimated indirect effect
 (a * b) toward zero. This means mediation analyses using noisy mediator measures are
-biased against finding mediation. If the mediator is measured with known unreliability,
-consider corrections (e.g., disattenuation formulas) or discuss the likely direction
-of bias.
+biased against finding mediation. Baron and Kenny (1986, p. 1177) note that
+measurement error in the mediator "tends to produce an underestimate of the effect
+of the mediator and an overestimate of the effect of the independent variable on
+the dependent variable when all coefficients are positive." If the mediator is
+measured with known unreliability, consider corrections (e.g., disattenuation
+formulas) or discuss the likely direction of bias.
 
 ### 5. Collider Bias from Conditioning on the Mediator
 
@@ -835,20 +888,21 @@ of at least one spurious finding is 23%. Apply Bonferroni or Benjamini-Hochberg
 corrections when testing multiple mediators, and pre-specify which mediators are
 primary versus exploratory.
 
-## References
+## References and Further Reading
 
 ### Core Methodological Framework
 
-Imai, K., Keele, L., and Tingley, D. (2010). "A General Approach to Causal Mediation
+Imai, K., Keele, L., and Tingley, D. (2010a). "A General Approach to Causal Mediation
 Analysis." *Psychological Methods*, 15(4), 309-334.
 https://doi.org/10.1037/a0020761
 
-Imai, K., Keele, L., and Yamamoto, T. (2010). "Identification, Inference and
+Imai, K., Keele, L., and Yamamoto, T. (2010b). "Identification, Inference and
 Sensitivity Analysis for Causal Mediation Effects." *Statistical Science*, 25(1),
 51-71. https://doi.org/10.1214/10-STS321
 
 Pearl, J. (2001). "Direct and Indirect Effects." *Proceedings of the Seventeenth
 Conference on Uncertainty in Artificial Intelligence (UAI)*, 411-420.
+arXiv:1301.2300. https://arxiv.org/abs/1301.2300
 
 Pearl, J. (2014). "Interpretation and Identification of Causal Mediation."
 *Psychological Methods*, 19(4), 459-481. https://doi.org/10.1037/a0036434
@@ -881,6 +935,10 @@ Myths and Truths about Mediation Analysis." *Journal of Consumer Research*, 37(2
 VanderWeele, T.J. and Ding, P. (2017). "Sensitivity Analysis in Observational
 Research: Introducing the E-Value." *Annals of Internal Medicine*, 167(4), 268-274.
 https://doi.org/10.7326/M16-2607
+
+Smith, L.H. and VanderWeele, T.J. (2019). "Mediational E-values: Approximate
+Sensitivity Analysis for Unmeasured Mediator–Outcome Confounding." *Epidemiology*,
+30(6). https://doi.org/10.1097/ede.0000000000001064
 
 ### Textbooks
 

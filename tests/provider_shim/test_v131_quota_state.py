@@ -134,6 +134,10 @@ class _FakeResponse:
         self.status_code = status_code
         self.headers = httpx.Headers(headers or {})
         self.http_version = http_version
+        # INTENT: model the open upstream response at header arrival.
+        # REASONING: HTTPX explicit stream responses start is_closed=False.
+        # ASSUMES: this headers-only fixture never consumes or closes a body.
+        self.is_closed = False
 
 
 class ProviderShimV131QuotaStateTests(unittest.TestCase):

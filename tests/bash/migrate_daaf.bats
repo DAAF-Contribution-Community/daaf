@@ -156,13 +156,44 @@ teardown() {
 # DAAF_TEST_MODE=1 causes the script to return after defining functions,
 # skipping the main execution body.
 
+# Source migrate_daaf.sh in test mode into THIS test's shell, then put back what
+# bats runs a test with. Two things leak in from the script before its
+# DAAF_TEST_MODE return:
+#   `set -euo pipefail`  restore errexit and nounset as bats runs a test (`set -eET`):
+#     -e           KEEP errexit. Bats fails a test only through it. These tests
+#                  used to run `set +eu` after sourcing; with errexit off, no
+#                  assertion in a test could fail it, not even the last one.
+#     +u           bats does not run tests under nounset; keep its default.
+#     pipefail     stays ON, as in production: container_git and
+#                  container_git_verbose are `docker ... | tr -d '\r'`, and
+#                  without pipefail their status would be tr's, not docker's.
+#   `trap cleanup_on_error ERR`  this REPLACES bats's own ERR trap. Removing it
+#                  (`trap - ERR`) is not enough: bats then reports a failed
+#                  assertion at the wrong line. So save bats's ERR trap before
+#                  sourcing and reinstall it verbatim with eval: `trap -p ERR`
+#                  prints a re-runnable `trap -- '<handler>' ERR` command, with
+#                  any quotes in the handler already escaped. If nothing was
+#                  saved, the fallback `trap - ERR` still fails the test on a
+#                  failed assertion but may report the wrong line; bats 1.2.1,
+#                  1.10.0 and 1.13.0 all install `trap 'bats_error_trap' ERR`,
+#                  so the fallback is not reached on them.
+source_migrate_test_mode() {
+    local bats_err_trap
+    bats_err_trap="$(trap -p ERR)"
+    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    set -e +u
+    if [ -n "${bats_err_trap}" ]; then
+        eval "${bats_err_trap}"
+    else
+        trap - ERR
+    fi
+}
+
 # --- container_git behavioral tests ---
 
 @test "migrate: container_git executes git in container" {
     # Source in test mode to get the functions
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -181,9 +212,7 @@ teardown() {
 }
 
 @test "migrate: container_git suppresses stderr" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -203,9 +232,7 @@ teardown() {
 }
 
 @test "migrate: container_git strips carriage returns" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -226,9 +253,7 @@ teardown() {
 # --- container_git_verbose behavioral tests ---
 
 @test "migrate: container_git_verbose preserves stderr" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -241,7 +266,10 @@ teardown() {
     export -f docker
 
     # container_git_verbose does NOT redirect stderr to /dev/null
-    # Use run with 3>&1 to capture stderr in output
+    # Run it in a child with 2>&1 to capture stderr in output. The child must
+    # source in test mode too: a `DAAF_TEST_MODE=1 source` prefix does not
+    # outlive the source, so without it here the child ran the WHOLE migration
+    # (preflight, downloads, backup, container start) before this call.
     run bash -c '
         CONTAINER_NAME="test-container"
         docker() {
@@ -250,7 +278,7 @@ teardown() {
             return 0
         }
         export -f docker
-        source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
         container_git_verbose status 2>&1
     '
     assert_success
@@ -260,9 +288,7 @@ teardown() {
 # --- container_exec behavioral tests ---
 
 @test "migrate: container_exec runs arbitrary command in container" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -322,9 +348,7 @@ teardown() {
 # for each era type.
 
 @test "migrate: no remote indicates Era 1 pattern (ZIP install)" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     # Override container_git to simulate no remote configured
     container_git() {
@@ -344,9 +368,7 @@ teardown() {
 }
 
 @test "migrate: remote with known repo URL indicates Era 2 pattern (clone)" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     # Override container_git to simulate a remote pointing to the official repo
     container_git() {
@@ -365,9 +387,7 @@ teardown() {
 }
 
 @test "migrate: corrupted volume (no .git) detected by container_exec test" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     CONTAINER_NAME="test-container"
 
@@ -400,7 +420,7 @@ teardown() {
 
 @test "migrate: ERR trap registered for cleanup after sourcing" {
     # After sourcing in test mode, verify the ERR trap was set
-    # (we clear it in tests, but the script should have set it)
+    # (source_migrate_test_mode swaps it for bats's own, but the script must set it)
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh" 2>/dev/null
         trap -p ERR
@@ -469,9 +489,7 @@ teardown() {
 @test "migrate: Era 2 detection triggers when ORIGIN_URL is empty" {
     # Simulate the era detection logic: when container_git remote returns
     # empty string, the script should set DETECTED_ERA="2"
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     container_git() { echo ""; return 0; }
     ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
@@ -483,9 +501,7 @@ teardown() {
 @test "migrate: Era 1 detection triggers when ORIGIN_URL has repo name" {
     # Simulate the era detection logic: when container_git remote returns
     # the official repo URL, the script should set DETECTED_ERA="1"
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
+    source_migrate_test_mode
 
     container_git() { echo "https://github.com/DAAF-Contribution-Community/daaf.git"; return 0; }
     ORIGIN_URL=$(container_git remote get-url origin 2>/dev/null || true)
@@ -545,8 +561,7 @@ teardown() {
 # docker-compose.yml. Running the dry-run from a compose-seeded directory
 # therefore leaked ~13 zero-byte stubs (named after the host scripts) plus a
 # docker-compose.yml.pre-migrate at the caller's root. These tests pin that the
-# dry-run creates NOTHING on disk. See:
-# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+# dry-run creates NOTHING on disk.
 
 @test "migrate_daaf.sh: dry-run from a compose-seeded dir creates no new files" {
     # Seed TEST_DIR with a docker-compose.yml so HOST_DIR resolves to it (the
@@ -748,6 +763,7 @@ SH
     setup_migrate_integrated
     run bash -c '
         cd "'"${TEST_DIR}"'"
+        unset DAAF_BRANCH
         curl() {
             local outfile=""
             local args=("$@")
@@ -788,6 +804,10 @@ SH
     assert_output --partial "STUB BACKUP RAN"
     assert_output --partial "ERROR: Backup failed (exit code 1)"
     assert_output --partial "The migration will not proceed without a successful backup."
+    # The retry is the documented one-liner: a `curl | bash` run leaves no
+    # migrate_daaf.sh on disk to re-run.
+    assert_output --partial "curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh | bash"
+    refute_output --partial "bash migrate_daaf.sh"
     # The abort happens in section 3, so no section-4 post-backup step is reached.
     refute_output --partial "Starting container"
     refute_output --partial "Migration complete"
@@ -896,7 +916,7 @@ SH
     '
     assert_success
     assert_output --partial "graft already in place"
-    assert_output --partial "replace ref present"
+    assert_output --partial "(git still records that link)"
     assert_output --partial "Migration complete"
 }
 
@@ -1402,10 +1422,11 @@ SH
         docker() {
             local all_args="$*"
             # Record exec calls AND the ownership-repair docker run, in call
-            # order, for the ordering assertion below.
+            # order, for the ordering assertion below. The repair runs the pinned
+            # helper image (DAAF_BUSYBOX_PIN, fix pass #26), never a bare busybox.
             case "$all_args" in
                 *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
-                *"run"*"busybox chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
+                *"run"*"${DAAF_BUSYBOX_PIN} chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
             esac
             case "$all_args" in
                 "info") return 0 ;;
@@ -1430,7 +1451,7 @@ SH
     # The chown must be recorded and precede the first era-detection git op.
     # Revert the fix -> no chown line -> chown_line empty -> assertion fails.
     local chown_line firstgit_line
-    chown_line=$(grep -n 'busybox chown' "${calllog}" | head -1 | cut -d: -f1)
+    chown_line=$(grep -nF "${DAAF_BUSYBOX_PIN} chown" "${calllog}" | head -1 | cut -d: -f1)
     firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
     [ -n "${chown_line}" ]
     [ -n "${firstgit_line}" ]
@@ -1439,7 +1460,7 @@ SH
 
 @test "migrate: ownership repair command, daaf-init parity rationale, and warn-and-continue policy are present" {
     # Source-level pins (revert-the-fix-and-it-fails).
-    run grep -cF 'busybox chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    run grep -cF '"${BUSYBOX_IMAGE}" chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     assert_success
     [ "${output}" -ge 1 ]
     run grep -cF 'daaf-init' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"

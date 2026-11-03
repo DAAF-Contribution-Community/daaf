@@ -6,21 +6,54 @@
 #
 # Usage:
 #   bash /daaf/scripts/launch_marimo.sh [directory] [--port PORT] [--background]
+#   bash /daaf/scripts/launch_marimo.sh --print-token [--port PORT]
 #
 # Examples:
 #   bash /daaf/scripts/launch_marimo.sh
 #   bash /daaf/scripts/launch_marimo.sh /daaf/research/2026-04-15_My_Analysis
-#   bash /daaf/scripts/launch_marimo.sh --port 2720
+#
+# --port is for use inside the container only. Compose publishes only container
+# ports 2718-2720, one per DAAF web service (docker-compose.yml), so a browser
+# on the host reaches marimo only on its own port, 2718.
 #
 # Default behavior:
 #   - Browses /daaf/research/ (where all project notebooks live)
 #   - Serves on port 2718 (mapped in docker-compose.yml)
 #   - Binds to 0.0.0.0 for Docker container access
-#   - Runs without authentication token (local development only)
+#   - Requires a fresh random access token for every server launch
+#
+# Why a token: marimo's terminal WebSocket (/terminal/ws) opens a shell in the
+# container, and marimo checks it only when a token is set. It checks no Origin
+# or Host header, so with --no-token any web page open in the user's browser
+# (or any process that can reach the port) could open that shell while the
+# server runs; binding the published port to the host's 127.0.0.1 does not stop
+# a browser page. With a token, the browser logs in once through the printed
+# link, http://localhost:PORT/?access_token=TOKEN, and marimo keeps the session
+# in a SameSite=Lax cookie, which a cross-site page's WebSocket does not carry
+# (verified against marimo 0.25.0 source, _server/api/endpoints/terminal.py,
+# _server/api/auth.py and _server/main.py, on 2026-11-02).
+#
+# Where the token lives: 256 bits from /dev/urandom (hex), written to
+# $HOME/.local/state/daaf/marimo-token-PORT (directory 0700, file 0600; the
+# container layer, NOT /daaf, because the log viewer serves /daaf and /daaf is
+# backed up). marimo reads it via --token-password-file, so the token never
+# appears on a command line. A new launch writes a new token; a running server
+# keeps the one it started with.
+#
+# --print-token prints only the token of the marimo server listening on PORT,
+# provided this launcher started it. The host launchers (view_notebooks.*,
+# daaf.* option 4) call it through `docker compose exec` to open the tokenized
+# URL in the browser.
 #
 # Exit codes:
 #   0 — success (or server stopped by Ctrl+C)
 #   1 — usage error, invalid directory, or port conflict
+#   4 — --print-token: no marimo server is listening on PORT
+#   5 — --print-token: the marimo server on PORT was started without a token
+#       (an older launcher); stop it and launch again
+#   6 — --print-token: the marimo server on PORT was not started by this
+#       launcher, so its token is unknown
+#   30 — marimo is not installed (the image needs rebuilding)
 
 set -euo pipefail
 
@@ -36,6 +69,7 @@ PORT=2718
 PORT_OVERRIDDEN=false
 BROWSE_DIR=""
 BACKGROUND=false
+PRINT_TOKEN=false
 
 # --- Parse arguments ---
 
@@ -55,21 +89,29 @@ while [ $# -gt 0 ]; do
             BACKGROUND=true
             shift
             ;;
+        --print-token)
+            PRINT_TOKEN=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: bash $0 [directory] [--port PORT] [--background]"
+            echo "       bash $0 --print-token [--port PORT]"
             echo ""
             echo "Launch marimo's notebook browser for DAAF projects."
             echo ""
             echo "Arguments:"
             echo "  directory       Directory to browse (default: /daaf/research)"
-            echo "  --port PORT     Port for the marimo server (default: 2718)"
+            echo "  --port PORT     Port for the marimo server (default: 2718; another port"
+            echo "                  is reachable only from inside the container)"
             echo "  --background    Start the server in the background and exit"
+            echo "  --print-token   Print the access token of the server running on PORT"
             echo ""
             echo "Examples:"
             echo "  bash $0                                # Browse all projects"
             echo "  bash $0 /daaf/research/2026-04-15_Analysis  # Specific project"
             echo ""
-            echo "Open http://localhost:PORT in your browser after launching."
+            echo "Open the printed http://localhost:PORT/?access_token=... link in your"
+            echo "browser after launching. Each launch uses a new token."
             exit 0
             ;;
         *)
@@ -91,7 +133,8 @@ if [ -z "$BROWSE_DIR" ]; then
     BROWSE_DIR="$DEFAULT_DIR"
 fi
 
-if [ ! -d "$BROWSE_DIR" ]; then
+# --print-token serves nothing, so it does not need the browse directory.
+if [ "$PRINT_TOKEN" = false ] && [ ! -d "$BROWSE_DIR" ]; then
     echo "ERROR: Directory does not exist: $BROWSE_DIR" >&2
     echo "  Create a research project first, or specify a different directory." >&2
     exit 1
@@ -117,11 +160,32 @@ if [ "$PORT_OVERRIDDEN" = false ] && [ -n "${DAAF_PORT_MARIMO:-}" ]; then
     DISPLAY_PORT="$DAAF_PORT_MARIMO"
 fi
 
+# --- Token file location ---
+
+# Keyed by the container port, so two servers on different ports keep separate
+# tokens. Outside /daaf on purpose (see the header): the log viewer serves /daaf.
+TOKEN_DIR="${HOME:?HOME is not set}/.local/state/daaf"
+TOKEN_FILE="$TOKEN_DIR/marimo-token-$PORT"
+
+# --- Project flag for printed host commands ---
+
+# A `docker compose` command printed for the user runs in their shell on the
+# host, where Compose uses the project `daaf` unless given `-p`. The install's
+# own name reaches the container as DAAF_PROJECT_NAME when it is set in
+# environment_settings.txt (the compose env_file), so for any other project the
+# printed command carries `-p <name>`, as the host scripts print it.
+COMPOSE_P_FLAG=""
+if [ -n "${DAAF_PROJECT_NAME:-}" ] && [ "$DAAF_PROJECT_NAME" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${DAAF_PROJECT_NAME} "
+fi
+
 # --- Preflight ---
 
-if ! command -v marimo >/dev/null 2>&1; then
+# --print-token only reads state, so it does not need marimo itself.
+if [ "$PRINT_TOKEN" = false ] && ! command -v marimo >/dev/null 2>&1; then
     echo "ERROR: marimo is not installed." >&2
-    echo "  Install with: pip install marimo" >&2
+    echo "  marimo ships in the DAAF image, so a missing marimo means the image needs rebuilding:" >&2
+    printf '%s\n' "  exit the container, then choose 10) Rebuild Container in the DAAF Control Panel, or run 'bash rebuild_daaf.sh' ('.\\rebuild_daaf.ps1' on Windows) from the daaf-docker folder." >&2
     exit 30
 fi
 
@@ -143,22 +207,105 @@ if [ -n "$LISTEN_INODE" ]; then
     [ -n "$LISTEN_PID" ] && LISTEN_CMD=$(ps -p "$LISTEN_PID" -o args= 2>/dev/null || true)
 
     if echo "$LISTEN_CMD" | grep -q "marimo"; then
+        # Which token does the running server use? This launcher starts marimo
+        # with --token-password-file "$TOKEN_FILE"; a server started with
+        # --no-token has none (DAAF launchers without token support started
+        # it that way); anything else was started by hand, with a token this
+        # script cannot know. ${TOKEN_FILE} stays inside the double quotes of
+        # the pattern, so any glob characters in it match literally.
+        TOKEN_STATE="unknown"
+        case " $LISTEN_CMD " in
+            *" --no-token "*)
+                TOKEN_STATE="none"
+                ;;
+            *" --token-password-file ${TOKEN_FILE} "*)
+                if [ -s "$TOKEN_FILE" ]; then
+                    TOKEN_STATE="recorded"
+                fi
+                ;;
+        esac
+
+        if [ "$PRINT_TOKEN" = true ]; then
+            case "$TOKEN_STATE" in
+                recorded)
+                    printf '%s\n' "$(cat "$TOKEN_FILE")"
+                    exit 0
+                    ;;
+                none)
+                    echo "ERROR: The marimo server on port $PORT was started without an access token." >&2
+                    echo "  Fix: stop it with DAAF Control Panel option 12 \"Stop Web Services\" or with pkill -f \"marimo edit\" in the container, then launch it again with this script." >&2
+                    exit 5
+                    ;;
+                *)
+                    echo "ERROR: The marimo server on port $PORT was not started by launch_marimo.sh; its access token is unknown." >&2
+                    echo "  Fix: use the link printed when it started, or stop it with DAAF Control Panel option 12 \"Stop Web Services\" and launch it again with this script." >&2
+                    exit 6
+                    ;;
+            esac
+        fi
+
         echo "Marimo is already running on port $PORT (PID $LISTEN_PID)."
         echo ""
-        echo "  Open in your browser:"
-        echo "  http://localhost:$DISPLAY_PORT"
+        case "$TOKEN_STATE" in
+            recorded)
+                echo "  Open in your browser (the link includes this server's access token):"
+                echo "  http://localhost:$DISPLAY_PORT/?access_token=$(cat "$TOKEN_FILE")"
+                ;;
+            none)
+                echo "  WARNING: this server was started by an older DAAF launcher WITHOUT an"
+                echo "  access token, so any web page open in your browser could reach it."
+                echo "  Stop it, then open the notebooks again to start it with a token:"
+                echo "    - DAAF Control Panel: 12) Stop Web Services, or"
+                echo "    - from your daaf-docker folder: docker compose ${COMPOSE_P_FLAG}exec daaf-docker pkill -f \"marimo edit\""
+                ;;
+            *)
+                echo "  It was not started by this launcher, so its access token is unknown."
+                echo "  Use the link that was printed when it started, or stop it and launch again:"
+                echo "    - DAAF Control Panel: 12) Stop Web Services, or"
+                echo "    - from your daaf-docker folder: docker compose ${COMPOSE_P_FLAG}exec daaf-docker pkill -f \"marimo edit\""
+                ;;
+        esac
         echo ""
         exit 0
     elif [ -n "$LISTEN_PID" ]; then
         echo "ERROR: Port $PORT is in use by another process: $LISTEN_CMD (PID $LISTEN_PID)" >&2
-        echo "  Free the port or use --port to specify a different one." >&2
+        echo "  Fix: stop that process (kill $LISTEN_PID in the container, or DAAF Control Panel option 12 \"Stop Web Services\", which stops whatever holds ports 2718-2720), then launch again." >&2
+        echo "  Keep the default port: your browser reaches the notebooks only through container port 2718, so --port is for use inside the container only." >&2
         exit 1
     else
         echo "ERROR: Port $PORT is in use but the owning process could not be identified." >&2
-        echo "  Free the port or use --port to specify a different one." >&2
+        echo "  Fix: choose 11) Restart Container in the DAAF Control Panel, which frees every port (it also ends any open Claude Code session), then launch again." >&2
+        echo "  Keep the default port: your browser reaches the notebooks only through container port 2718, so --port is for use inside the container only." >&2
         exit 1
     fi
 fi
+
+if [ "$PRINT_TOKEN" = true ]; then
+    echo "ERROR: No marimo server is listening on port $PORT." >&2
+    echo "  Fix: start one first with bash $0 or DAAF Control Panel option 4 \"View Marimo Notebooks\", then ask for its token again." >&2
+    exit 4
+fi
+
+# --- Generate this launch's access token ---
+
+# INTENT: a fresh token per launch, readable only by the container user.
+# REASONING: 32 bytes from the kernel CSPRNG = 256 bits; hex is URL-safe, so
+# the token drops straight into ?access_token= with no escaping. The file is
+# written to a mktemp file (created 0600) and renamed over the old one, so a
+# reader never sees a half-written token and the mode never widens. umask is
+# NOT changed for the whole script: marimo inherits it, and a 077 umask would
+# make every notebook it creates private.
+mkdir -p "$TOKEN_DIR"
+chmod 700 "$TOKEN_DIR"
+TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+if ! [[ "$TOKEN" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "ERROR: Could not generate an access token from /dev/urandom." >&2
+    exit 1
+fi
+TOKEN_TMP="$(mktemp "$TOKEN_DIR/.marimo-token-$PORT.XXXXXX")"
+trap 'rm -f "$TOKEN_TMP"' EXIT
+printf '%s\n' "$TOKEN" > "$TOKEN_TMP"
+mv -f "$TOKEN_TMP" "$TOKEN_FILE"
 
 # --- Launch marimo ---
 
@@ -166,21 +313,21 @@ echo "Starting marimo notebook browser..."
 echo "  Browsing: $BROWSE_DIR"
 echo "  Port:     $PORT"
 echo ""
-echo "  Open in your browser:"
-echo "  http://localhost:$DISPLAY_PORT"
+echo "  Open in your browser (the link includes this launch's access token):"
+echo "  http://localhost:$DISPLAY_PORT/?access_token=$TOKEN"
 echo ""
 echo "  (Marimo will print its own URL below using 0.0.0.0 — ignore that,"
 echo "   use the localhost link above from your host browser.)"
 echo ""
 
 if [ "$BACKGROUND" = true ]; then
-    nohup marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check > /dev/null 2>&1 &
+    nohup marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --token-password-file "$TOKEN_FILE" --headless --skip-update-check > /dev/null 2>&1 &
     disown
     echo "Server started in background (PID $!)."
-    echo "  URL: http://localhost:$DISPLAY_PORT"
+    echo "  URL: http://localhost:$DISPLAY_PORT/?access_token=$TOKEN"
     exit 0
 else
     echo "  Press Ctrl+C to stop the server."
     echo ""
-    exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --no-token --headless --skip-update-check
+    exec marimo edit "$BROWSE_DIR" --host 0.0.0.0 --port "$PORT" --token-password-file "$TOKEN_FILE" --headless --skip-update-check
 fi

@@ -78,8 +78,8 @@ Brackets enclose the `endogenous ~ instruments` mapping:
 "y ~ 1 + exog1 + [endog1 ~ inst1]"        # Correct
 "y ~ exog1 + [endog1 ~ 1 + inst1]"        # Wrong — constant goes outside brackets
 
-# Suppress constant
-"y ~ exog1 + [endog1 ~ inst1] - 1"
+# No constant unless you add "1 +" (formulas never add one)
+"y ~ exog1 + [endog1 ~ inst1]"
 ```
 
 Compare with pyfixest pipe-separated syntax:
@@ -91,17 +91,25 @@ Compare with pyfixest pipe-separated syntax:
 
 ### Interpreting IV2SLS Output
 
-`res.summary` prints multiple sections:
+`res.summary` prints two tables, the estimation summary (R², overall
+F-statistic, covariance estimator) and the parameter estimates (coefficients,
+standard errors, t-stats, p-values, CIs), then a footer naming the endogenous
+variables, the instruments and the covariance type. It does **not** print
+first-stage, overidentification or endogeneity diagnostics (checked on
+linearmodels 7.0 for IV2SLS and IVGMM). Request each one separately:
 
-- **Parameter estimates**: Coefficients, standard errors, t-stats, p-values, CIs
-- **First-stage diagnostics** (per endogenous variable):
-  - Partial R-squared of excluded instruments
-  - Partial F-statistic — rule of thumb: F > 10 suggests instruments are
-    not weak (Staiger-Stock)
-- **Sargan/Hansen J-test**: Test of overidentifying restrictions (only when
+- **First-stage diagnostics** (per endogenous variable): `res.first_stage.summary`
+  shows the first-stage R², the partial R² of the excluded instruments, Shea's
+  R² and the partial F-statistic with its distribution (a chi2 Wald under
+  robust/clustered/kernel covariance; see First-Stage Statistics below). Rule of
+  thumb: F > 10 suggests instruments are not weak (Staiger-Stock), a threshold
+  stated for the F form.
+- **Sargan/Hansen J-test**: `res.sargan` (or the robust `res.wooldridge_overid`);
+  `res.j_stat` on IVGMM fits. Test of overidentifying restrictions (only when
   `# instruments > # endogenous`). H0: instruments are valid. Rejection suggests
   at least one instrument is endogenous.
-- **Wooldridge regression test for endogeneity**: Durbin-Wu-Hausman equivalent.
+- **Wooldridge regression test for endogeneity**: `res.wooldridge_regression`
+  (or `res.wu_hausman()`). Durbin-Wu-Hausman equivalent.
   H0: the endogenous variable is actually exogenous. Failure to reject means OLS
   may be consistent and IV is unnecessary.
 
@@ -124,8 +132,9 @@ res = mod.fit(cov_type="robust")
 
 ### Fuller's Modified LIML
 
-Subtracts `alpha / (n - L)` from k for finite-sample bias correction, where L is
-the number of instruments. The `fuller` parameter controls alpha.
+Subtracts `alpha / (n - L)` from k for finite-sample bias correction, where L
+counts all instrument columns, including the exogenous regressors. The `fuller`
+parameter controls alpha.
 
 ```python
 # Fuller's modified LIML (alpha=1 is the standard choice)
@@ -160,12 +169,16 @@ from linearmodels.iv import IVGMM
 # 2-step efficient GMM with robust weight matrix
 mod = IVGMM.from_formula(
     "np.log(wage) ~ 1 + exper + [educ ~ motheduc + fatheduc]",
-    data=df
+    data=df,
+    weight_type="robust"
 )
-res = mod.fit(cov_type="robust", weight_type="robust")
+res = mod.fit(cov_type="robust")
 ```
 
 ### Weight Matrix Options
+
+`weight_type` and its options (`kernel`, `bandwidth`, `clusters`) go to
+`IVGMM(...)`/`IVGMM.from_formula(...)`, not to `fit()`.
 
 | Weight Type | Use When | Code |
 |-------------|----------|------|
@@ -174,17 +187,18 @@ res = mod.fit(cov_type="robust", weight_type="robust")
 | `"kernel"` | HAC (time-series dependence) | `weight_type="kernel", kernel="bartlett"` |
 | `"clustered"` | Clustered dependence | `weight_type="clustered", clusters=df["group"]` |
 
-### Steps Parameter
+### iter_limit Parameter
 
 ```python
+# weight_type is set on the model (above); iter_limit sets the number of steps
 # 1-step GMM (uses initial weight matrix only)
-res = mod.fit(steps=1, weight_type="robust")
+res = mod.fit(iter_limit=1)
 
-# 2-step GMM (default — efficient under correct specification)
-res = mod.fit(steps=2, weight_type="robust")
+# 2-step GMM (default iter_limit=2 — efficient under correct specification)
+res = mod.fit()
 
 # Iterative GMM (repeats until weight matrix converges)
-res = mod.fit(iter_limit=100, weight_type="robust")
+res = mod.fit(iter_limit=100)
 ```
 
 ### When to Use GMM vs 2SLS
@@ -219,6 +233,7 @@ Use CUE when:
 ## AbsorbingLS
 
 OLS/WLS with high-dimensional absorbed fixed effects. Uses pyhdfe for FE absorption
+when the model is unweighted and absorbs only categoricals, and LSMR otherwise
 (similar to Stata's `reghdfe` or pyfixest). Lives in the IV module but is
 fundamentally an OLS estimator — does not support endogenous variables.
 
@@ -226,10 +241,11 @@ fundamentally an OLS estimator — does not support endogenous variables.
 from linearmodels.iv import AbsorbingLS
 
 # Absorb entity and year fixed effects
+# Non-categorical columns are absorbed as continuous variables, not as effects
 mod = AbsorbingLS(
     dependent=df["y"],
     exog=df[["x1", "x2"]],
-    absorb=df[["entity_id", "year"]]
+    absorb=df[["entity_id", "year"]].astype("category")
 )
 res = mod.fit()
 ```
@@ -237,17 +253,22 @@ res = mod.fit()
 ### Interacted Fixed Effects
 
 ```python
-from linearmodels.iv.absorbing import Interaction
+import pandas as pd
 
-# Entity-by-industry interacted FE
-interact = Interaction(df["entity_id"], df["industry"])
+# Entity-by-industry interacted FE: one categorical with a level per cell
+cell = (df["entity_id"].astype(str) + "_" + df["industry"].astype(str)).astype("category")
 mod = AbsorbingLS(
     dependent=df["y"],
     exog=df[["x1"]],
-    absorb=interact
+    absorb=pd.DataFrame({"cell": cell})
 )
 res = mod.fit()
 ```
+
+Passed as `interactions=`, `Interaction(cat, cont)` (from `linearmodels.iv.absorbing`)
+adds category-specific slopes on `cont`. Passed as `absorb=`, `cat` is absorbed as
+additive effects and `cont` with one common slope, so
+`absorb=Interaction(cat=df[["a", "b"]])` absorbs a + b, not a×b.
 
 ### AbsorbingLS vs PanelOLS vs pyfixest
 
@@ -255,14 +276,13 @@ res = mod.fit()
 |---------|-------------|----------|----------|
 | Max FE dimensions | Unlimited | 2 | Unlimited |
 | Requires MultiIndex | No | Yes | No |
-| Speed (large data) | Moderate (pyhdfe) | Moderate | Fast (numba/JAX) |
+| Speed (large data) | Moderate (pyhdfe or LSMR) | Moderate | Fast (numba/JAX) |
 | IV support | No | No | Yes (with FE) |
-| Interacted FE | Yes (`Interaction`) | No | Yes (native `^`) |
+| Interacted FE | Yes (combined categorical column) | No | Yes (native `^`) |
 
 **Recommendation:** For most absorbed-FE work, prefer pyfixest for speed and
 formula convenience. Use AbsorbingLS when you need to stay within the linearmodels
-ecosystem or need the `Interaction` class for complex FE structures that are not
-easily expressed in pyfixest's `^` syntax.
+ecosystem or need `Interaction` (via `interactions=`) for category-specific slopes.
 
 ## Diagnostics and Tests
 
@@ -271,11 +291,13 @@ easily expressed in pyfixest's `^` syntax.
 ```python
 res = mod.fit(cov_type="robust")
 
-# Per-endogenous-variable first-stage results
-for name, fs in res.first_stage.individual.items():
+# Per-endogenous-variable partial first-stage statistics
+diag = res.first_stage.diagnostics
+for name, row in diag.iterrows():
     print(f"--- First stage for {name} ---")
-    print(f"  Partial R²: {fs.rsquared:.4f}")
-    print(f"  Partial F:  {fs.f_statistic.stat:.2f} (p={fs.f_statistic.pval:.4f})")
+    print(f"  Partial R²: {row['partial.rsquared']:.4f}  Shea's R²: {row['shea.rsquared']:.4f}")
+    # f.stat is an F under cov_type="unadjusted", a chi2 Wald under robust/clustered/kernel (see f.dist)
+    print(f"  Partial test: {row['f.stat']:.2f} (p={row['f.pval']:.4f}, {row['f.dist']})")
 ```
 
 ### Overidentification Test (Sargan / Hansen J-Test)

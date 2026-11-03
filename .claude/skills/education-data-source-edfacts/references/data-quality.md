@@ -16,19 +16,19 @@ Known data quality issues, state reporting variations, COVID-19 impacts, and gui
 
 ### 2019-20 Testing Waivers
 
-**Critical**: Spring 2020 assessments were largely waived due to COVID-19:
+**Critical**: ED waived the requirement to administer all required assessments in school year 2019–2020 for each of the 50 States, the District of Columbia, Puerto Rico and the Bureau of Indian Education (Notice of Waivers Granted Under Section 8401 of the ESEA, 85 FR 29935, May 19, 2020; announced March 20, 2020):
 
 | Impact | Details |
 |--------|---------|
-| Assessment data | Most states have no 2019-20 data |
+| Assessment data | No Portal assessment file for Portal year 2019 (SY 2019-20) |
 | Participation rates | Not meaningful for 2019-20 |
-| Federal waivers | States received assessment waivers |
+| Federal waivers | All 50 States, DC, Puerto Rico and the BIE received 2019-20 assessment waivers (85 FR 29935) |
 
 ### What's Available for 2019-20
 
 | Data Type | Availability |
 |-----------|--------------|
-| Assessment proficiency | **Largely missing** |
+| Assessment proficiency | **Absent from the Portal** (no Portal year 2019 assessment file) |
 | Graduation rates | Mostly available (cohort-based) |
 | Directory data | Available |
 | Enrollment data | Available |
@@ -40,12 +40,12 @@ The 2020-21 school year had mixed testing:
 | Variation | Impact |
 |-----------|--------|
 | State decisions | Some states tested, some didn't |
-| Participation rates | Often below 95% |
+| Participation rates | Often below 95% (unsourced here; participation rates are in ED's own files, not the Portal) |
 | Comparability | Limited comparability to prior years |
 
 ### 2021-22 Onward
 
-Testing largely resumed, but considerations remain:
+Testing largely resumed, but considerations remain (these years are not in the Portal assessment files, which end at Portal year 2020 = SY 2020-21):
 
 | Issue | Guidance |
 |-------|----------|
@@ -59,20 +59,21 @@ Testing largely resumed, but considerations remain:
 def exclude_covid_years(df, assessment_col):
     """Exclude COVID-affected years from trend analysis."""
     
-    # 2020 (spring 2020 testing) is most affected
-    # 2021 has partial data
+    # Portal assessment `year` = fall of the school year.
+    # 2019 = SY 2019-20 (spring 2020 testing waived; no Portal assessment file)
+    # 2020 = SY 2020-21 (partial testing); the last Portal assessment year
     
     return df.filter(
-        ~pl.col("year").is_in([2020, 2021])
+        ~pl.col("year").is_in([2019, 2020])
     )
 
 def flag_covid_years(df):
     """Add flag for COVID-affected years."""
     
     return df.with_columns(
-        pl.when(pl.col("year") == 2020)
+        pl.when(pl.col("year") == 2019)
         .then(pl.lit("no_testing"))
-        .when(pl.col("year") == 2021)
+        .when(pl.col("year") == 2020)
         .then(pl.lit("partial_testing"))
         .otherwise(pl.lit("normal"))
         .alias("covid_status")
@@ -83,14 +84,16 @@ def flag_covid_years(df):
 library(dplyr)
 
 # Exclude COVID-affected years from trend analysis
-# 2020 (spring 2020 testing) is most affected; 2021 has partial data
-df_no_covid <- df |> filter(!year %in% c(2020, 2021))
+# Portal assessment `year` = fall of the school year:
+# 2019 = SY 2019-20 (spring 2020 testing waived; no Portal assessment file)
+# 2020 = SY 2020-21 (partial testing); the last Portal assessment year
+df_no_covid <- df |> filter(!year %in% c(2019, 2020))
 
 # Add flag for COVID-affected years
 df <- df |>
   mutate(covid_status = case_when(
-    year == 2020 ~ "no_testing",
-    year == 2021 ~ "partial_testing",
+    year == 2019 ~ "no_testing",
+    year == 2020 ~ "partial_testing",
     TRUE ~ "normal"
   ))
 ```
@@ -331,7 +334,7 @@ def suppression_analysis(df, value_col, group_col=None):
         analysis = (df
             .group_by(group_col)
             .agg([
-                pl.count().alias("total"),
+                pl.len().alias("total"),
                 (pl.col(value_col) == -3).sum().alias("suppressed"),
                 (pl.col(value_col) >= 0).sum().alias("valid")
             ])
@@ -542,7 +545,7 @@ For any EDFacts analysis, document:
 
 ### Data Quality
 - Records suppressed (code -3): X%
-- Records not reported (code -2): X%
+- Records missing/not reported (code -1): X%
 - Records with ranges (not exact): X%
 
 ### Limitations
@@ -567,16 +570,16 @@ For any EDFacts analysis, document:
 - Access date: January 15, 2024
 
 ### Scope
-- Years: 2017-18 through 2022-23
+- Years: 2017-18 through 2020-21 (Portal years 2017, 2018, 2020; no Portal year 2019 assessment file)
 - States: All 50 states + DC
 - Grades: Grade 4 reading
 - Subgroups: All students, economically disadvantaged, students with disabilities
 
 ### Data Quality
-- 2019-20 data excluded due to COVID testing waivers
-- 2020-21 has participation below 95% in many states
+- 2019-20 (Portal year 2019) absent from the Portal due to COVID testing waivers
+- 2020-21 participation rates are not in the Portal; check ED's own EDFacts participation files before comparing 2020-21 with earlier years
 - 12% of school-year-subgroup records suppressed (code -3)
-- 3% of records not reported (code -2)
+- 3% of records not applicable (code -2)
 
 ### Limitations
 - Proficiency rates NOT comparable across states

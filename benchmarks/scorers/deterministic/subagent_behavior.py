@@ -235,7 +235,7 @@ def _check_reads_min_matching(tool_calls: list[dict], pattern: str, min_count: i
 # framework's execution-language preference switched to R (CLAUDE.md § User
 # Preferences, 2026-07-06), so subagents faithfully writing .R scripts were
 # false-negatives under the old \.py$ patterns (first observed: GPT smoke
-# battery dc-01/dc-02, research/2026-07-09_FrameworkDev_GPTBenchSmoke/).
+# battery dc-01/dc-02).
 # Archived result sets scored before this date used the .py-only patterns.
 
 BEHAVIOR_SPECS: dict[str, list[dict]] = {

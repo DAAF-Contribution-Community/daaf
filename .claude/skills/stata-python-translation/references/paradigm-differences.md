@@ -107,7 +107,8 @@ ca_means = (
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); StataCorp, "Data frames: multiple datasets
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> StataCorp, "Data frames: multiple datasets
 > in memory" (stata.com, accessed 2026-03-28); pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28)
 
@@ -240,7 +241,8 @@ df = df.with_columns(
 > accessed 2026-03-28); StataCorp, "Missing values -- Quick reference"
 > (stata.com/manuals/dmissingvalues.pdf, accessed 2026-03-28); UCLA Statistical Consulting,
 > "Missing Values" Stata Learning Modules (stats.oarc.ucla.edu, accessed 2026-03-28);
-> *Stata Journal*, "Stata Tip 86: The Missing() Function" (2010); polars documentation,
+> Rising, B., "Stata Tip 86: The Missing() Function," *Stata Journal* (2010),
+> https://doi.org/10.1177/1536867x1001000210; polars documentation,
 > "Handling Missing Values" (docs.pola.rs, accessed 2026-03-28); Poverty Action, "Missing
 > Values" (povertyaction.github.io, accessed 2026-03-28)
 
@@ -386,8 +388,8 @@ state_stats = df.group_by("state").agg(
 
 ```python
 df = df.with_columns(
-    # _n (row number within group -- 0-based in polars, 1-based in Stata)
-    pl.col("test_score").cum_count().over("state").alias("state_obs"),
+    # _n (row number within group, 1-based as in Stata)
+    pl.int_range(1, pl.len() + 1).over("state").alias("state_obs"),
     # _N (group size)
     pl.len().over("state").alias("state_N"),
 )
@@ -407,7 +409,7 @@ df = df.sort("state", "year").with_columns(
 | Stata (`by:` / `egen`) | Python (polars) |
 |-------------------------|-----------------|
 | `bysort state: egen mean_x = mean(x)` | `pl.col("x").mean().over("state")` |
-| `bysort state: gen obs_num = _n` | `pl.col("x").cum_count().over("state")` |
+| `bysort state: gen obs_num = _n` | `pl.int_range(1, pl.len() + 1).over("state")` |
 | `bysort state: gen group_size = _N` | `pl.len().over("state")` |
 | `bysort state (year): gen lag_x = x[_n-1]` | `pl.col("x").shift(1).over("state")` (after sorting) |
 | `collapse (mean) x, by(state)` | `df.group_by("state").agg(pl.col("x").mean())` |

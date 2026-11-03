@@ -84,7 +84,7 @@ NACUBO segments institutions into seven size categories based on fiscal year-end
 
 ### Alternative Size Groupings
 
-Simplified three-category grouping sometimes used:
+Simplified three-category grouping sometimes used (illustrative; not from a published NACUBO table):
 
 | Group | Size Range | Typical Count |
 |-------|------------|---------------|
@@ -92,7 +92,7 @@ Simplified three-category grouping sometimes used:
 | Medium | $101 Million to $1 Billion | ~350 |
 | Small | Under $100 Million | ~180-200 |
 
-### Distribution by Size (FY24)
+### Distribution by Size (FY24) (illustrative; not from a published NACUBO table)
 
 | Size Category | Count | % of Participants | % of Total Assets |
 |---------------|-------|-------------------|-------------------|
@@ -104,7 +104,7 @@ Simplified three-category grouping sometimes used:
 | $51M to $100M | ~111 | ~17% | ~1% |
 | Under $50M | ~80 | ~12% | <1% |
 
-**Key Insight**: ~20% of participants (>$1B) control ~84% of total endowment assets.
+**Key Insight**: ~20% of participants (>$1B) control ~84% of total endowment assets (illustrative; not from a published NACUBO table).
 
 ## Institution Types
 
@@ -127,7 +127,7 @@ Simplified three-category grouping sometimes used:
 
 **Combined**: Institutions reporting combined endowment and foundation data together (may include both institutional funds and IRF).
 
-### Type Distribution (FY24)
+### Type Distribution (FY24) (illustrative; not from a published NACUBO table)
 
 | Type | Count | % of Participants |
 |------|-------|-------------------|
@@ -142,7 +142,7 @@ These are the **only** variables available in the Portal mirror dataset (`nacubo
 
 | Variable | Type | Description | Unit | Nulls |
 |----------|------|-------------|------|-------|
-| `year` | Int64 | Fiscal year ending year | YYYY | 0 |
+| `year` | Int64 | Fiscal-year start year (2012-2022 = FY2013-FY2023) | YYYY | 0 |
 | `unitid` | Int64 | IPEDS institution identifier (6 digits) | — | 0 |
 | `inst_name_nacubo` | String | Institution name (NACUBO version) | — | 0 |
 | `fips` | Int64 | State FIPS code (1-56, territories: 72, 78) | — | 1 |
@@ -155,7 +155,7 @@ These are the **only** variables available in the Portal mirror dataset (`nacubo
 - `endow_chg_mktval` is a **decimal fraction**, not a percentage. Multiply by 100 for display: `pl.col("endow_chg_mktval") * 100`.
 - `endow_per_fte` is in **full USD** (e.g., `48784.99` = ~$48,785 per FTE student).
 
-**Note**: `year` in the Portal corresponds to the fiscal year ending year. FY2022 = July 1, 2021 - June 30, 2022.
+**Note**: `year` is the year the fiscal year begins (Portal 'academic year, fall semester'): `year`=2021 is NACUBO FY2022 (July 1, 2021-June 30, 2022). Verified: Portal 2020 Harvard = 2021 NTSE FY21 value.
 
 ---
 
@@ -308,7 +308,7 @@ df |> filter(is.na(endow_per_fte))
 
 | Column | Polars Type | Format Notes |
 |--------|-------------|--------------|
-| `year` | Int64 | Fiscal year ending year (2012-2022) |
+| `year` | Int64 | Fiscal-year start year (2012-2022 = FY2013-FY2023) |
 | `unitid` | Int64 | 6-digit IPEDS institution ID |
 | `inst_name_nacubo` | String | Institution name |
 | `fips` | Int64 | State FIPS code |
@@ -342,7 +342,7 @@ market_value_per_fte = market_value / fte_enrollment
 
 ## Historical Variable Changes
 
-Some variables have changed over study history:
+Some variables have changed over study history (illustrative; not from a published NACUBO table):
 
 | Period | Change |
 |--------|--------|

@@ -17,7 +17,8 @@ in `pl.col()`, and (c) reassigning the result (`df = df.operation(...)`).
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); pandas documentation, "Comparison with
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28); polars 1.x User Guide and API
 > Reference (docs.pola.rs, accessed 2026-03-28); pyreadstat (github.com/Roche/pyreadstat,
 > accessed 2026-03-28); Stata manuals (stata.com/manuals, accessed 2026-03-28).
@@ -234,7 +235,8 @@ old name and the value is the new name.
 > `cast(pl.Float64, strict=False)` sets unparseable values to `null`.
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28);
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
 polars User Guide (docs.pola.rs, accessed 2026-03-28).
 
 ---
@@ -447,7 +449,7 @@ bysort state: egen sd_score = sd(test_score)
 # polars -- window functions via .over()
 df = df.with_columns(
     pl.len().over("state").alias("state_count"),                    # _N
-    pl.col("test_score").cum_count().over("state").alias("state_obs"),  # _n (0-based)
+    pl.int_range(1, pl.len() + 1).over("state").alias("state_obs"),     # _n (1-based)
     pl.col("test_score").mean().over("state").alias("mean_score"),
     pl.col("enrollment").sum().over("state").alias("total_enroll"),
     pl.col("test_score").std().over("state").alias("sd_score"),
@@ -485,7 +487,7 @@ variables available inside `by:` blocks. Polars equivalents:
 | Stata | polars | Notes |
 |-------|--------|-------|
 | `_N` (group size) | `pl.len().over("group")` | |
-| `_n` (row number in group) | `pl.col("x").cum_count().over("group")` | 0-based in polars vs 1-based in Stata |
+| `_n` (row number in group) | `pl.int_range(1, pl.len() + 1).over("group")` | 1-based, as in Stata; `pl.col("x").cum_count()` is also 1-based but skips nulls in `x` |
 | `_n == 1` (first in group) | `pl.int_range(pl.len()).over("group") == 0` | Or use `group_by().first()` |
 | `_n == _N` (last in group) | Manual: compare row index to group size | Or use `group_by().last()` |
 
@@ -572,7 +574,8 @@ df = df.sort("state_id", "year").with_columns(
 ```
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28);
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
 polars User Guide, "Window functions" (docs.pola.rs, accessed 2026-03-28); Notre Dame
 Library, "by, _n, _N" (libguides.library.nd.edu, accessed 2026-03-28); Poverty Action,
 "Sort, by, bysort, egen" (povertyaction.github.io, accessed 2026-03-28).
@@ -1103,7 +1106,8 @@ df.group_by("state").len().sort("len", descending=True)
 >   original column name but can be renamed with `.alias()`.
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28).
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28).
 
 ---
 

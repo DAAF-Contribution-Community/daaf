@@ -280,7 +280,7 @@ For complete spatial operation reference, see `spatial-operations.md`.
 
 ## References and Further Reading
 
-Jordahl, K. et al. (2024). *geopandas: Python tools for geographic data*. https://geopandas.org/
+Fleischmann, M., Van den Bossche, J., Jordahl, K., Richards, M.J., McBride, J., Wasserman, J., Ward, B., & Wolf, L.J. (2026). "GeoPandas: Fundamental Data Structures for Vector Spatial Data in Python." *Computers, Environment and Urban Systems*, 130, 102495. https://doi.org/10.1016/j.compenvurbsys.2026.102495
 
 Tenkanen, H., Heikinheimo, V., and Whipp, D. (2024). *Introduction to Python for Geographic Data Analysis*. CRC Press. https://pythongis.org/
 

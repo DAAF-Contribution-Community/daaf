@@ -51,7 +51,7 @@ result$dist <- st_distance(tracts, schools[nearest_idx, ], by_element = TRUE)
 result <- result[as.numeric(result$dist) <= 10000, ]  # 10 km max
 ```
 
-`st_nearest_feature` requires both sf objects in a projected CRS for meaningful distances.
+`st_nearest_feature` also works in EPSG:4326 while s2 is on (the sf default), and `st_distance` then returns meters (observed 2026-11-01, sf 1.1-0); with `sf_use_s2(FALSE)`, project first.
 
 ### Post-Join Validation
 

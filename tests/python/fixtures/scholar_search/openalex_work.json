@@ -1,0 +1,722 @@
+{
+ "id": "https://openalex.org/W1639391176",
+ "doi": "https://doi.org/10.1093/qje/qjv036",
+ "display_name": "The Effects of School Spending on Educational and Economic Outcomes: Evidence from School Finance Reforms *",
+ "publication_year": 2015,
+ "authorships": [
+  {
+   "author_position": "first",
+   "author": {
+    "id": "https://openalex.org/A5024307347",
+    "display_name": "C. Kirabo Jackson",
+    "orcid": "https://orcid.org/0000-0001-5322-740X",
+    "observed_orcids": [
+     "https://orcid.org/0000-0001-5322-740X"
+    ]
+   },
+   "institutions": [
+    {
+     "id": "https://openalex.org/I111979921",
+     "display_name": "Northwestern University",
+     "ror": "https://ror.org/000e0be47",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I111979921"
+     ]
+    },
+    {
+     "id": "https://openalex.org/I95457486",
+     "display_name": "University of California, Berkeley",
+     "ror": "https://ror.org/01an7q238",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ],
+   "countries": [
+    "US"
+   ],
+   "is_corresponding": false,
+   "raw_author_name": "C. Kirabo Jackson",
+   "raw_affiliation_strings": [
+    "Northwestern University and NBER UC Berkeley and NBER Northwestern University"
+   ],
+   "raw_orcid": null,
+   "affiliations": [
+    {
+     "raw_affiliation_string": "Northwestern University and NBER UC Berkeley and NBER Northwestern University",
+     "institution_ids": [
+      "https://openalex.org/I111979921",
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ]
+  },
+  {
+   "author_position": "middle",
+   "author": {
+    "id": "https://openalex.org/A5108231096",
+    "display_name": "Rucker C. Johnson",
+    "orcid": "https://orcid.org/0000-0002-3221-034X",
+    "observed_orcids": [
+     "https://orcid.org/0000-0002-3221-034X"
+    ]
+   },
+   "institutions": [
+    {
+     "id": "https://openalex.org/I111979921",
+     "display_name": "Northwestern University",
+     "ror": "https://ror.org/000e0be47",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I111979921"
+     ]
+    },
+    {
+     "id": "https://openalex.org/I95457486",
+     "display_name": "University of California, Berkeley",
+     "ror": "https://ror.org/01an7q238",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ],
+   "countries": [
+    "US"
+   ],
+   "is_corresponding": false,
+   "raw_author_name": "Rucker C. Johnson",
+   "raw_affiliation_strings": [
+    "Northwestern University and NBER UC Berkeley and NBER Northwestern University"
+   ],
+   "raw_orcid": null,
+   "affiliations": [
+    {
+     "raw_affiliation_string": "Northwestern University and NBER UC Berkeley and NBER Northwestern University",
+     "institution_ids": [
+      "https://openalex.org/I111979921",
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ]
+  },
+  {
+   "author_position": "last",
+   "author": {
+    "id": "https://openalex.org/A5012304167",
+    "display_name": "Claudia L. Persico",
+    "orcid": "https://orcid.org/0000-0002-0332-8509",
+    "observed_orcids": [
+     "https://orcid.org/0000-0002-0332-8509"
+    ]
+   },
+   "institutions": [
+    {
+     "id": "https://openalex.org/I111979921",
+     "display_name": "Northwestern University",
+     "ror": "https://ror.org/000e0be47",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I111979921"
+     ]
+    },
+    {
+     "id": "https://openalex.org/I95457486",
+     "display_name": "University of California, Berkeley",
+     "ror": "https://ror.org/01an7q238",
+     "country_code": "US",
+     "type": "education",
+     "lineage": [
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ],
+   "countries": [
+    "US"
+   ],
+   "is_corresponding": false,
+   "raw_author_name": "Claudia Persico",
+   "raw_affiliation_strings": [
+    "Northwestern University and NBER UC Berkeley and NBER Northwestern University"
+   ],
+   "raw_orcid": null,
+   "affiliations": [
+    {
+     "raw_affiliation_string": "Northwestern University and NBER UC Berkeley and NBER Northwestern University",
+     "institution_ids": [
+      "https://openalex.org/I111979921",
+      "https://openalex.org/I95457486"
+     ]
+    }
+   ]
+  }
+ ],
+ "primary_location": {
+  "id": "doi:10.1093/qje/qjv036",
+  "is_oa": false,
+  "landing_page_url": "https://doi.org/10.1093/qje/qjv036",
+  "pdf_url": null,
+  "source": {
+   "id": "https://openalex.org/S203860005",
+   "display_name": "The Quarterly Journal of Economics",
+   "issn_l": "0033-5533",
+   "issn": [
+    "0033-5533",
+    "1531-4650"
+   ],
+   "is_oa": false,
+   "is_in_doaj": false,
+   "is_core": true,
+   "listed_in": [
+    "abdc-a-star",
+    "cwts-core",
+    "jufo-3",
+    "norway-2"
+   ],
+   "host_organization": "https://openalex.org/P4310311648",
+   "host_organization_name": "Oxford University Press",
+   "host_organization_lineage": [
+    "https://openalex.org/P4310311648",
+    "https://openalex.org/P4310311647"
+   ],
+   "host_organization_lineage_names": [
+    "Oxford University Press",
+    "University of Oxford"
+   ],
+   "type": "journal"
+  },
+  "license": null,
+  "license_id": null,
+  "version": "publishedVersion",
+  "is_accepted": true,
+  "is_published": true,
+  "raw_source_name": "The Quarterly Journal of Economics",
+  "raw_type": "journal-article"
+ },
+ "cited_by_count": 811,
+ "abstract_inverted_index": {
+  "Abstract": [
+   0
+  ],
+  "Since": [
+   1
+  ],
+  "the": [
+   2,
+   22,
+   28,
+   34,
+   41,
+   46,
+   89,
+   92,
+   114,
+   177
+  ],
+  "Coleman": [
+   3
+  ],
+  "Report,": [
+   4
+  ],
+  "many": [
+   5
+  ],
+  "have": [
+   6
+  ],
+  "questioned": [
+   7
+  ],
+  "whether": [
+   8
+  ],
+  "public": [
+   9,
+   55,
+   156
+  ],
+  "school": [
+   10,
+   16,
+   50,
+   56,
+   64,
+   67,
+   109,
+   124,
+   157,
+   203,
+   216
+  ],
+  "spending": [
+   11,
+   39,
+   57,
+   65,
+   148,
+   194
+  ],
+  "affects": [
+   12
+  ],
+  "student": [
+   13
+  ],
+  "outcomes.": [
+   14
+  ],
+  "The": [
+   15
+  ],
+  "finance": [
+   17,
+   51,
+   68,
+   125
+  ],
+  "reforms": [
+   18,
+   96
+  ],
+  "that": [
+   19,
+   119,
+   141
+  ],
+  "began": [
+   20
+  ],
+  "in": [
+   21,
+   27,
+   40,
+   54,
+   145,
+   176,
+   201,
+   207,
+   211
+  ],
+  "early": [
+   23
+  ],
+  "1970s": [
+   24
+  ],
+  "and": [
+   25,
+   66,
+   81,
+   83,
+   97,
+   111,
+   130,
+   136,
+   170,
+   214
+  ],
+  "accelerated": [
+   26
+  ],
+  "1980s": [
+   29
+  ],
+  "caused": [
+   30
+  ],
+  "dramatic": [
+   31
+  ],
+  "changes": [
+   32,
+   53
+  ],
+  "to": [
+   33,
+   71,
+   123,
+   159
+  ],
+  "structure": [
+   35
+  ],
+  "of": [
+   36,
+   48,
+   91,
+   94,
+   101,
+   108,
+   117,
+   132,
+   155,
+   164,
+   180
+  ],
+  "K–12": [
+   37
+  ],
+  "education": [
+   38
+  ],
+  "United": [
+   42
+  ],
+  "States.": [
+   43
+  ],
+  "To": [
+   44
+  ],
+  "study": [
+   45,
+   135
+  ],
+  "effect": [
+   47
+  ],
+  "these": [
+   49
+  ],
+  "reform–induced": [
+   52
+  ],
+  "on": [
+   58,
+   76,
+   128
+  ],
+  "long-run": [
+   59
+  ],
+  "adult": [
+   60,
+   115,
+   181
+  ],
+  "outcomes,": [
+   61
+  ],
+  "we": [
+   62,
+   112
+  ],
+  "link": [
+   63
+  ],
+  "reform": [
+   69
+  ],
+  "data": [
+   70,
+   75
+  ],
+  "detailed,": [
+   72
+  ],
+  "nationally": [
+   73
+  ],
+  "representative": [
+   74
+  ],
+  "children": [
+   77,
+   189
+  ],
+  "born": [
+   78
+  ],
+  "between": [
+   79
+  ],
+  "1955": [
+   80
+  ],
+  "1985": [
+   82
+  ],
+  "followed": [
+   84
+  ],
+  "through": [
+   85
+  ],
+  "2011.": [
+   86
+  ],
+  "We": [
+   87
+  ],
+  "use": [
+   88
+  ],
+  "timing": [
+   90
+  ],
+  "passage": [
+   93
+  ],
+  "court-mandated": [
+   95
+  ],
+  "their": [
+   98
+  ],
+  "associated": [
+   99,
+   197
+  ],
+  "type": [
+   100
+  ],
+  "funding": [
+   102
+  ],
+  "formula": [
+   103
+  ],
+  "change": [
+   104
+  ],
+  "as": [
+   105
+  ],
+  "exogenous": [
+   106
+  ],
+  "shifters": [
+   107
+  ],
+  "spending,": [
+   110
+  ],
+  "compare": [
+   113
+  ],
+  "outcomes": [
+   116
+  ],
+  "cohorts": [
+   118
+  ],
+  "were": [
+   120,
+   196
+  ],
+  "differentially": [
+   121
+  ],
+  "exposed": [
+   122
+  ],
+  "reforms,": [
+   126
+  ],
+  "depending": [
+   127
+  ],
+  "place": [
+   129
+  ],
+  "year": [
+   131,
+   150
+  ],
+  "birth.": [
+   133
+  ],
+  "Event": [
+   134
+  ],
+  "instrumental": [
+   137
+  ],
+  "variable": [
+   138
+  ],
+  "models": [
+   139
+  ],
+  "reveal": [
+   140
+  ],
+  "a": [
+   142,
+   171
+  ],
+  "10%": [
+   143
+  ],
+  "increase": [
+   144
+  ],
+  "per": [
+   146
+  ],
+  "pupil": [
+   147
+  ],
+  "each": [
+   149
+  ],
+  "for": [
+   151,
+   188
+  ],
+  "all": [
+   152
+  ],
+  "12": [
+   153
+  ],
+  "years": [
+   154,
+   163
+  ],
+  "leads": [
+   158
+  ],
+  "0.31": [
+   160
+  ],
+  "more": [
+   161,
+   186
+  ],
+  "completed": [
+   162
+  ],
+  "education,": [
+   165
+  ],
+  "about": [
+   166
+  ],
+  "7%": [
+   167
+  ],
+  "higher": [
+   168
+  ],
+  "wages,": [
+   169
+  ],
+  "3.2": [
+   172
+  ],
+  "percentage": [
+   173
+  ],
+  "point": [
+   174
+  ],
+  "reduction": [
+   175
+  ],
+  "annual": [
+   178
+  ],
+  "incidence": [
+   179
+  ],
+  "poverty;": [
+   182
+  ],
+  "effects": [
+   183
+  ],
+  "are": [
+   184
+  ],
+  "much": [
+   185
+  ],
+  "pronounced": [
+   187
+  ],
+  "from": [
+   190
+  ],
+  "low-income": [
+   191
+  ],
+  "families.": [
+   192
+  ],
+  "Exogenous": [
+   193
+  ],
+  "increases": [
+   195,
+   210
+  ],
+  "with": [
+   198
+  ],
+  "notable": [
+   199
+  ],
+  "improvements": [
+   200
+  ],
+  "measured": [
+   202
+  ],
+  "inputs,": [
+   204
+  ],
+  "including": [
+   205
+  ],
+  "reductions": [
+   206
+  ],
+  "student-to-teacher": [
+   208
+  ],
+  "ratios,": [
+   209
+  ],
+  "teacher": [
+   212
+  ],
+  "salaries,": [
+   213
+  ],
+  "longer": [
+   215
+  ],
+  "years.": [
+   217
+  ]
+ },
+ "open_access": {
+  "is_oa": false,
+  "oa_status": "closed",
+  "oa_url": null,
+  "any_repository_has_fulltext": false
+ },
+ "type": "article",
+ "has_content": {
+  "grobid_xml": false,
+  "pdf": false
+ },
+ "content_urls": null,
+ "ids": {
+  "openalex": "https://openalex.org/W1639391176",
+  "doi": "https://doi.org/10.1093/qje/qjv036",
+  "mag": "1639391176"
+ },
+ "referenced_works_count": 104,
+ "is_retracted": false,
+ "_fixture_source": "live-wire capture, scholar_search S1 smoke 2026-10-02 (trimmed)"
+}

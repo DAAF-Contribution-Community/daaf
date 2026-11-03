@@ -96,7 +96,8 @@ cat(sprintf("Saved existing output to %s\n", output_path))
 ```
 Executed: 2026-01-24 14:32:05
 Exit code: 0
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```
 :::
 
@@ -135,7 +136,8 @@ cat(sprintf("Validated existing output at %s\n", cleaned_path))
 ```
 Executed: 2026-01-24 14:38:10
 Exit code: 0
-CP2 STATUS: PASSED
+Checks: 6 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP2 VALIDATION: PASSED
 ```
 :::
 
@@ -226,7 +228,8 @@ Rules:
 ```
 Executed: 2026-01-24 14:32:05
 Exit code: 0
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```
 :::
 ````

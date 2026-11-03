@@ -16,19 +16,21 @@ Includes:
 - Quasi-endowments (board-designated)
 - Funds functioning as endowment
 
-### Key Statistics (FY2024)
+### Key Statistics (FY2024) (FY2024 study; FY2025 study now available)
+
+Values as first released Feb. 12, 2025; the FY2025 study restates FY24 as $878.2B total, $30.1B withdrawals, $15.4B new gifts.
 
 | Metric | Value |
 |--------|-------|
 | Total assets (all participants) | $873.7 billion |
-| Mean market value | ~$1.3 billion |
+| Mean market value | ~$1.3 billion (illustrative; not from a published NACUBO table) |
 | Median market value | $243 million |
 | Institutions <$100M | ~30% of participants |
-| Institutions >$1B | ~20% of participants |
+| Institutions >$1B | ~20% of participants (illustrative; not from a published NACUBO table) |
 
 ### Distribution Characteristics
 
-The distribution of endowment market values is highly skewed:
+The distribution of endowment market values is highly skewed (illustrative; not from a published NACUBO table):
 - Top 10 institutions hold ~35% of total assets
 - Top 132 institutions (>$1B) hold ~84% of total assets
 - Bottom 200 institutions hold <2% of total assets
@@ -38,6 +40,8 @@ The distribution of endowment market values is highly skewed:
 Calculated as: Total Market Value / Full-Time Equivalent Students
 
 Useful for comparing endowment resources across different institution sizes.
+
+Percentiles below are illustrative; not from a published NACUBO table.
 
 | Percentile | Approximate Value |
 |------------|-------------------|
@@ -65,7 +69,7 @@ Returns are calculated as:
 | 10-year | Annualized average | Long-term benchmark (most cited) |
 | 25-year | Annualized average | Full market cycle |
 
-### Historical Return Data (FY2024 Study)
+### Historical Return Data (FY2024 study; FY2025 study now available)
 
 | Period | Average Return |
 |--------|----------------|
@@ -78,7 +82,7 @@ Returns are calculated as:
 | 10-year annualized | 6.8% |
 | 25-year annualized | 6.1% |
 
-### Returns by Size Category (FY24)
+### Returns by Size Category (FY24) (rows other than Over $5 Billion and Under $50M illustrative; not from a NACUBO table)
 
 | Size Category | 1-Year Return | 10-Year Return |
 |---------------|---------------|----------------|
@@ -146,7 +150,7 @@ Common policy types:
 | Metric | Value |
 |--------|-------|
 | Average effective spending rate | 4.8% |
-| Range by size category | 4.9% - 5.0% |
+| Published size-cohort rates | 5.0% ($51M-$100M and $251M-$500M, the highest); 4.9% (under $50M, $101M-$250M, over $5B — the release prints "over $50 billion", read here as the over-$5B cohort) |
 | Private institutions | 5.2% |
 | Public institutions | 4.2% |
 | IRF | 4.2% |
@@ -157,8 +161,8 @@ Common policy types:
 | Size Category | Effective Spending Rate |
 |---------------|------------------------|
 | Over $5 Billion | 4.9% |
-| $1B to $5B | 4.7% |
-| $501M to $1B | 4.8% |
+| $1B to $5B | not published in NACUBO FY24 press release |
+| $501M to $1B | not published in NACUBO FY24 press release |
 | $251M to $500M | 5.0% |
 | $101M to $250M | 4.9% |
 | $51M to $100M | 5.0% |
@@ -204,10 +208,7 @@ Formula: `Annual Withdrawals / Operating Budget × 100`
 |---------------|-----------------|
 | Over $5 Billion | 17.6% |
 | $1B to $5B | 18.9% |
-| $501M to $1B | 15.6% |
-| $251M to $500M | 11.2% |
-| $101M to $250M | ~12% |
-| Under $100M | ~10-11% |
+| Other five size cohorts | 11.2%–15.6% (range only; NACUBO FY24 press release does not attribute values to cohorts) |
 
 **Key Pattern**: Larger endowments contribute a greater share of operating budgets, but even small endowments provide meaningful support.
 
@@ -238,7 +239,7 @@ Endowments operate on the principle of **intergenerational equity**: preserving 
 
 ### Target Return Components
 
-For sustainable intergenerational equity, long-term returns should cover:
+For sustainable intergenerational equity, long-term returns should cover (illustrative; not from a published NACUBO table):
 
 | Component | Typical Target |
 |-----------|---------------|
@@ -249,6 +250,8 @@ For sustainable intergenerational equity, long-term returns should cover:
 | **Total Target** | **7-10%** |
 
 HEPI = Higher Education Price Index (often exceeds CPI)
+
+NACUBO-Commonfund (2025 NCSE summary): the conventional approach is CPI or HEPI + 5%; average target nominal return 7.3% (labelled "for FY24" in that summary).
 
 ### Underwater Endowments
 
@@ -276,7 +279,7 @@ Avoid comparing:
 
 Many institutions compare returns to a custom policy index reflecting their target asset allocation, rather than to other institutions.
 
-Common benchmark: 60/40 stock/bond portfolio
+Common benchmark: 60/40 stock/bond portfolio (60/40 column illustrative; not from a published NACUBO table)
 
 | Period | NCSE Average | 60/40 Benchmark |
 |--------|--------------|-----------------|
@@ -284,4 +287,4 @@ Common benchmark: 60/40 stock/bond portfolio
 | 5-year | 8.3% | ~7.5% |
 | 10-year | 6.8% | ~6.5% |
 
-Endowments have generally outperformed 60/40 due to alternative investments.
+Endowments have generally outperformed 60/40 due to alternative investments (illustrative; not from a published NACUBO table).

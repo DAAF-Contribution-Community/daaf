@@ -51,7 +51,7 @@ model = sample.glm.fit(
 | `"gaussian"` | Continuous outcome (linear regression) | Identity |
 | `"binomial"` | Binary outcome (logistic regression) | Logit |
 | `"poisson"` | Count outcome (Poisson regression) | Log |
-| `"gamma"` | Positive, right-skewed continuous outcome (e.g., costs, expenditures) | Inverse (canonical) — assumed default, not introspected; pass `link=` explicitly |
+| `"gamma"` | Positive, right-skewed continuous outcome (e.g., costs, expenditures) | Inverse (canonical) — verified default at 0.19.0 (matches R `svyglm(family = Gamma())`) |
 
 **Not supported in svy** (use the rpy2 bridge + R survey package):
 - Negative binomial
@@ -200,7 +200,7 @@ model = sample.glm.fit(
 )
 ```
 
-Gamma's canonical (inverse) link is assumed to be the default — this was not directly introspected, so pass `link=` explicitly rather than relying on the default. For cost models a `link="log"` is usually preferred so coefficients are interpretable as multiplicative rate effects.
+Gamma's default link is the canonical inverse link (verified 2026-11-01: `svy.regression.links.DEFAULT_LINKS` maps `"gamma"` to `"inverse"`, and default-link coefficients match R `svyglm(family = Gamma())` on a toy design). For cost models a `link="log"` is usually preferred so coefficients are interpretable as multiplicative rate effects.
 
 ---
 
@@ -322,15 +322,15 @@ for m in margins:
     print(m.to_polars())                     # ['term','margin','se','lci','uci']
 ```
 
-> **Quantified caveat + coverage gap (cross-validated 2026-07-15).** The continuous-predictor AME agrees with R `marginaleffects::avg_slopes()` to ~0.1% on the point estimate and ~0.9% on the SE — a small numerical-method difference (finite-difference / delta-method conventions), not a design error, so the continuous AME is safe to report. **The more important limitation is coverage:** `margins()` emits **only** continuous-predictor slopes. Categorical-level contrasts (e.g., a gender effect) are **absent** from its output — the returned `list[GLMMargins]` contains only the continuous term(s). Compute categorical-level contrasts from the coefficient table (`model.to_polars()`) or in R (`avg_slopes()` reports them). Evidence: `/daaf/scripts/scratch/xval_svy_r_05_compare.py`.
+> **Quantified caveat + coverage gap (cross-validated 2026-07-15).** The continuous-predictor AME agrees with R `marginaleffects::avg_slopes()` to ~0.1% on the point estimate and ~0.9% on the SE — a small numerical-method difference (finite-difference / delta-method conventions), not a design error, so the continuous AME is safe to report. **The more important limitation is coverage:** `margins()` emits **only** continuous-predictor slopes. Categorical-level contrasts (e.g., a gender effect) are **absent** from its output — the returned `list[GLMMargins]` contains only the continuous term(s). Compute categorical-level contrasts from the coefficient table (`model.to_polars()`) or in R (`avg_slopes()` reports them). Evidence: `/daaf/scripts/smoke_tests/xval_svy_survey_r/xval_svy_r_05_compare.py`.
 
 ---
 
 ## Cross-Validating Inference (p-values / margins vs. R)
 
-GLM inference has been cross-validated against R (2026-07-15; evidence `/daaf/scripts/scratch/xval_svy_r_05_compare.py`):
+GLM inference has been cross-validated against R (2026-07-15; evidence `/daaf/scripts/smoke_tests/xval_svy_survey_r/xval_svy_r_05_compare.py`, with its svy and R inputs beside it):
 
-1. **Coefficients, SEs, p-values, and residual df** — verified equal to R `survey::svyglm(family=quasibinomial()/quasipoisson())` to **<1e-6 relative** on a matched stratified-clustered design (24 PSUs, Taylor variance, logistic + Poisson). The df convention is identical: `df = degf(design) − n_predictors`, and both use a **t-statistic on that df** (no t-vs-z discrepancy). The historical upstream issue-#5 report of "slightly different p-values" did **not** reproduce at 0.19.0; it plausibly originated from comparing svy against R `family=binomial()` (normal / z-based) rather than `quasibinomial()` — *labeled inference, not tested (only `quasibinomial()` was compared here).*
+1. **Coefficients, SEs, p-values, and residual df** — verified equal to R `survey::svyglm(family=quasibinomial()/quasipoisson())` to **<1e-6 relative** on a matched stratified-clustered design (24 PSUs, Taylor variance, logistic + Poisson). The df convention is identical: `df = degf(design) − n_predictors`, and both use a **t-statistic on that df** (no t-vs-z discrepancy). The historical upstream issue-#5 report of "slightly different p-values" did **not** reproduce at 0.19.0, and its cause is not known. R's `family=binomial()` does not explain it: in survey 4.5, `summary()` of a `svyglm(family = binomial())` fit reports the same t statistics and p-values on the residual df as `quasibinomial()` (observed 2026-11-01).
 2. **`margins()`** — continuous-predictor AME matches R `marginaleffects::avg_slopes()` to ~0.1% (point) / ~0.9% (SE); see "Marginal Effects" for the caveat and the categorical-contrast coverage gap.
 
 The verification used one synthetic design (24 PSUs, one 2-level categorical, quasi-families only), so the recipe below is now a **spot-check** rather than a mandatory pre-publication gate: for extraordinary designs (many strata, extreme weights, multi-level categorical predictors) still spot-check inference-critical results against R. The rpy2 bridge below is the in-process way to do this; a parallel standalone R script using `survey::svyglm()` on the same design is equally valid (and often cleaner for the audit trail).

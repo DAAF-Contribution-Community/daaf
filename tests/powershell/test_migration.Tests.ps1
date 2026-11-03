@@ -15,6 +15,28 @@ Describe "test_migration.ps1 syntax" {
         $errors = Test-ScriptSyntax -Path "$RepoRoot/scripts/host/test_migration.ps1"
         $errors | Should -BeNullOrEmpty
     }
+
+    It "G6 (dispatch #63): sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        # pwsh 7.4+ only: a native nonzero exit must never become an error record or a
+        # throw (the harness reads $LASTEXITCODE itself); unused on Windows PowerShell 5.1.
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile("$RepoRoot/scripts/host/test_migration.ps1", [ref]$tokens, [ref]$parseErrors)
+        @($parseErrors).Count | Should -Be 0
+        $assign = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $ast.EndBlock
+        $stmts = @($ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
 }
 
 Describe "test_migration.ps1 pure helper functions (tm_*)" {
@@ -369,5 +391,147 @@ Describe "test_migration.ps1 field-run 6 ownership-window pins" {
         # never the swallowing Invoke-ContainerGit.
         ([regex]::Matches($script:HarnessText, [regex]::Escape('Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }')).Count) | Should -Be 2
         ([regex]::Matches($script:HarnessText, [regex]::Escape('git -C /daaf commit -m')).Count) | Should -Be 2
+    }
+}
+
+# Review 51q NIT-2: the Era 1/2 project-name guard runs before any docker call or
+# file write, so the harness is run for real here. The message shows
+# DAAF_PROJECT_NAME as typed, plus the normalized name when the two differ. The
+# harness runs with ErrorActionPreference Stop, so its Write-Error is a terminating
+# error that its own trap re-throws; catching it in-process reads the exact message
+# (a child process would render it through the console's wrapped error view).
+Describe "test_migration.ps1 Era 1/2 project-name guard message" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:GuardKeys = @('DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA', 'DAAF_TEST_VERSION', 'DAAF_PROJECT_NAME', 'DAAF_NESTED', 'DAAF_DATA_VOLUME_NAME')
+        $script:SavedGuardEnv = @{}
+        foreach ($k in $script:GuardKeys) { $script:SavedGuardEnv[$k] = [Environment]::GetEnvironmentVariable($k, "Process") }
+    }
+    AfterAll {
+        foreach ($k in $script:GuardKeys) { [Environment]::SetEnvironmentVariable($k, $script:SavedGuardEnv[$k], "Process") }
+    }
+    BeforeEach {
+        foreach ($k in $script:GuardKeys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
+        $env:DAAF_NESTED = "1"
+    }
+
+    It "refuses '<Raw>' on <Version> with '<Got>'" -ForEach @(
+        @{ Raw = 'Work'; Version = 'v2.0.1'; Era = '2'; Got = "(got: 'Work', which Docker Compose uses as 'work')." }
+        @{ Raw = 'daaf2'; Version = 'v1.0.0'; Era = '1'; Got = "(got: 'daaf2')." }
+    ) {
+        $env:DAAF_PROJECT_NAME = $Raw
+        $env:DAAF_TEST_VERSION = $Version
+        $caught = $null
+        $out = $null
+        try { $out = & "$RepoRoot/scripts/host/test_migration.ps1" *>&1 | Out-String } catch { $caught = $_ }
+        $caught | Should -Not -BeNullOrEmpty -Because "the guard must refuse (output: $out)"
+        $caught.Exception.Message | Should -BeExactly "Era $Era replays a pathway that predates DAAF_PROJECT_NAME; only the default 'daaf' project is supported $Got"
+    }
+}
+
+# Phase 1 deletes the install named by DAAF_PROJECT_NAME, so the harness lists the
+# names and asks y/N first; only y or Y continues. The harness runs as a child pwsh
+# with redirected stdin and a logging `docker` stub first on PATH, on an era-3
+# branch vector with a throwaway project name. A refusal must leave the stub log
+# free of rm/rmi calls. The stub is a bash script, so these run on Linux and macOS.
+Describe "test_migration.ps1 deletion confirmation" -Skip:(-not $IsLinux -and -not $IsMacOS) {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:StubBin = Join-Path $TestDrive 'bin'
+        $null = New-Item -ItemType Directory -Path $script:StubBin -Force
+        $script:DockerLog = Join-Path $TestDrive 'docker_argv.log'
+        $stub = Join-Path $script:StubBin 'docker'
+        Set-Content -LiteralPath $stub -Value @(
+            '#!/usr/bin/env bash',
+            'printf ''%s\n'' "$*" >> "$TM_STUB_DOCKER_LOG"',
+            'exit 0'
+        )
+        & chmod +x $stub
+        $script:HarnessPath = "$RepoRoot/scripts/host/test_migration.ps1"
+        $script:HostExe = (Get-Process -Id $PID).Path
+    }
+
+    It "refuses on '<Label>' input and runs no docker rm/rmi" -ForEach @(
+        @{ Label = 'n'; Answer = "n`n" }
+        @{ Label = 'empty'; Answer = "`n" }
+        @{ Label = 'end-of-file'; Answer = '' }
+    ) {
+        Set-Content -LiteralPath $script:DockerLog -Value $null
+        $inFile = Join-Path $TestDrive 'stdin.txt'
+        [System.IO.File]::WriteAllText($inFile, $Answer)
+        $outFile = Join-Path $TestDrive 'out.txt'
+        $errFile = Join-Path $TestDrive 'err.txt'
+        $saved = @{}
+        $keys = @('PATH', 'TMPDIR', 'TM_STUB_DOCKER_LOG', 'DAAF_TEST_VERSION', 'DAAF_PROJECT_NAME', 'DAAF_TEST_MIGRATION_CONFIRM', 'DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA', 'DAAF_NESTED')
+        foreach ($k in $keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+        try {
+            foreach ($k in @('DAAF_TEST_MIGRATION_CONFIRM', 'DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA')) { [Environment]::SetEnvironmentVariable($k, $null, 'Process') }
+            $env:PATH = $script:StubBin + [System.IO.Path]::PathSeparator + $saved['PATH']
+            $env:TMPDIR = [string]$TestDrive
+            $env:TM_STUB_DOCKER_LOG = $script:DockerLog
+            $env:DAAF_TEST_VERSION = 'daaf_dev'
+            $env:DAAF_PROJECT_NAME = 'pesterstub'
+            $env:DAAF_NESTED = '1'
+            $proc = Start-Process -FilePath $script:HostExe -ArgumentList @('-NoProfile', '-File', $script:HarnessPath) -NoNewWindow -PassThru `
+                -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+            $null = $proc.Handle
+            $proc.WaitForExit()
+            $rc = $proc.ExitCode
+        } finally {
+            foreach ($k in $keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+        }
+        $out = (Get-Content -Raw -LiteralPath $outFile) + (Get-Content -Raw -LiteralPath $errFile)
+        $rc | Should -Be 1 -Because "a refusal exits 1 (output: $out)"
+        $out | Should -Match ([regex]::Escape("This test deletes the DAAF install 'pesterstub' before it starts:"))
+        $out | Should -Match ([regex]::Escape('Nothing was deleted.'))
+        $out | Should -Match ([regex]::Escape('first run: $env:DAAF_TEST_MIGRATION_CONFIRM = "yes"'))
+        $out | Should -Not -Match ([regex]::Escape("Removing the DAAF install"))
+        $logged = @(Get-Content -LiteralPath $script:DockerLog | Where-Object { $_ -match '^(rm|volume rm|rmi) ' })
+        $logged.Count | Should -Be 0 -Because "no deletion may run (docker calls: $(Get-Content -Raw -LiteralPath $script:DockerLog))"
+    }
+
+    # Positive control for the refusal cases: on 'y' the same stub log records the
+    # deletion. After Phase 1 the era-3 path's first network call is
+    # Invoke-WebRequest; a wrapper script shadows it with a throwing function and
+    # calls the harness with &, so the run stops there with no network access.
+    It "deletes the named install on 'y', then prints the work-folder delete hint" {
+        Set-Content -LiteralPath $script:DockerLog -Value $null
+        $inFile = Join-Path $TestDrive 'stdin_y.txt'
+        [System.IO.File]::WriteAllText($inFile, "y`n")
+        $outFile = Join-Path $TestDrive 'out_y.txt'
+        $errFile = Join-Path $TestDrive 'err_y.txt'
+        $wrapper = Join-Path $TestDrive 'harness_no_network.ps1'
+        Set-Content -LiteralPath $wrapper -Value @(
+            'function Invoke-WebRequest { throw "test stub: network disabled" }',
+            "& '$($script:HarnessPath)'",
+            'exit $LASTEXITCODE'
+        )
+        $saved = @{}
+        $keys = @('PATH', 'TMPDIR', 'TM_STUB_DOCKER_LOG', 'DAAF_TEST_VERSION', 'DAAF_PROJECT_NAME', 'DAAF_TEST_MIGRATION_CONFIRM', 'DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA', 'DAAF_NESTED')
+        foreach ($k in $keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+        try {
+            foreach ($k in @('DAAF_TEST_MIGRATION_CONFIRM', 'DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA')) { [Environment]::SetEnvironmentVariable($k, $null, 'Process') }
+            $env:PATH = $script:StubBin + [System.IO.Path]::PathSeparator + $saved['PATH']
+            $env:TMPDIR = [string]$TestDrive
+            $env:TM_STUB_DOCKER_LOG = $script:DockerLog
+            $env:DAAF_TEST_VERSION = 'daaf_dev'
+            $env:DAAF_PROJECT_NAME = 'pesterstub'
+            $env:DAAF_NESTED = '1'
+            $proc = Start-Process -FilePath $script:HostExe -ArgumentList @('-NoProfile', '-File', $wrapper) -NoNewWindow -PassThru `
+                -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+            $null = $proc.Handle
+            $proc.WaitForExit()
+            $rc = $proc.ExitCode
+        } finally {
+            foreach ($k in $keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+        }
+        $out = (Get-Content -Raw -LiteralPath $outFile) + (Get-Content -Raw -LiteralPath $errFile)
+        $rc | Should -Not -Be 0 -Because "the stubbed download stops the run (output: $out)"
+        $out | Should -Match ([regex]::Escape("Removing the DAAF install 'pesterstub'..."))
+        $out | Should -Match ([regex]::Escape('test stub: network disabled'))
+        $out | Should -Match ([regex]::Escape("(Delete manually when done inspecting: Remove-Item -Recurse -Force '"))
+        $out | Should -Match '(?m)^TEST_MIGRATION_SUMMARY vector=daaf_dev '
+        $logged = @(Get-Content -LiteralPath $script:DockerLog | Where-Object { $_ -eq 'volume rm pesterstub_daaf-data' })
+        $logged.Count | Should -Be 1 -Because "the data volume is deleted once (docker calls: $(Get-Content -Raw -LiteralPath $script:DockerLog))"
     }
 }

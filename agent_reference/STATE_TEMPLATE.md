@@ -25,19 +25,21 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | **Plan Tasks Location** | `research/[folder]/[filename]_Plan_Tasks.md` |
 | **Current Phase** | [1-5]: [Phase Name] |
 | **Current Stage** | [1-12]: [Stage Name] |
-| **Status** | [In Progress / Blocked / Complete] |
+| **Status** | [In Progress / Awaiting Confirmation / Blocked / Complete] (Awaiting Confirmation: a user checkpoint was presented and the user has not yet answered it; Next Actions > Pending User Input names it) |
 
 ---
 
 ## Session Metadata
 
-> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md.
+> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md; Provider Route and Model Settings are found as `AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route says.
 
 | Field | Value |
 |-------|-------|
 | **DAAF Version (at setup)** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup. Recorded once at setup; NOT refreshed to current HEAD on later sessions. A session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD] |
 | **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
+| **Provider Route** | [Anthropic subscription / Anthropic API key / OpenAI API via DAAF provider shim / ChatGPT subscription via DAAF provider shim / OpenRouter / AWS Bedrock / Google Vertex AI] |
+| **Model Settings** | [Settings that reach the model on this route, recorded with it: Anthropic routes, "reasoning effort [`effortLevel` value]"; provider-shim routes, the shim's reasoning effort per model tier and its response verbosity; other routes, "[Not recorded]". The AI disclosure's Parameters line reads this field] |
 | **Execution Language** | [Python or R — from CLAUDE.md User Preferences] |
 | **Session Date(s)** | [Date(s) of analysis sessions — e.g., "2026-02-11"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
@@ -48,27 +50,56 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### Primary Validation (CP1-CP4)
 
-| Checkpoint | Status | Timestamp | Notes |
-|------------|--------|-----------|-------|
-| CP1 (Post-Fetch) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP2 (Post-Clean) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP3 (Post-Transform) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP4 (Pre-Output) | [PENDING/PASSED/FAILED] | [time] | [notes] |
+> Record the verdict **and** the counts from each checkpoint's count line. A verdict without counts cannot be distinguished later from a pass over checks that never ran.
+
+| Checkpoint | Verdict | Passed | Warnings | Failed | Not Verified | Skipped | Timestamp | Notes |
+|------------|---------|--------|----------|--------|--------------|---------|-----------|-------|
+| CP1 (Post-Fetch) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes; reasons for any skipped or not-verified checks] |
+| CP2 (Post-Clean) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CP3 (Post-Transform) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CP4 (Post-Analysis & Viz, Stage 8) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+
+**CP Verdict Values** (from the `CP{n} VALIDATION:` line in the script's execution log):
+- **PENDING** — the checkpoint has not executed yet
+- **PASSED** — every check ran and held; `failed` and `not verified` are both 0
+- **PASSED WITH WARNINGS** — every check ran, one or more reported a non-fatal deviation; passes the gate, maps to a reported status of `WARNING`, and is not a clean pass. The warnings carry forward to the Stage 10 QA aggregation
+- **FAILED** — one or more checks failed, **or one or more could not be verified**. A `not verified` count above zero forces FAILED regardless of the other counters: a validation gate that could not obtain its evidence has not gated. The script raises, so the transformation does not complete. Resolve by supplying the missing input, correcting the checkpoint configuration, or declaring the check not applicable with a written reason (which moves it to `skipped`) — see `agent_reference/ERROR_RECOVERY.md`
+
+### Pre-Output Verification (Stage 12)
+
+> Recorded in its own table because its outcomes are neither the CP nor the QA enum: Pre-Output
+> Verification is a data-verifier checklist over Plan commitments (`agent_reference/VALIDATION_CHECKPOINTS.md`
+> § Pre-Output Verification (Stage 12)), so its four counts — verified, deviations, not verified, not
+> applicable — do not fit the CP table's Passed/Warnings/Failed/Not Verified/Skipped columns. No line
+> here carries a `CP4` token.
+
+| Checkpoint | Aggregate | Verified | Deviations | Not Verified | Not Applicable | Timestamp | Notes |
+|------------|-----------|----------|------------|--------------|----------------|-----------|-------|
+| Pre-Output Verification (PO.1-PO.4) | [PENDING/VERIFIED/DEVIATIONS FOUND/NOT VERIFIED] | [n] | [n] | [n] | [n] | [time] | [which items deviated or could not be checked, and why] |
+
+**Aggregate Values** (from the `PRE-OUTPUT VERIFICATION:` line in the data-verifier report):
+- **PENDING** — Stage 12 verification has not run yet
+- **VERIFIED** — every item was checked against its artifact and the commitment was met; `deviations` and `not verified` are both 0
+- **DEVIATIONS FOUND** — every item was checked and one or more departed from the Plan. A major deviation blocks delivery; a minor one is acceptable when the Report documents it
+- **NOT VERIFIED** — one or more items could not be checked (Plan section absent, artifact missing). Zero items assessed is also NOT VERIFIED — an unchecked deliverable is never a clean pass
 
 ### Secondary Validation (QA1-QA4b)
 
-| Checkpoint | Stage | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
-|------------|-------|--------|----------|----------|-----------|-----------|
-| QA1 (Post-Fetch) | 5 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA2 (Post-Clean) | 6 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA3 (Post-Transform) | 7 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA4a (Post-Analysis) | 8.1 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA4b (Post-Viz) | 8.2 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
+| Checkpoint | Stage | Result | Passed | Warnings | Blockers | Not Verified | Skipped | Info | Revisions | Timestamp |
+|------------|-------|--------|--------|----------|----------|--------------|---------|------|-----------|-----------|
+| QA1 (Post-Fetch) | 5 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA2 (Post-Clean) | 6 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA3 (Post-Transform) | 7 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA4a (Post-Analysis) | 8.1 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA4b (Post-Viz: visualization scripts and analysis scripts that draw figures) | 8.1, 8.2 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
 
-**QA Status Values:**
+**QA Result Values** (from the `QA{n} RESULT:` line in the code-reviewer's return):
 - **PENDING** — QA checkpoint not yet executed for this stage
-- **PASSED** — All scripts passed QA review (no BLOCKERs, WARNINGs logged)
-- **ISSUES** — BLOCKERs resolved via revision, or WARNINGs logged
+- **PASSED** — every default check for this stage ran on real inputs and held, with its evidence on the line; `blockers`, `warnings`, and `not verified` are all 0. PASSED does **not** mean "no BLOCKERs were raised" — a stage with unverified checks is not PASSED
+- **WARNING** — the stage progresses, but something is on the record: a non-fatal deviation, **or a check that could not be verified** (`not verified > 0` forces at least WARNING), or a run in which zero substantive checks executed
+- **BLOCKER** — a revision-required finding. A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
+
+**Recording NOT VERIFIED and SKIPPED.** For every checkpoint with `not verified > 0`, add a row under QA Findings Summary > "Checks Not Verified or Skipped" naming each unverified check, what input was missing, and the reviewer's escalation decision (left at WARNING, or escalated to BLOCKER because the Plan had promised the input). For every checkpoint with `skipped > 0`, record the declared reason per check.
 
 **Note:** This table provides an aggregate summary per stage. Per-script QA tracking (which gates individual script progression) is recorded in the **Transformation Progress** table below, where each row tracks one script's independent QA status.
 
@@ -86,13 +117,15 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 - [Warning 1 from plan-checker]
 - [Warning 2 from plan-checker]
 
-**Blockers (if BLOCKED and unresolved):**
+**Blockers (if ISSUES_FOUND and unresolved):**
 - [Blocker description]
 
-**Gate G4.5 Status:** [OPEN / SATISFIED]
+**Gate G4.5 Status:** [NOT SATISFIED / SATISFIED]
 
-> **CRITICAL:** Stage 5 CANNOT begin until Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS.
-> If this section shows NOT_RUN, invoke plan-checker before proceeding.
+> **CRITICAL:** Gate G4.5 is SATISFIED only when both conditions hold: Plan-Checker Status is PASSED or
+> PASSED_WITH_WARNINGS, **and** the user has confirmed the plan checkpoint (PSU2), recorded in Key
+> Decisions Made. Stage 5 CANNOT begin until then. If this section shows NOT_RUN, invoke plan-checker
+> before proceeding. Gate definition: `full-pipeline-mode.md` § Stage Gates (Cannot Proceed Without).
 
 ---
 
@@ -105,8 +138,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Analysis Data | `data/processed/[filename]` | [count] | [ready/pending] |
 
 **Suppression Rate:** [X%]
-**Data Lag:** [None / X years]
-**COVID Years Included:** [Yes/No]
+**Data Lag** (one line per source, from that source's CP1 year-freshness check):
+- [Source]: latest year available [YYYY]; years requested but missing [None / list of years]
+**Flagged Years** (one line per source, from that source's CP1 flagged-years check against the Plan's Flag Years; the education default flags the COVID years 2020 and 2021):
+- [Source]: flagged years present in the fetched data [None / list of years]
 
 ---
 
@@ -122,7 +157,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Key Decisions Made
 
-> **Planning-phase decisions** are in Plan.md `## Decisions Log` (frozen at Stage 4.5). All **runtime decisions** made during Stages 5-12 are recorded here.
+> **Planning-phase decisions** are in Plan.md `## Decisions Log` (frozen at Stage 4.5). Record here all **runtime decisions** made during Stages 5-12, and one row per user checkpoint: the user's answer and any changes they asked for. The first checkpoint (after discovery) is confirmed before STATE.md exists: add its row when STATE.md is created at Stage 4.
 
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
@@ -133,20 +168,20 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ## Transformation Progress
 
-*For Stage 5-8 tracking (includes QA substages). Each row tracks ONE script with its independent QA status. A row with QA Status = NOT_RUN blocks the next script invocation.*
+*For Stage 5-8 tracking (includes QA substages). Each row tracks ONE script with its independent QA status. A row with QA Status = NOT_RUN blocks the next wave.*
 
 | # | Transformation | Script Path | CP Status | QA Status | QA Script Path | QA Depth | Revisions | Pre-Rows | Post-Rows | Notes |
 |---|----------------|-------------|-----------|-----------|----------------|----------|-----------|----------|-----------|-------|
-| 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
-| 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
-| 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
-| 4 | Regression: poverty | `scripts/stage8_analysis/01_regression-poverty.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_01_cra1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4a (statistical validity) |
-| 5 | Enrollment trends plot | `scripts/stage8_analysis/02_enrollment-trends.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_02_crb1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4b (visualization quality) |
+| 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 4 | Regression: poverty | `scripts/stage8_analysis/01_regression-poverty.py` | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_01_cra1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4a (statistical validity) |
+| 5 | Enrollment trends plot | `scripts/stage8_analysis/02_enrollment-trends.py` | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_02_crb1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4b (visualization quality) |
 
 > **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language. Stages 5-7 use the standard QA suffix `_cr{N}` (e.g., `stage5_01_cr1`), but **Stage 8 uses the split-QA suffix**: `_cra{N}` for QA4a (analysis/statistical review) and `_crb{N}` for QA4b (visualization review) — e.g., `stage8_01_cra1` and `stage8_02_crb1`, per `agent_reference/QA_CHECKPOINTS.md`.
 
 **QA Status Values:**
-- **NOT_RUN** — code-reviewer has not been invoked for this script (blocks next script invocation)
+- **NOT_RUN** — code-reviewer has not been invoked for this script (blocks the next wave)
 - **PENDING** — QA review invoked but not yet completed for this script
 - **PASSED** — QA review passed for this script (no issues)
 - **WARNING** — QA found non-blocking issues for this script (logged for Stage 10 aggregation)
@@ -191,9 +226,12 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 |----------|------|-------|-----------|
 | Data Access Retries | [X] | 9 | [Y] |
 | Code Attempts | [X] | 6 | [Y] |
+| **QA BLOCKER Revisions** | [X] | 8 | [Y] |
+| **QA Methodology Issues** | [X] | 2 | [Y] |
 | Subagent Re-invocations | [X] | 9 | [Y] |
 | STOP Conditions | [X] | 3 | [Y] |
-| **QA Escalations** | [X] | 3 | [Y] |
+
+> Limits match `agent_reference/ERROR_RECOVERY.md` § Session Error Budget > Budget Limits, which is canonical. The orchestrator reads this section at Step 0 of each execution cycle (§ Budget Read-Gating there): a row with Remaining at 0 or below means STOP and follow the Budget Exhaustion Protocol there, not the next dispatch.
 
 ---
 
@@ -227,14 +265,14 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### QA Checkpoint Summary
 
-| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
-|------------|-------|------------------|----------|----------|-------|-------------------|
-| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
-| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
-| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
-| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
-| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
-| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
+| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | NOT VERIFIED | SKIPPED | INFOs | Revisions Applied |
+|------------|-------|------------------|----------|----------|--------------|---------|-------|-------------------|
+| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA4b (Post-Viz: visualization scripts and analysis scripts that draw figures) | 8.1, 8.2 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] |
 
 ### BLOCKERs Resolved
 
@@ -252,6 +290,14 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 |-------|--------|---------|--------------------|
 | [N] | [filename.py] | [Warning description] | [Why acceptable] |
 
+### Checks Not Verified or Skipped
+
+*One row per check that could not run. An empty table means every planned check ran on real data, and it should say so rather than be omitted. This table is the source for the limitations the report must disclose at Stage 11.*
+
+| Stage | Checkpoint | Check (key) | Outcome | What Was Missing / Declared Reason | Escalation Decision |
+|-------|-----------|-------------|---------|-------------------------------------|---------------------|
+| [N] | [CP{n} / QA{n}] | [e.g., `suppression_rate`] | [NOT VERIFIED / SKIPPED] | [e.g., "no suppression_code declared in the Plan's Domain Configuration"] | [Left at WARNING / Escalated to BLOCKER because … / N/A for SKIPPED] |
+
 ### Unresolved Issues
 
 *Document any QA issues that could not be fully resolved.*
@@ -264,10 +310,31 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ---
 
+## Pre-Flight Scope Check
+
+> Copied at creation from `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the user confirmed the pre-flight (Gate G1; `full-pipeline-mode.md` § Pre-Flight Checklist > On Confirmation (Gate G1)). The data-planner receives it as `CONFIRMED PRE-FLIGHT SCOPE:` and `USER-REFERENCED MATERIALS:`. Cite the materials by their paths in the project; a staged path appears only in the dated move line, which is a historical record.
+
+**Confirmed:** [YYYY-MM-DD]
+**Confirmed scope:** [research question, data sources, years, geography, as confirmed — including the user's adjustments]
+**What changed from the original request:** [as confirmed, or "Nothing"]
+**Decisions:** [each decision with the user's answer, or "None"]
+
+| Material | Path in project | What it shapes |
+|----------|-----------------|----------------|
+| [title or URL] | [`web_fetches/...`, `papers/...`, `output/preliminary_notes/{date}_{slug}_materials-digest.md`, or the user's own path] | [one line] |
+
+**Moves (old → new):** [YYYY-MM-DD: each staged path → its path in the project, or "Nothing was staged"]
+
+---
+
 ## Discovery Preliminary Notes
 
-> Orchestrator writes lossless agent findings to disk as preliminary notes files
-> immediately upon receiving each discovery-phase agent's return. These files
+> Each discovery-phase agent's lossless findings are on disk as a preliminary
+> notes file before the next stage: search-agent (Stage 2) and source-researcher
+> (Stage 3) write their own notes at the dispatch-named path, which the
+> orchestrator confirms and never overwrites (it persists one only if it came
+> back inline); the orchestrator writes research-synthesizer's (Stage 3.5)
+> immediately upon its return. These files
 > persist the full agent output (zero compression) and are referenced by
 > downstream agents (data-planner, plan-checker, data-verifier) for full-fidelity
 > access to discovery findings. Gate conditions prevent downstream stages from
@@ -281,7 +348,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 **Status Values:**
 - **PENDING** — Agent not yet dispatched or return not yet persisted
-- **WRITTEN** — File exists on disk with full lossless agent return
+- **WRITTEN** — File exists on disk with the agent's full lossless findings (agent-written notes, or the full return the orchestrator persisted)
 
 **Note:** Add one row per source-researcher dispatch (one per data source). All rows must show WRITTEN before Stage 4 can proceed.
 
@@ -308,25 +375,55 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Library | Citation | Rationale | Stage | Script |
 |---------|----------|-----------|-------|--------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
-| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format (Python projects) | — | — |
+| DAAF | Kim, B.H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
+| marimo | Agrawal, A., & Scolnick, M. (2023). *marimo - an open-source reactive notebook for Python* [Computer software]. https://doi.org/10.5281/zenodo.12735329 | Analysis notebook format (Python projects) | — | — |
 
 > **Language-conditional pre-population:** For Python projects, pre-populate the marimo row above. For R projects, replace the marimo row with R, Quarto, and tidyverse:
-> - R Core Team (2025). R: A Language and Environment for Statistical Computing. https://www.R-project.org/
-> - Allaire, J.J. et al. Quarto: An Open-Source Scientific and Technical Publishing System. https://quarto.org/
-> - Wickham, H. et al. (2019). "Welcome to the Tidyverse." JOSS, 4(43), 1686.
+> - R Core Team (2026). R: A Language and Environment for Statistical Computing (Version 4.5.3) [Computer software]. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/ (year and version as `citation()` and `R --version` report them for the image's R; update both when the Dockerfile's `R_VERSION` changes)
+> - Allaire, J.J., Teague, C., Scheidegger, C., Xie, Y., Dervieux, C., & Woodhull, G. (2026). Quarto (Version 1.10) [Computer software]. https://doi.org/10.5281/zenodo.5960048
+> - Wickham, H. et al. (2019). "Welcome to the Tidyverse." *Journal of Open Source Software*, 4(43), 1686. https://doi.org/10.21105/joss.01686
 
 ### Reporting Standards
 
 | Standard | Citation | Rationale | Stage | Script |
 |----------|----------|-----------|-------|--------|
-| GUIDE-LLM | Feuerriegel, S. et al. (2026). "Generative AI Models in Science: Risks and Opportunities -- The GUIDE-LLM Checklist." | AI disclosure framework | — | — |
+| GUIDE-LLM | Feuerriegel, S. et al. (2026). "A Reporting Checklist for Large Language Models in Behavioural Science." *Nature Human Behaviour*, 10(7), 1182-1186. https://doi.org/10.1038/s41562-026-02492-7 | AI disclosure framework | — | — |
 
 ---
 
 ## Final Review Log
 
-*Completed during Phase 5, Stage 12 by data-verifier.*
+*The orchestrator writes this whole section: the two subsections below from Stage 9 onward, the rest at Stage 12 from data-verifier's return (data-verifier has no Write tool).*
+
+### Stage 9 Check Evidence (notebook-assembler Step 6)
+
+> Orchestrator records this from notebook-assembler's Stage 9 return
+> (`WORKFLOW_PHASE4_ANALYSIS.md` § Stage 9, "Render and export evidence for
+> Stage 12"). data-verifier reads it at Stage 12 and never re-runs the export,
+> render or decompiler (a read-only `marimo check` is allowed; data-verifier
+> anti-pattern 8).
+> Fill the row for the project's language; mark the other N/A.
+
+| Check | Result (quoted from the return) | Output Path | Recorded At (ISO timestamp of the run) |
+|-------|---------------------------------|-------------|----------------------------------------|
+| Python: `marimo check --select MB` | [exit code; `summary.errored`; `summary.files_with_issues`] | — | [YYYY-MM-DDTHH:MM:SSZ] |
+| Python: `marimo export html` | [exit code] | [`__marimo__/stage9_check/...html`] | [YYYY-MM-DDTHH:MM:SSZ] |
+| Python: Step 6c fidelity check | [PASS/FAIL per condition (i)-(iv)] | [decompiled folder path] | [YYYY-MM-DDTHH:MM:SSZ] |
+| R: `quarto render` | [exit status] | [rendered HTML path] | [YYYY-MM-DDTHH:MM:SSZ] |
+
+### Integration Checks (integration-checker)
+
+> Orchestrator fills one row per integration-checker return (Stages 9, 11, 12;
+> `WORKFLOW_PHASE4_ANALYSIS.md` § Stage 9 and `WORKFLOW_PHASE5_SYNTHESIS.md`
+> §§ Stage 11 and Stage 12, Step 0). The Stage 12 return is also persisted in
+> full at `output/preliminary_notes/{date}_stage12_integration-check.md` and
+> that path is passed to data-verifier.
+
+| Stage | Status | Highest Severity | References Not Verified | Open Issues |
+|-------|--------|------------------|-------------------------|-------------|
+| 9 | [PENDING / CONNECTED / ISSUES FOUND] | [None/INFO/WARNING/BLOCKER] | [count] | [List or "None"] |
+| 11 | [PENDING / CONNECTED / ISSUES FOUND] | [None/INFO/WARNING/BLOCKER] | [count] | [List or "None"] |
+| 12 | [PENDING / CONNECTED / ISSUES FOUND] | [None/INFO/WARNING/BLOCKER] | [count] | [List or "None"] |
 
 ### Review Date
 
@@ -345,6 +442,12 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 |---------------|------------|-----|
 | [Clarification 1] | [Yes / No] | [Notes] |
 | [Clarification 2] | [Yes / No] | [Notes] |
+
+### Pre-Flight Scope Fulfillment
+
+| Confirmed scope item, decision, or referenced material (Plan's Confirmed Pre-Flight Scope and User-Referenced Materials) | Honoured? | Where |
+|------------------------------------------------------------------------------------------------------------------------|-----------|-------|
+| [Item 1] | [Yes / No / Departure logged] | [Section/file, or Decisions Log entry] |
 
 ### Plan Commitments
 
@@ -379,16 +482,31 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### Final Status
 
-**Review Outcome:** [COMPLETE | COMPLETE_WITH_CAVEATS | INCOMPLETE]
+**Review Outcome:** [PASSED | ISSUES_FOUND | STOP] (data-verifier's Overall Status, or STOP for a DATA-VERIFIER STOP; `.claude/agents/data-verifier.md` § Output Format)
+**Highest Severity Found:** [BLOCKER | WARNING | INFO | None]
 
-**If COMPLETE_WITH_CAVEATS:**
+**If ISSUES_FOUND with WARNING only:**
 - Caveats must be documented in Report.md Limitations section
 - Document each caveat and its impact on conclusions
 
-**If INCOMPLETE:**
+**If ISSUES_FOUND with a BLOCKER, or STOP:**
+- Escalate to the user with the specific failures and remediation options (`WORKFLOW_PHASE5_SYNTHESIS.md` § Review Outcome)
 - Issues must be resolved before delivery
 - Document resolution in this section
 - Re-run Final Review after resolution
+
+---
+
+## Revision (current) (if applicable)
+
+*Added when Revision and Extension mode starts a revision, at its Revision Scope Check (`revision-and-extension-mode.md` § Revision Scope Check and § Revision and Extension Session Management). Session recovery reads the status line. When the revision completes, it gets a row in Revision History below. When a later revision starts, summarize this section's content into the previous revision's Revision History row (adding the row if it is missing), then reset the section for the new revision, so recovery never reads the previous revision's confirmed status.*
+
+- **Revision type:** [Bug Fix / Scope Change / Methodology Change / Extension / Correction]
+- **Affected stages:** [stages to re-run]
+- **Re-entry point:** [Stage N]
+- **New version prefix:** [prior date prefix] → [new date+suffix prefix]
+- **Scope Check status:** [Awaiting confirmation | Confirmed YYYY-MM-DD]
+- **Materials read:** [what the user cited, with paths in the project (fetches, ingests and any digest are written straight into the project folder; nothing is staged)]
 
 ---
 
@@ -496,11 +614,11 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### User Restart Prompt
 
-**To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
+**To pick up where we left off, run `/clear` to start a fresh session, then paste this into the chat:**
 
-> Resume the [Project Title] analysis. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
+> Resume my analysis "[Project Title]". Plan: `[exact plan path]`. Task list: `[exact Plan_Tasks path]`. Saved progress: `[exact STATE.md path]`. We were [the activity in plain words, e.g., "combining the two data sources; 3 of 5 steps are done"]. Next: [the next step in plain words, e.g., "run the last two combining steps, then start the analysis"].
 
-**Orchestrator:** Update this prompt whenever hitting the HIGH or CRITICAL utilization gates (see CLAUDE.md § Context Quality Curve for the model-family thresholds), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
+**Orchestrator:** keep this prompt in plain words (no stage, phase or checkpoint codes, no agent or status names); the paths stay. Update it whenever hitting the HIGH or CRITICAL utilization gates (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
 ### Resumption Instructions (Agent Reference)
 
@@ -509,8 +627,8 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 1. **Read this STATE.md first** — This is the primary recovery document
 2. **Locate Plan at:** `[exact path]` and Plan Tasks at: `[exact Plan_Tasks path]`
 3. **Read Plan SELECTIVELY** — Search for `## ` headings, then load only:
-   - **Always:** Original Request, Goal & Context, Decisions Log, Risk Register, Current Status
-   - **Stage-conditional:** See Session Recovery Step 3c table for additional sections based on current stage
+   - **Always:** the recovery sections in `session-recovery.md` § Step 3, item 3c: Original Request & Clarifications, Goal & Context, Decisions Log, Risk Register, and the Transformation Sequence table (within Methodology Specification)
+   - **Stage-conditional:** the table in `session-recovery.md` § Step 3, item 3e, for the sections the current stage adds
    - **On-demand:** Load specific wave task blocks only when dispatching (see Session Recovery "On-Demand Plan Loading")
 4. **Current Phase:** [N] — [Phase Name]
 5. **Current Stage:** [N] — [Stage Name]
@@ -538,10 +656,13 @@ Create STATE.md at **Stage 4 (Plan Creation)** for any analysis expected to:
 - Have elevated risk of context exhaustion
 - Require collaboration or handoff
 
+At creation, fill the Pre-Flight Scope Check section from `output/preliminary_notes/{date}_preflight_scope-check.md`.
+
 ### When to Update
 
 Update STATE.md after:
 - Each checkpoint passes (CP1-CP4)
+- A user checkpoint is presented (Current Position > Status = Awaiting Confirmation, and Next Actions > Pending User Input names it) or answered (Status back to In Progress; the answer goes in Key Decisions Made)
 - Each stage completes
 - Key decisions are made
 - Blockers are encountered
@@ -555,6 +676,7 @@ Update STATE.md after:
 - Runtime risks discovered (append to Runtime Risks)
 - Stage 10 QA aggregation (finalize QA Findings Summary)
 - Stage 12 final review (populate Final Review Log)
+- A Revision Scope Check is presented or confirmed (Revision and Extension mode) — set Revision (current) > Scope Check status to "Awaiting confirmation" or "Confirmed YYYY-MM-DD"
 - A plan revision is accepted (Stage 4.5 revision loop, or Revision and Extension mode new-version creation) — rebuild the Transformation Progress table from the revised Plan_Tasks.md Task Index, update Current Position (Plan/Plan_Tasks paths, Current Stage) and Next Actions, then validate parity (row count == `total_tasks`; every script path present in both the table and the revised Task Index; no superseded plan-version filename remains). This is a blocking condition inside Gate G4.5; see `full-pipeline-mode.md` § STATE.md Update Gates
 
 ### Minimal Update Pattern
@@ -588,5 +710,7 @@ STATE.md is the primary input for the Session Recovery procedure:
 4. **Next actions** provide immediate guidance
 5. **Blockers** surface issues needing resolution
 6. **Error budget** prevents infinite retries
+
+**Reading verdicts on recovery.** A resuming session reads the Checkpoint Status tables as verdict *plus counts*, never verdict alone. A checkpoint recorded `PASSED` with a nonzero NOT VERIFIED count is a contradiction: treat the recorded verdict as stale; re-read the script's execution log for the `CP{n} VALIDATION:` / `QA{n} RESULT:` line and its count line, and treat the log as authoritative. Before advancing past a gate, confirm the "Checks Not Verified or Skipped" table has an entry for every unverified or skipped check the counts imply; if the counts and that table disagree, the stage's QA is unresolved and must be re-reviewed rather than assumed clean.
 
 See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for complete recovery procedure.

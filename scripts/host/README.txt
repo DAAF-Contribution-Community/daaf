@@ -20,8 +20,9 @@ START HERE (terminal - works everywhere):
 
 Run either of the following commands in your terminal when this folder
 is open. That opens the DAAF Control Panel - a menu with everything: starting
-Claude Code, notebooks, VS Code, session logs, backups, updates, and
-rebuilds. It is the only command you need to remember. Run it and
+Claude Code, notebooks, VS Code, session logs, backups, updates,
+restarts (to apply changes to environment_settings.txt), and rebuilds.
+It is the only command you need to remember. Run it and
 use the Help option to learn more about what each command does.
 
 The other scripts in this folder are helpers that the Control Panel
@@ -34,11 +35,14 @@ calls for you. Each one also works standalone if you prefer, e.g.:
 
 NOTES:
 
-- environment_settings.txt is where your data source API keys go
-  (copy environment_settings_example.txt to get started).
-- Folders ending in _daaf_backup are your backups. Safe to move or
-  delete; the Control Panel can restore from them if they're in the
-  same folder as the script itself.
+- environment_settings.txt holds your API keys and AI provider settings.
+  The installer creates it. After you edit it, choose Restart Container
+  in the Control Panel to apply the change. Only if the file is missing,
+  copy environment_settings_example.txt to environment_settings.txt.
+- Folders ending in _daaf_backup are your backups. They contain your
+  Claude Code login, so keep them private. Safe to move or delete; the
+  Control Panel can restore from them if they're in the same folder as
+  the script itself.
 - If the updater says it updated itself, run it once more to finish
   syncing the tools in this folder.
 - You should not need to edit any script in this folder. Framework

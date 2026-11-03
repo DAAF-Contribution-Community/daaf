@@ -106,12 +106,12 @@ total_waves: 0                        # Total wave count (populated by data-plan
   <action>
     1. Load education-data-context skill
     2. Load raw data from input file
-    3. Filter coded values:
-       - Remove rows where [variable] == -1 (missing)
-       - Remove rows where [variable] == -2 (not applicable)
-       - Remove rows where [variable] == -3 (suppressed)
+    3. Calculate each key variable's suppression rate from the raw data (share of values equal to the suppression code)
+    4. Set coded values to null in place (rows are kept, so a code in one column does not discard the row's other values):
+       - [variable] == -1 (missing) → null
+       - [variable] == -2 (not applicable) → null
+       - [variable] == -3 (suppressed) → null
        *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
-    4. Calculate suppression rate for key variable
     5. Generate citation text
     6. Save to parquet format
     7. Run CP2 validation
@@ -160,6 +160,8 @@ total_waves: 0                        # Total wave count (populated by data-plan
 
 ### Wave 4: Analysis & Visualization (depends on Wave 3)
 
+> **CP4 in Wave 4.** CP4 is Stage 8 Post-Analysis & Visualization Validation (CP4.1 analysis outputs valid, CP4.2 critical nulls, CP4.3 figures, CP4.4 correct data source) and is embedded in these scripts. A `<done>` line reading `CP4 PASSED` is satisfied by a log verdict of `CP4 VALIDATION: PASSED` **or** `CP4 VALIDATION: PASSED WITH WARNINGS` (reported status `WARNING`); `FAILED` is not done. Report-section completeness, Plan consistency, Research Outcomes, and Hypotheses are verified later, at **Pre-Output Verification (Stage 12)** — not here.
+
 ### Task 4.1: regression-poverty [Stage 8.1]
 
 <task name="regression-poverty" type="auto" wave="4">
@@ -178,7 +180,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
     5. Estimate model, extract coefficients and SEs
     6. Run robustness checks: {robustness_specifications}
     7. Save results to output/analysis/
-    8. Run CP4 validation
+    8. Run CP4 validation (CP4.1 analysis outputs valid, CP4.2 critical nulls, CP4.4 correct data source)
   </action>
   <verify>
     - Output file exists and is non-zero
@@ -206,7 +208,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
     4. Compute distributional measures (percentile ratios, Gini if applicable)
     5. Test for group differences ({test_type}: t-test, Mann-Whitney, chi-square)
     6. Save results table to output/analysis/
-    7. Run CP4 validation
+    7. Run CP4 validation (CP4.1 analysis outputs valid, CP4.2 critical nulls, CP4.4 correct data source)
   </action>
   <verify>
     - Output file exists and is non-zero
@@ -232,7 +234,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
     3. Create {chart_type} showing {variables}
     4. Apply styling: {title}, {axes}, {facets}, colorblind-safe palette
     5. Export at {dpi} DPI to output/figures/
-    6. Verify file exists and is non-zero
+    6. Run CP4 validation (CP4.3 figures — each promised figure exists, is non-empty, and is visually inspected via Read; CP4.4 correct data source)
   </action>
   <verify>
     - File exists

@@ -37,9 +37,9 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 
 | Extension Type | What You're Adding | Tool to Use | Result |
 |----------------|-------------------|-------------|--------|
-| **Data source** | Knowledge about a specific dataset | Data Onboarding Mode | A new `data-source-skill` |
-| **Methodology** | Knowledge about a statistical or analytical method | Framework Development Mode | A new `methodology-skill` |
-| **Domain expertise** | Knowledge about a content area or field | Framework Development Mode | A new `context-skill` |
+| **Data source** | Knowledge about a specific dataset | Data Onboarding Mode | A new data source skill |
+| **Methodology** | Knowledge about a statistical or analytical method | Framework Development Mode | A new methodology skill |
+| **Domain expertise** | Knowledge about a content area or field | Framework Development Mode | A new domain-context skill |
 
 The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it produces a more systematic and thorough profile than is practical to create by hand -- including cross-checks that are valuable but tedious to do manually.
 
@@ -53,7 +53,7 @@ Data Onboarding Mode is DAAF's built-in workflow for turning a raw dataset (or o
 
 You'll need:
 
-1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data. And if the data genuinely can't leave your secure environment, you don't have to give up on onboarding it: DAAF has a dedicated privacy-preserving path -- the **synthetic-data protocol** -- where the raw data never enters the container at all. You profile it locally, and DAAF builds a synthetic stand-in from a summary report alone. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data. And if the data genuinely can't leave your secure environment, you don't have to give up on onboarding it: DAAF has a dedicated privacy-preserving path -- the **synthetic-data protocol** -- where the raw data never enters the container at all. You profile it locally, and DAAF builds a synthetic stand-in from a summary report (or, at the highest disclosure tier, from synthetic rows you generate yourself). See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
 2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
 3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
 
@@ -89,17 +89,17 @@ The important thing is to provide all related files at intake rather than profil
 
 When you ask DAAF to work with any current data source (say, CCD enrollment data), here's the flow:
 
-1. The **orchestrator** dispatches a subagent to explore available data (Stage 2)
+1. The **orchestrator** dispatches a subagent to explore what data is available
 2. The subagent **loads the relevant skill** (e.g., `education-data-source-ccd`) into its context
 3. The skill tells the subagent everything it needs: what variables exist, what the coded values mean, what the known pitfalls are, how to access the data
 4. The subagent uses that knowledge to do its job and returns findings to the orchestrator
 
 The key thing to understand: When you add a new data source skill, we just need the orchestrator to know what it is and when it'd be useful so it can instruct its subagents on when to load it for their specific task. To do this, you're primarily adding knowledge to the system at two points:
 
-1. **Exploration (Stage 2-3):** Your skill tells agents what data is available, what variables exist, and what caveats to watch for
-2. **Context application (Stage 6):** Your skill tells agents how to handle coded values, missing data patterns, and source-specific quirks during cleaning
+1. **Exploration (when DAAF looks at what data exists and researches each source):** Your skill tells agents what data is available, what variables exist, and what caveats to watch for
+2. **Context application (when DAAF cleans the data):** Your skill tells agents how to handle coded values, missing data patterns, and source-specific quirks during cleaning
 
-The fetch mechanics (Stage 5) are mostly handled by the query skill and mirror configuration. If your data source is available through the existing mirrors, you may not need to change anything there. If your data comes from a different source entirely, you'll need to either add a new mirror configuration or provide the data files directly.
+For the Education Data Portal sources, downloading is handled by the query skill and its mirror configuration, so if your data is available through the existing mirrors you may not need to change anything there. If your data comes from a different source entirely, Data Onboarding gives it its own path: a fetch script that downloads it from an API, or the data files you provide directly.
 
 ---
 
@@ -131,29 +131,29 @@ important columns are probably the ones related to total spending,
 enrollment counts, and state identifiers.
 ```
 
-DAAF will classify this as a Data Onboarding request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs across 4 sub-phases:
+DAAF will classify this as a Data Onboarding request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs in four parts, which DAAF's confirmation message lists as Part A to Part D:
 
-**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions. It also identifies row-unique columns and columns suitable for linking to other datasets.
+**Part A -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions. It also identifies row-unique columns and columns suitable for linking to other datasets.
 
-**Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this phase also analyzes temporal coverage gaps and entity coverage against known universes.
+**Part B -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this part also analyzes temporal coverage gaps and entity coverage against known universes.
 
-**Phase 3 -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, cross-column dependency patterns, and detection of coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values).
+**Part C -- Relational Analysis:** Identifying potential key columns (high uniqueness suggests an identifier), foreign keys (naming patterns like `_id` suffixes), hierarchical relationships between columns, cross-column dependency patterns, and a data quality check: completeness, duplicates, anomalies, and coded values (those suspicious negative numbers like -1, -2, -9 that often mean "missing" or "suppressed" rather than being real values).
 
-**Phase 4 -- Interpretation & Reconciliation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This phase also produces overall data quality scores and a comprehensive profile summary.
+**Part D -- Interpretation & Reconciliation:** This is where it gets interesting. The agent uses column names, value patterns, and domain conventions to make educated guesses about what each column *means*. Every interpretation is explicitly marked as `[PRELIMINARY]` -- the agent knows it's hypothesizing, not asserting. Column named `fips`? Probably a FIPS geographic code. Column with values 0 and 1? Probably a binary indicator, but is 1 "Yes" or "Male" or "Urban"? The agent will flag the ambiguity. This part also drafts a data dictionary from those interpretations.
 
 If you provided documentation, the profiling protocol also runs **Documentation Reconciliation**: it parses your codebook or data dictionary, extracts every claim it can find (column definitions, expected types, coded value meanings), and then *verifies each claim against the actual data.* Documentation says there are 50 columns? The agent checks. Codebook says `state_code` should be a string? The agent confirms or flags the mismatch. This reconciliation is one of the most valuable things Data Onboarding Mode does -- it catches the disturbingly common case where documentation is outdated or describes a different version of the data than what you actually have.
 
 ### Reviewing the Profile Output
 
-The agent will return a structured report with:
+DAAF will present a structured review with:
 
-- **Structural summary:** Row/column counts, memory size, format
-- **Column summary:** Type, null rate, unique count, and notes for every column
-- **Coded values detected:** Which columns have potential coded values, and whether documentation confirms their meaning
-- **Quality assessment:** Scores for completeness, documentation accuracy, and coded value coverage
-- **Preliminary interpretations:** The agent's best guesses for what columns mean, each flagged with a confidence level and basis for the interpretation
-- **Discrepancies found:** Every case where documentation contradicted observed data, with evidence for both sides
-- **User review requested:** Explicit questions for you to answer -- which interpretations are correct, how to handle undocumented values, whether missing columns are expected
+- **Quality summary:** An overall assessment of the data's quality, in plain language
+- **Structural findings:** Row and column counts, the mix of data types, and anything notable about the structure
+- **Column highlights:** Likely key columns, columns with a lot of missing values, and notable distributions or outliers
+- **Quality issues:** Columns with coded values (and their meanings, where identified), anomalies, and suppressed or redacted values
+- **Checks we could not complete:** Every check that was skipped or could not be verified, with the reason
+- **Preliminary interpretations:** The agent's best guesses for what columns mean, each with the evidence behind it, for you to confirm, reject, or modify
+- **Documentation discrepancies:** If you provided documentation, every place where it disagreed with the data
 
 **This review step is not optional.** The whole point of marking interpretations as `[PRELIMINARY]` is that *you* need to confirm or correct them. The agent has done the mechanical work of profiling, but the semantic understanding -- what these columns actually *mean* in context -- requires your domain expertise. Take the time to go through the review questions carefully. Your answers will directly determine the quality of the resulting skill.
 
@@ -170,11 +170,11 @@ For adding knowledge about a statistical method, library, or analytical techniqu
 Ask DAAF something like:
 
 ```
-I'd like to create a new methodology skill for pyfixest
-(fixed-effects regression in Python). Please use Framework
-Development Mode and the skill-authoring skill to guide the
-process, and research
-the pyfixest documentation online to build a comprehensive
+I'd like to create a new methodology skill for [library name]
+([what it does, e.g. survival analysis in Python]). Please use
+Framework Development Mode and the skill-authoring skill to guide
+the process, and research
+the [library name] documentation online to build a comprehensive
 reference. You might refer to the `polars` skill as a model
 for some of what it could look like. Please run some initial
 explorations and then come back to me with a plan for my
@@ -207,7 +207,7 @@ in depth before coming up with a plan for my approval.
 
 ### Registering Your New Skill
 
-Skills are automatically discovered via their YAML frontmatter — every skill with a `SKILL.md` file in `.claude/skills/{skill-name}/` appears in the system message at conversation start. No manual registration is needed for any skill type (data source, methodology, or domain expertise).
+Skills are automatically discovered via their YAML frontmatter — every skill with a `SKILL.md` file in `.claude/skills/{skill-name}/` appears in the system message at conversation start. You don't need to register a skill for DAAF to find it, whatever its type (data source, methodology, or domain expertise). If a skill should be used at a specific step of the research pipeline, or loaded automatically by a particular agent, Framework Development mode adds those optional entries for you.
 
 The key to good discoverability is writing a clear, descriptive `description` field in your skill's YAML frontmatter. This description is what the orchestrator sees when deciding which skill to load, so make it specific about what the skill covers and when to use it.
 
@@ -234,13 +234,15 @@ useful to make sure this is successful.
 
 The workflow has five phases:
 
-**Phase 1: Design (before writing).** This is where you get crystal clear on the fundamentals. The agent-authoring skill will make sure you can answer five critical questions:
+**Phase 1: Design (before writing).** This is where you get crystal clear on the fundamentals. The agent-authoring skill will make sure you can answer seven design questions:
 
 1. What does this agent do and why does it exist? (one sentence)
-2. Which pipeline stage(s) does it operate in?
+2. Which part(s) of the research pipeline does it work in?
 3. Which existing agents are most similar, and how does yours differ?
-4. Does it need file-write access (`general-purpose`) or is it read-only (`Plan`)?
+4. Does it need to write files, or is it read-only? Read-only means its `tools` list has no Write or Edit tool.
 5. Will it need to invoke any skills?
+6. Does it need its own hooks? (For example, every agent that can run shell commands gets the check that stops it from running Python or R directly.)
+7. Which model tier should it run on by default?
 
 If any of these answers are vague, the agent-authoring skill will push you to sharpen them. This upfront clarity is genuinely important -- a poorly defined role leads to a poorly functioning agent.
 
@@ -248,7 +250,7 @@ If any of these answers are vague, the agent-authoring skill will push you to sh
 
 **Phase 3: Integrate.** This is the step where the most things can go wrong if you're not careful. A new agent needs to be registered across multiple files in the DAAF ecosystem. The agent-authoring skill provides a complete integration checklist organized into tiers:
 
-- **Tier 1 (Mandatory):** Every new agent must be registered in `.claude/agents/README.md` (the canonical agent registry, with entries in 4 sections: Agent Index, When to Use, Coordination Matrix, and Agent catalog)
+- **Tier 1 (Mandatory):** Every new agent must be registered in `.claude/agents/README.md` (the canonical agent registry, with entries in 3 sections: Agent Index, When to Use Each Agent, and Agent Coordination Matrix)
 - **Tier 2 (Conditional):** Additional updates if the agent maps to a specific pipeline stage
 - **Tier 3 (Conditional):** Additional updates if the agent affects specific workflow areas
 
@@ -292,7 +294,7 @@ Can you fetch [your data source] for [year] and show me the first
 few rows and basic summary statistics?
 ```
 
-This tests the data access pathway -- the dataset paths in your skill, the mirror configuration, and the basic loading mechanics. The fetch should complete with a CP1 validation (shape, types, missingness checks). If CP1 fails, it usually means the dataset path in your skill doesn't match what's actually available on the mirror, or the expected column structure differs from reality.
+This tests the data access pathway -- the dataset paths in your skill, the mirror configuration, and the basic loading mechanics. The fetch should end with DAAF's automatic post-download check, which checks that data came back, that the expected columns and years are present, and how much is missing, and prints `CP1 VALIDATION: ...` with its verdict in the fetch script's output. If that check fails, it usually means the dataset path in your skill doesn't match what's actually available on the mirror, or the expected column structure differs from reality.
 
 ### Context Test
 
@@ -332,6 +334,7 @@ Check that DAAF references your skill's guidance -- the correct function calls, 
 ---
 
 ## Submitting Your Extension for Inclusion (Optional)
+
 Everything above works entirely locally -- extensions don't require sharing, and you never have to submit anything to use your own custom skills, agents, or data sources. That said, if you think your extension would help others:
 
 If you've created a useful skill or agent and want to share it with the broader DAAF community -- please do! The whole point of this being open-source is that the framework gets better as more people contribute their domain expertise. A skill you create for, say, health survey data or labor market statistics could save someone else weeks of profiling work.
@@ -347,7 +350,7 @@ A few things to check:
 
 ### How to Submit
 
-See [**05. Contributing to DAAF**](../CONTRIBUTING.md) for the full contribution workflow. The short version: fork the repository, add your skill files, update the registration entries, and submit a pull request. The contribution guide covers pull request formatting, quality standards, and the review process in detail.
+See [**05. Contributing to DAAF**](../CONTRIBUTING.md) for the full contribution workflow. The short version: fork the repository, add your skill files (plus any optional entries Framework Development mode added for it), and submit a pull request. The contribution guide covers pull request formatting, quality standards, and the review process in detail.
 
 If you're not comfortable with the pull request process, you can also [open an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) describing your new skill and sharing the files -- the community can help get it integrated.
 
@@ -363,7 +366,7 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 12 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
+DAAF ships with a comprehensive Python data science stack (60+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 12 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
 ### The Recommended Path: Modify the Dockerfile (Python)
 
@@ -381,12 +384,12 @@ When DAAF is installed, the Docker image is built from files on your host comput
 
 | Copy | Location | Who edits it | Who reads it |
 |------|----------|--------------|--------------|
-| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | Nothing -- it's just a working copy inside the container |
-| **Host copy** (on your computer) | Your `daaf-docker/` build directory on your host (wherever you ran the installer, or `daaf-main/Dockerfile` if you installed manually) | You, via a "copy back" command after DAAF finishes | `docker compose up -d --build`, when run from the host |
+| **Volume copy** (inside the container) | `/daaf/Dockerfile` as seen from inside the running container | DAAF/Claude Code, while you're running a session | The rebuild script, which copies it to your `daaf-docker` folder |
+| **Host copy** (on your computer) | Your `daaf-docker/` folder (wherever you ran the installer) | The rebuild script, which copies DAAF's edits here | The image build: `rebuild_daaf.sh` / `.ps1`, or Control Panel **10) Rebuild Container** |
 
-The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **`docker compose up -d --build` only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container).
+The two files start out identical, but they can drift apart as soon as either side is modified. Critically, **the image build only ever reads the host copy** -- it has no knowledge of the volume copy at all. But when you ask DAAF to add a package to the Dockerfile, DAAF edits the **volume copy** (the only one Claude can see and edit from inside the container).
 
-**The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host build directory *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
+**The rebuild script closes the gap for you:** it copies the edited Dockerfile and docker-compose.yml from the container to your `daaf-docker` folder, then builds the image from that host copy (Step 2 below). A build started any other way, such as a `docker compose` command you type yourself, skips the copy and builds from the old host file without any error.
 
 **A second host/container boundary to know about:** *bind mounts* — linking a folder on your computer directly into the container — are the other place where the host and container filesystems meet. If you want DAAF to read a large local dataset in place rather than copying it into the Docker volume, see [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) in the installation guide.
 
@@ -397,15 +400,20 @@ The two files start out identical, but they can drift apart as soon as either si
 **1. Ask DAAF to edit the Dockerfile.** Inside your DAAF session, ask Claude to add your package. For example:
 
 ```
-I'd like to add networkx==3.4.2 to the Dockerfile so I can use
-it for graph analysis. Please add it to the appropriate block.
+I'd like to add some-package==X.Y.Z to the Dockerfile so I can
+use it for [what you need it for]. Please add it to the
+appropriate block.
 ```
 
-DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
+Here `some-package==X.Y.Z` stands for the package you want and its version. Choose a version released before the image's frozen environment date (explained below), or ask DAAF to pick one for you.
 
-**Where the package goes — and why it matters for rebuild speed.** DAAF's default is to add your package to the **user additions block** near the *end* of the Dockerfile — a clearly marked section (the banner reads `USER ADDITIONS — add your own packages and tools here`) that exists specifically for your own software. The reason is Docker **layer caching**: Docker rebuilds each layer only when that layer (or something above it) changes, and it reuses everything else from cache. The user additions block sits below every expensive framework layer -- the system libraries, the large R package stack, the Python install blocks, the editor extensions -- so adding a package there invalidates essentially nothing downstream — the rebuild takes only as long as installing your package itself, typically seconds to a couple of minutes. If instead you append your package to one of the mid-file categorized blocks (see below), every expensive layer *underneath* that block has to re-run, which can turn a quick rebuild into a many-minute one.
+DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies. The dry-run automatically uses the image's frozen environment date (the `UV_EXCLUDE_NEWER` setting baked into the container), so it resolves exactly what the rebuild will resolve, not whatever PyPI serves today. One consequence: a version released *after* that date shows up as "no solution found" (see [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) below).
 
-Here's what a `networkx` addition looks like in the user additions block — you (or DAAF) uncomment the `uv pip install --system` example and add your package:
+**Where the package goes — and why it matters for rebuild speed.** DAAF's default is to add your package to the **user additions block** near the *end* of the Dockerfile — a clearly marked section (the banner reads `USER ADDITIONS — add your own packages and tools here`) that exists specifically for your own software.
+
+The reason is Docker **layer caching**: Docker rebuilds each layer only when that layer (or something above it) changes, and it reuses everything else from cache. The user additions block sits below every expensive framework layer -- the system libraries, the large R package stack, the Python install blocks, the editor extensions -- so adding a package there invalidates essentially nothing downstream — the rebuild takes only as long as installing your package itself, typically seconds to a couple of minutes. If instead you append your package to one of the mid-file categorized blocks (see below), every expensive layer *underneath* that block has to re-run, which can turn a quick rebuild into a many-minute one.
+
+Here's what an addition looks like in the user additions block — you (or DAAF) uncomment the `uv pip install --system` example and add your package:
 
 ```dockerfile
 # ============================================
@@ -414,7 +422,7 @@ Here's what a `networkx` addition looks like in the user additions block — you
 # ... (explanatory comments) ...
 USER root
 RUN uv pip install --system \
-    networkx==3.4.2
+    some-package==X.Y.Z
 USER appuser
 ```
 
@@ -432,15 +440,16 @@ For these cases DAAF will propose the correct mid-file location and explain why.
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
-    polars==1.38.1 \
+    polars==1.39.3 \
     ...
     scikit-learn==1.8.0 \
-    networkx==3.4.2
+    ...
+    some-package==X.Y.Z
 ```
 
 A few things to note about the Dockerfile syntax (DAAF will handle these for you, but it's helpful to recognize them when reviewing the proposed change):
 - Every line in a `RUN` block except the last ends with a backslash (`\`) to continue the command
-- Versions are pinned with `==` (e.g., `networkx==3.4.2`) for reproducibility -- DAAF can look up the latest version on [PyPI](https://pypi.org/) for you, or use a version you specify
+- Versions are pinned with `==` (e.g., `some-package==X.Y.Z`) -- DAAF can look up the latest version released before the environment date on [PyPI](https://pypi.org/) for you, or use a version you specify. The `==` pin fixes only the package you name; its own dependencies are kept stable by the Dockerfile's frozen environment date, and it takes the two together to make the full set reproducible (see [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds))
 - If you're unsure which version to pin, you can ask DAAF to use the latest compatible version, but pinning a specific version is strongly recommended
 
 **2. Exit the container and rebuild.** After DAAF finishes editing the Dockerfile, exit Claude Code and the container, then run the rebuild script:
@@ -463,29 +472,24 @@ The rebuild script handles the tricky part automatically: it copies the updated 
 
 **Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
 
-**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available. You can open a container shell from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` → **6) Open Terminal in Container**), or run the command directly:
+**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available. You can open a container shell from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` → **6) Open Terminal in Container**), or run the command directly from your `daaf-docker` folder:
 
 ```bash
 bash run_daaf.sh bash        # macOS / Linux
 .\run_daaf.ps1 bash          # Windows
-pip list | grep networkx
 ```
 
-You should see your new package listed with the version you pinned. That's it -- your new package is now a permanent part of your DAAF environment, and it will survive future restarts and rebuilds (as long as you keep your host Dockerfile around, which you should be backing up periodically anyway).
-
-<details>
-<summary>Manual alternative (copy and rebuild by hand)</summary>
-
-If you'd rather run the individual commands instead of using the rebuild script:
+Then, in the container shell, check the package:
 
 ```bash
-cd daaf-docker
-docker compose cp daaf-docker:/daaf/Dockerfile ./Dockerfile
-docker compose up -d --build
+uv pip show some-package
 ```
 
-The copy step must come **before** the rebuild. Using `docker compose cp` (rather than `docker cp` with a literal container name) means the command works no matter what your compose project is named -- including a second instance with a custom `DAAF_PROJECT_NAME`. You can also copy via Docker Desktop's GUI: Containers → expand your DAAF project → click the `daaf-docker` container → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
-</details>
+You should see your new package with the version you pinned. That's it -- your new package is now a permanent part of your DAAF environment, and it will survive future restarts and rebuilds (as long as you keep your host Dockerfile around, which you should be backing up periodically anyway).
+
+**Prefer a menu?** The DAAF Control Panel (`bash daaf.sh` / `.\daaf.ps1` in your `daaf-docker` folder) runs the same rebuild script as option **10) Rebuild Container**.
+
+**Why not type the `docker compose` commands yourself?** The rebuild script reads your `environment_settings.txt` before it builds; a `docker compose` command you type yourself does not. On a second install (one with its own `DAAF_PROJECT_NAME` and ports) a typed command would act on your first install instead, and on a developer build (`DAAF_DEV=1`) it would leave out the developer toolchain. Use the rebuild script or the Control Panel, which handle both.
 
 ### Adding System-Level Dependencies
 
@@ -499,7 +503,7 @@ If you're adding a Python package that needs a system library, you'll need to as
 # ============================================
 # Install System Dependencies (Git)
 # ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     jq \
@@ -510,6 +514,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 ```
 
+(`daaf-apt-update` is DAAF's wrapper around `apt-get update`, defined near the top of the Dockerfile. It also checks that every package index came from the frozen Ubuntu snapshot, so keep using it rather than a bare `apt-get update`.)
+
 **2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
 
 **A note on rebuild time for system libraries.** Unlike a standalone package that can live in the fast-rebuilding user additions block, a system library that a framework package needs *at build time* has to be installed near the **top** of the Dockerfile, before the package that links against it. Editing an early apt-get block invalidates every layer below it, so this kind of change will legitimately trigger a longer rebuild of the downstream Python and R layers -- that's expected, not a mistake. (By contrast, a *standalone* system tool that nothing else in the build depends on -- say, a CLI utility you just want available in the container -- can go in the user additions block via its own apt-get example and rebuild fast, exactly like a standalone package.)
@@ -518,55 +524,38 @@ Both changes go in the same Dockerfile, so a single rebuild covers them both. Af
 
 If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can ask DAAF to add the missing library then (and run `rebuild_daaf` again after the second edit).
 
-### Runtime Installation for Quick Testing
+### Trying a Package Quickly
 
-Sometimes you just want to try a package quickly during a session without going through the rebuild process.
+Sometimes you just want to try a package without committing to it. The quick way is still the Dockerfile: add the package to the **user additions block** and rebuild, which typically takes seconds to a couple of minutes because of layer caching (see Step 1 above). If the package doesn't work out, ask DAAF to remove the line and rebuild again.
 
-> **This is a *you*-only action — DAAF cannot do it for you.** DAAF's agents are blocked from runtime package installs by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install networkx real quick" will be refused. Runtime installs are yours to run: type the command as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks. And whichever way you install it, it's a throwaway: the durable path is always the `Dockerfile`. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
-
-To install one yourself for a quick test, run (via `!`-prefix or host terminal):
-
-```bash
-uv pip install --user networkx
-```
-
-This installs the package into your user directory inside the container, which works because it doesn't require root privileges. You can start using the package immediately in your current session.
-
-**Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
-
-The recommended workflow is:
-1. Install at runtime to test — **you** run `uv pip install --user <package>` via `!`-prefix or a host terminal (DAAF is blocked from running it)
-2. Verify it works for your use case
-3. Ask DAAF to add it to the Dockerfile, then rebuild to make it permanent
+DAAF does not install packages into a running container. Its agents are blocked from runtime package installs and removals by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install some-package real quick" will be refused, and the image does not include `pip`. LaTeX packages and Quarto's add-on tools (`tlmgr`, `quarto install`) are off-limits at runtime too; no hook enforces this (a plain `tlmgr install` fails only because the TeX tree is read-only), so the rule itself is the guard. See [LaTeX Packages](#latex-packages) for how to add a LaTeX package. Anything installed into a running container would also live outside the Docker volume that holds your research, so it would be lost whenever the container is rebuilt or recreated. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
-If you are **developing the framework itself** (not just running research), an opt-in `DAAF_DEV=1` build flag adds DAAF's own testing toolchain: set it in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) to install the shell/PowerShell test suites, linters, and GitHub CLI into the image (the same image also enables the contributor-only deployment smoke suite). It is a build-time flag, so when unset or `0` — the default for all normal installs — the image is identical to a standard build. For the full toolchain list, the CI commands, and the smoke-suite walkthrough, see `CONTRIBUTING.md` and `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain").
+If you are **developing the framework itself** (not just running research), an opt-in `DAAF_DEV=1` build flag adds DAAF's own testing toolchain: set it in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) to install the shell/PowerShell test suites, linters, and GitHub CLI into the image (the maintainers' deployment smoke test runs on any image; the flag adds the shell and PowerShell test batteries it can then run). It is a build-time flag, so when unset or `0` — the default for all normal installs — the image is identical to a standard build. For the full toolchain list, see `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain"); for the CI commands and the deployment smoke test, see `CONTRIBUTING.md`.
 
 ### Understanding the `uv` Package Manager
 
-You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). For a one-off runtime install — which only *you* can run, via `!`-prefix or a host terminal, since DAAF's agents are blocked from runtime installs (see the callout above) — use `uv pip install --user` instead, because you're running as a non-root user.
-
-Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs.
+You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). The image has no separate `pip`: inside the container, `uv pip` is also how you inspect what's installed (next section), and a `uv pip compile` dry-run there resolves at the image's frozen environment date, just as the build does.
 
 ### Checking What's Already Installed
 
 Before adding a package, you might want to check if it's already available. You have a few options:
 
 - **Ask DAAF directly:** "What Python packages are installed?" -- DAAF can check for you
-- **Run `pip list`** inside the container to see all installed packages
-- **Run `pip show <package>`** to check if a specific package is installed and see its version
+- **Run `uv pip list`** inside the container to see all installed packages
+- **Run `uv pip show <package>`** to check if a specific package is installed and see its version
 - **Read the Dockerfile** to see exactly what's pinned and organized by category
 
 ### Common Scenarios
 
-**"I need networkx for graph analysis"**
+**"I need a Python package that isn't installed"**
 
-Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data science `RUN` block in the Dockerfile, then follow Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`). No system dependencies needed.
+Check first with `uv pip show <package>` (see above). If it's missing, ask DAAF to add `some-package==X.Y.Z` (a version released before the environment date) to the user additions block in the Dockerfile, then follow Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`).
 
 **"I need a specific version of a package that's already installed"**
 
-Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
+Ask DAAF to edit the version pin in the Dockerfile. For example, to change a package's version, find its line (`some-package==<current version>`) and change it to `some-package==X.Y.Z`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild. The dry-run uses the same frozen environment date as the build, so if the version you want was released after that date, it reports "no solution found". In that case see [Adding a package newer than the environment date](#adding-a-package-newer-than-the-environment-date).
 
 **"I need an R package that isn't included"**
 
@@ -584,38 +573,31 @@ No. The container runs as a non-root user (`appuser`) with all Linux capabilitie
 
 > R is a standard, always-available part of DAAF, and adding R packages follows the same Dockerfile-modification path as adding Python packages.
 
-DAAF installs **R 4.5.3** with a curated set of 60+ pinned packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+DAAF installs **R 4.5.3** with a curated set of 60+ pinned packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.10.18** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
 
-If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
+If you need an R package that isn't pre-installed, the process mirrors the Python approach: add it to the Dockerfile and rebuild. To try a package quickly, put it in the user additions block, which rebuilds fast.
 
-#### Runtime Installation for Quick Testing
-
-Inside the container, you can install an R package for the current session:
-
-```r
-install.packages("broom.mixed")
-```
-
-Like Python runtime installs, this is **ephemeral** -- the package will be lost when the container is rebuilt or restarted. Use it for testing, then add the package to the Dockerfile to make it permanent.
-
-> **This is a *you*-only action, just like the Python case above.** DAAF's agents are blocked from runtime R installs too: the `bash-safety.sh` hook refuses command-line forms (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs), and `run_with_capture.sh` scans each script before executing it and refuses to run one that contains an `install.packages()` (or similar) call. So asking DAAF to "just install broom.mixed real quick" will be refused — run it yourself via a `!`-prefixed command in the prompt or a host terminal (both bypass the hooks), and remember it's a throwaway. The durable path is always the Dockerfile.
+> **DAAF does not install R packages into a running container either.** The `bash-safety.sh` hook refuses command-line forms (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs), and `run_with_capture.sh` scans each script before executing it and refuses to run one that contains an `install.packages()` (or similar) call. So asking DAAF to "just install broom.mixed real quick" will be refused. The durable path is always the Dockerfile.
 
 #### The Recommended Path: Modify the Dockerfile
 
-To permanently add an R package, ask DAAF to add an `Rscript -e 'install.packages("pkg")'` line to the Dockerfile. For example:
+To permanently add an R package, ask DAAF to add an install line, with its check (example below), to the Dockerfile. For example:
 
 ```
 I'd like to add the broom.mixed package to the Dockerfile so I
 can use it for tidying mixed effects model output.
 ```
 
-DAAF will add a line like this:
+DAAF will add a line like this, which installs the package and then checks that it loads. The check is there because `install.packages()` only warns when a package fails to install: without it the build would finish without the package, and you would find out only when your analysis failed. The framework's own R install steps in the Dockerfile use the same check.
 
 ```dockerfile
-RUN Rscript -e 'install.packages("broom.mixed")'
+RUN Rscript -e 'pkgs <- c("broom.mixed"); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install failed, missing: ", paste(missing, collapse = ", "))'
 ```
 
-**Where the R line goes.** Just like Python packages, the recommended default is the **user additions block** near the end of the Dockerfile -- an added `RUN Rscript -e 'install.packages(...)'` line there rebuilds fast thanks to layer caching, whereas appending to the mid-file R install blocks re-runs the (large, ~2.2 GB) R stack and everything below it. The R packages install from the same P3M date-pinned snapshot wherever the line sits, so reproducibility is unaffected by the choice.
+**Where the R line goes.** Just like Python packages, the recommended default is the **user additions block** near the end of the Dockerfile -- an added install line there rebuilds fast thanks to layer caching, whereas appending to the mid-file R install blocks re-runs the (large, ~2.2 GB) R stack and everything below it. The R packages install from the same P3M date-pinned snapshot wherever the line sits, so reproducibility is unaffected by the choice.
 
 **One R-specific nuance — the presence gate.** The framework's R install blocks are backed by a *presence gate* that verifies each listed package actually installed, so if you want your added package covered by that check, add it to a framework R block (and its gate list) rather than the user additions block; otherwise the fast-rebuilding user additions block is simpler. DAAF will explain this tradeoff when it proposes the edit.
 
@@ -623,11 +605,11 @@ Then follow the same exit-and-rebuild process described in the Python section ab
 
 #### How DAAF Ensures R Package Reproducibility
 
-DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` call -- whether at build time or runtime -- pulls the exact same package versions regardless of when you run it. This is the R equivalent of pinning Python packages with `==` version specifiers: it ensures that your R environment is reproducible across builds and across machines.
+DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` line in the Dockerfile pulls the exact same package versions regardless of when you rebuild. This is the R counterpart of the Python environment date described in [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) below: it ensures that your R environment is reproducible across builds and across machines.
 
-You don't need to specify version numbers when installing R packages -- the P3M snapshot handles that automatically. If you need a newer version of a package than what's available in the current snapshot, you can temporarily override the repository URL in your `install.packages()` call, but this trades reproducibility for currency and should be done deliberately.
+You don't need to specify version numbers when installing R packages -- the P3M snapshot handles that automatically. If you need a newer version of a package than what's available in the current snapshot, you can give that package's `install.packages()` line in the Dockerfile its own repository URL (the `repos` argument), but this trades reproducibility for currency and should be done deliberately.
 
-**Note on renv:** The R ecosystem's standard project-level dependency manager, `renv`, is available in the container but is not required. DAAF's Dockerfile-based approach (P3M snapshot + explicit `install.packages()` calls) handles reproducibility at the container level, which is sufficient for most DAAF workflows. If you have an existing project that uses `renv`, you can use it inside the container without conflict.
+**Note on renv:** The R ecosystem's standard project-level dependency manager, `renv`, is available in the container but is not required. DAAF's Dockerfile-based approach (P3M snapshot + explicit `install.packages()` calls) handles reproducibility at the container level, which is sufficient for most DAAF workflows. If you have an existing project that uses `renv`, its lockfile is a useful list of what the project needs, but DAAF does not restore it inside the container (restoring installs packages, which DAAF refuses at runtime). Add the packages it lists to the Dockerfile and rebuild instead.
 
 #### Checking What R Packages Are Already Installed
 
@@ -635,6 +617,86 @@ You don't need to specify version numbers when installing R packages -- the P3M 
 - **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
 - **Read the Dockerfile** to see exactly what's installed
 - **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports. Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
+
+### LaTeX Packages
+
+DAAF's image includes TinyTeX, a compact LaTeX distribution that Quarto uses to make PDFs through LaTeX (for example with a journal's template). If a LaTeX PDF stops with an error such as ``LaTeX Error: File `tikz-cd.sty' not found``, the document needs a LaTeX package the image does not have. The LaTeX installation is read-only inside the container, so a package is added through the Dockerfile, like a Python or R package:
+
+1. **Find the package name.** The error names a file, and the package that contains it can have a different name: `tikz.sty`, for example, is in the package `pgf`. Packages are named as in TeX Live, the standard collection of LaTeX packages that TinyTeX draws from. Look the file up on [CTAN](https://ctan.org), the LaTeX package archive, to find the package name, or ask DAAF to look it up.
+2. **Add it to the TinyTeX package list.** Ask DAAF to add the name to `TT_PKGS` in the Dockerfile's TinyTeX block (search the Dockerfile for `TT_PKGS=`). The build installs it from the same dated archive as the other extra packages (texlive.info, 2026-10-19), not from today's CTAN, so a rebuild gets the same version every time. If the name is wrong or the package is not in that archive, the build stops with an error naming it.
+3. **Rebuild.** Follow the same exit-and-rebuild process described in the Python section above: exit Claude Code, exit the container, and run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. The TinyTeX block sits in the middle of the Dockerfile, so the steps after it rebuild too, which takes longer than a change in the user additions block.
+
+If the document needs nothing LaTeX-specific, you can instead ask DAAF to render it with Typst (`format: typst`), the PDF engine built into Quarto, which does not need the package.
+
+### How DAAF Freezes the Environment (Reproducible Rebuilds)
+
+Pinning a version with `==` sounds like it should make a rebuild identical, but it only fixes the packages you name. The Dockerfile pins 67 Python packages by name, and an image built from it holds 173 Python packages. The rest arrive as dependencies of the pinned ones, and without any further control they are re-resolved against PyPI on every rebuild. Re-resolving the same pins one week after a build changed 13 of the 164 packages that build installed from an earlier, shorter list of pins, including `numba` and `llvmlite` (observed 2026-10-01 on PyPI). System packages (the Python interpreter itself, GDAL, OpenSSL, Node.js) and the base image drift the same way. So the Dockerfile freezes the Python and system-package layers (and the base image) to a single **environment date**: whenever you rebuild, you get what was available on that date, not what happens to be newest today. The Python packages and the system packages normally share that one date; the [security exceptions](#deliberate-security-exceptions) below are the documented, temporary cases where a few things are taken from a later date.
+
+#### What each mechanism covers
+
+| Layer | Dockerfile setting | What it freezes |
+|-------|--------------------|-----------------|
+| Base operating system | `UBUNTU_BASE_IMAGE` (image pinned by digest) | The exact Ubuntu 24.04 base layers, even if the `24.04` tag is re-pushed |
+| uv itself | Digest on the `COPY --from=ghcr.io/astral-sh/uv:...` line | The uv/uvx binaries |
+| Python packages | `UV_EXCLUDE_NEWER` (a full UTC timestamp) | **Every** Python distribution, including transitive dependencies and the build tools used to compile source packages. uv ignores any file uploaded to PyPI after the cutoff |
+| System (apt) packages | `UBUNTU_SNAPSHOT` (an Ubuntu snapshot ID) | Every apt package the Dockerfile installs (and their dependencies), served from [snapshot.ubuntu.com](https://snapshot.ubuntu.com/) as it stood at that instant. Each apt step runs through `daaf-apt-update`, which fails the build if any package index came from somewhere else. Normally the same instant as `UV_EXCLUDE_NEWER`; in this release, one month later (see the exceptions below). Packages that came with the base image and that no install step names keep the base image's versions, because the build never runs `apt-get upgrade` |
+| R packages | `P3M_SNAPSHOT_DATE` | R packages, from a Posit Package Manager snapshot ([above](#how-daaf-ensures-r-package-reproducibility)). This date moves on its own schedule because of R-specific binary-availability constraints documented in the Dockerfile |
+
+The current environment date is **2026-09-24T13:20:00Z** (`UV_EXCLUDE_NEWER=2026-09-24T13:20:00Z`). The system packages come from a later snapshot, `UBUNTU_SNAPSHOT=20261024T000000Z` (2026-10-24T00:00:00Z), one of the security exceptions below. A built image also records both: `echo $UV_EXCLUDE_NEWER` and `cat /etc/daaf/ubuntu-snapshot` inside the container show the values it was built with.
+
+**Not covered by the environment date:** tools downloaded as a specific release file (the R runtime, Quarto, TinyTeX (the LaTeX distribution Quarto uses for LaTeX PDF output), code-server, the Codex CLI, the GitHub CLI, PowerShell, and the editor extensions) and Claude Code itself. Each is pinned to an exact version number, but not to a date. Two are also pinned to a checksum: the build checks the Codex CLI and TinyTeX downloads against a SHA-256 value for each processor type and stops if one does not match. TinyTeX's extra LaTeX packages come from a dated archive of TeX Live packages (texlive.info, 2026-10-19), and the build checks that archive's package database against a pinned SHA-512 before installing them.
+
+#### Deliberate security exceptions
+
+To get security fixes without changing every Python package, the build takes three things from after the environment date until the next routine date bump (step 5 below). The "Security Patch" entry in [`CHANGELOG.md`](../CHANGELOG.md) and the Dockerfile's `SECURITY EXCEPTIONS` list, numbered the same way, give the full detail.
+
+- **(1) Certificates.** The keys of eMudhra intermediate certificates under the root "emSign ECC Root CA - G3" were compromised, so the image no longer trusts that root: the build installs Python's `certifi` certificate list at `2026.10.19` and stops if the root is still trusted.
+- **(2) Pillow 13.0.0**, the image library behind matplotlib, plotnine, pdfplumber and contextily. Version 12.3.0 has 41 published security advisories (5 of them critical; verified against the OSV vulnerability database on 2026-10-24). If a package you add requires `pillow<13`, the build stops: pick a version that accepts Pillow 13. Figure code that saves 32-bit integer (`I` mode) images as PNG, or calls `Image.fromarray(..., mode=...)` to change the data type, must convert the image mode first.
+- **(3) System packages from a snapshot one month ahead**, mainly for poppler, the library that reads every PDF DAAF ingests. No Python package changes. PDF text extraction can change in rare cases, and the time-zone database moves from `tzdata` 2026c to 2026e: America/Winnipeg stays on UTC-5 and America/Inuvik on UTC-6 year-round from 2026-11-01, and a few historical dates change (Ireland 1925, Colombia 1992, Iran 1979, `EST5EDT`-style names before 1966), according to the IANA release notes for 2026d and 2026e. Local-time conversions in pandas and base R follow these rules; polars appears to carry its own copy (not tested).
+
+#### Adding a package newer than the environment date
+
+Because the build only sees what existed on the environment date, anything released later is invisible to it — including a newer version of a package that's already installed. The symptoms can be confusing:
+
+- **uv** reports `No solution found when resolving dependencies` and does **not** mention the date cutoff. The version you asked for looks as if it doesn't exist.
+- **apt** reports `Unable to locate package` or `Version '...' for '...' was not found`.
+
+You have two ways forward:
+
+1. **For a single Python package**, ask DAAF to exempt just that package on its own install line with uv's `--exclude-newer-package` option, giving it a later cutoff:
+
+   ```dockerfile
+   RUN uv pip install --system \
+       --exclude-newer-package yourpackage=2026-11-01T00:00:00Z \
+       yourpackage==X.Y.Z
+   ```
+
+   Only that package gets the later cutoff. Its dependencies still resolve at the environment date, so if *they* also need newer releases, bump the date instead.
+2. **Otherwise, bump the environment date** (next section).
+
+#### Bumping the environment date
+
+**Optional reading — a maintenance procedure.** This is the procedure DAAF's maintainers follow to move the environment date, and the one to follow if you maintain your own copy of the Dockerfile. Adding a package rarely needs it: only when the package needs releases newer than the environment date and the single-package exemption above is not enough.
+
+Moving the environment date upgrades everything at once, so treat it as a deliberate maintenance step rather than a side effect of adding one package. Changing the Dockerfile is an "ask first" action in DAAF, so DAAF will confirm with you before editing.
+
+1. **Pick one instant in UTC** — for example `2027-01-15T12:00:00Z`. Pick it no earlier than the current `UBUNTU_SNAPSHOT` (now `20261024T000000Z`, that is 2026-10-24T00:00:00Z), so no system package moves back to an older version.
+2. **Set both settings to that same instant**, each in its own format: `ARG UV_EXCLUDE_NEWER=2027-01-15T12:00:00Z` and `ARG UBUNTU_SNAPSHOT=20270115T120000Z`. This ends exception (3): the two settings name one instant again. (The only time they may differ is a dated security exception in which the snapshot runs *ahead* of the Python date, listed in the banner; `tests/bash/daaf_lib.bats` fails if the snapshot is behind, or ahead without a listed exception.) Always use the full timestamp ending in `Z`: uv reads a bare date like `2027-01-15` in the local time zone of whatever machine runs it, so a dry-run on a different machine could resolve different packages than the build. Update the values listed in the `ENVIRONMENT DATE` banner at the top of the Dockerfile to match, and the current values quoted in this guide's [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) section.
+3. **Optionally re-pin the base image — to a date on or before the environment date.** Some system packages DAAF installs (for example `libc6-dev`) require the *exact* version of a library the base image already contains, and apt never downgrades. If the base image is newer than the snapshot, those installs can fail. So pick a dated tag `noble-YYYYMMDD` on or before your environment date (the moving `24.04` tag may be newer), run `docker buildx imagetools inspect ubuntu:noble-YYYYMMDD` on your host, copy the top-level `Digest:` value into `ARG UBUNTU_BASE_IMAGE`, and note the tag in the comment above it. Do the same with `ghcr.io/astral-sh/uv:<version>` if you are also upgrading uv.
+4. **Move `P3M_SNAPSHOT_DATE` separately**, and only after checking the R constraints described at the R blocks of the Dockerfile.
+5. **Retire the security exceptions the new date makes redundant.** **Pillow (2):** if the new date is on or after `2026-10-17T00:00:00Z`, delete the `--exclude-newer-package pillow=2026-10-17T00:00:00Z` line from the PDF reading install step, keep a `pillow==` pin there (13.0.0, or a newer release you have checked), shorten the pillow notes in that step's comment, and remove the Pillow version check just before the file's last `RUN`, together with the Pillow note in the user additions block. **apt snapshot (3):** step 2 already puts both settings on one instant; remove the snapshot-ahead wording from the comment above `ARG UBUNTU_SNAPSHOT`, and from the top of the `ENVIRONMENT DATE` banner (the `UBUNTU_SNAPSHOT` entry and the sentence above the list of inputs). Then read the comment of the "Distrust compromised CA roots" step, and remove any sentence there that says the snapshot runs ahead of the Python date. **certifi (1):** if the new date is on or after `2026-10-20T03:00:00Z`, delete the `certifi` trust-store exception layer near the end of the Python section (the `uv pip install` line with `--exclude-newer-package certifi=2026-10-20T03:00:00Z`). Then remove the retired items from the `SECURITY EXCEPTIONS` list in the `ENVIRONMENT DATE` banner and update, to match: two Dockerfile comments that mention that layer, the one above the web-retrieval install block ("certifi is not pinned here either: its one pin is the trust-store exception layer …") and the one above the provider-shim install block ("only the certifi trust-store exception and the trust check follow …"); this guide's [security exceptions](#deliberate-security-exceptions) section and current values; and the exception clause in item FC17 of `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` ("Exception: the certifi trust-store override layer and the `daaf-check-distrusted-roots` re-check deliberately follow the provider-shim block …"), which then names only the re-check. **Copy outside the Dockerfile:** the comment above the snapshot check in `tests/bash/daaf_lib.bats` names the current exception ("now exception (3), since 2026-10-28: 20261024T000000Z …"): remove that note; the check itself stays. **Docs that describe the exceptions:** the "60+ pinned R packages" item in [01. Installation](01_installation_and_quickstart.md), the reproducibility answer in [07. FAQ: Technical Support](07_faq_technical.md), and the `pdf-reading` skill's `references/toolchain.md` (its poppler and Pillow notes). A search for `one month ahead`, `runs ahead`, `exception (`, `pillow=2026-10-17` and `certifi=2026-10-20` over `user_reference/`, `README.md`, `.claude/skills/`, `tests/` and the Dockerfile finds what is left. From that date on, certifi and Pillow resolve to fixed versions without the overrides. Keep the "Distrust compromised CA roots" step and both later runs of the trust check (at the end of the Python section and the last `RUN` of the file). The current snapshot (`20261024T000000Z`) already brings Ubuntu's fixed certificate package, as will any later one, so the distrust step finds nothing to remove; the check still guards against the root coming back.
+6. **Record the current package set** before rebuilding: inside the container, run `uv pip list --format=freeze` and `dpkg-query -W` and save both outputs somewhere in your project.
+7. **Rebuild** with `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1`) from your `daaf-docker` folder. The date settings sit near the top of the Dockerfile, so this is a full, slow rebuild.
+8. **Verify**: run `uv pip list --format=freeze` and `dpkg-query -W` again and diff them against the saved lists, so you know exactly which versions moved. Check that `cat /etc/daaf/ubuntu-snapshot` and `echo $UV_EXCLUDE_NEWER` show the new instant, and that the build log shows `daaf-apt-update: OK` lines and three `daaf-check-distrusted-roots: OK` lines (one per run of the check; a step Docker reuses from its cache prints `CACHED` instead, but a date bump re-runs all three; the Pillow version check is gone after step 5, so its `pillow … is installed` line no longer appears), and run `bash scripts/smoke_tests/run_all_smoke_tests.sh`.
+
+#### Limits and caveats
+
+- **Apple Silicon (arm64) is not yet verified end-to-end.** The build replaces the base image's package sources with direct snapshot addresses (`https://snapshot.ubuntu.com/ubuntu/<ID>/`), which serve both Intel/AMD and Apple Silicon packages. A sandboxed test confirmed that apt resolves every arm64 package index from the snapshot this way, and the arm64 indexes of the current snapshot were fetched from that address on 2026-10-28. A full arm64 image build has not been tested yet. If your build fails at the snapshot step (the build log shows the `RUN` step that sets `SOURCES=/etc/apt/sources.list.d/ubuntu.sources`, and it prints either `apt frozen to Ubuntu snapshot ...` or a `FATAL:` / `daaf-apt-update: ERROR:` line), use the escape hatch: change the line `ARG UBUNTU_SNAPSHOT=20261024T000000Z` in the Dockerfile to `ARG UBUNTU_SNAPSHOT=` (empty) and rebuild. System packages then come from the live Ubuntu archive and are **not** frozen, and the build log says so in a `WARNING` on every apt step. Python packages stay frozen either way. Please report the failure so it can be fixed.
+- **Snapshots are intended to be kept for at least two years.** Canonical says it intends "to ensure snapshots are available for dates up to at least 2 years in the past, which we may extend if there is demand." After that, an exact rebuild of an old environment date may no longer be possible. For long-term reproducibility of a finished analysis, archive the **built image** itself, not just the Dockerfile: on your host, find the DAAF image with `docker images` and save it with `docker save -o daaf-image.tar <image-name>`.
+- **PyPI can still change underneath a frozen date.** Yanked releases and deleted files are read live, so a dependency yanked after the environment date could be skipped on a rebuild, and a deleted file could make the rebuild fail. This is an inference from how uv documents its cutoff and has not been observed. Your `==` pins are not affected by yanks.
+- **TinyTeX's extra LaTeX packages depend on texlive.info.** They come from its dated archive, which states no retention period, so a rebuild that runs the TinyTeX step again (rather than reusing Docker's cached copy of it) stops there if that archive becomes unreachable or disappears; archiving the built image (see above) protects a finished analysis from this.
+- **Builds depend on snapshot.ubuntu.com being reachable.** Every system package comes from the snapshot server and nothing from the regular Ubuntu archive. If the snapshot server is down, or a package index fails to download, the build stops with an error rather than quietly mixing in packages from elsewhere.
+- **One deliberate exception during bootstrap.** The base image ships without the certificates needed to check the snapshot server's HTTPS identity, so the very first apt step installs them with certificate checking turned off for `snapshot.ubuntu.com` only, for that one step. Package integrity does not depend on HTTPS: apt verifies the GPG-signed index against Ubuntu's archive key and checks every package's hash. Every later step checks certificates normally.
 
 ---
 

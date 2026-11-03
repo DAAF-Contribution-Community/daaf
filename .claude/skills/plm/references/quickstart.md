@@ -274,10 +274,11 @@ clustered inference, use `coeftest()` from lmtest with plm's vcov functions:
 ```r
 library(lmtest)
 
-# Heteroskedasticity-robust (White)
+# HC1, entity-clustered: vcovHC() defaults to method = "arellano",
+# cluster = "group" (pass method = "white1" for heteroskedasticity-only White SEs)
 coeftest(fit, vcov = vcovHC(fit, type = "HC1"))
 
-# Entity-clustered SEs
+# Entity-clustered SEs, HC0 (the default type; no df correction)
 coeftest(fit, vcov = vcovHC(fit, cluster = "group"))
 
 # Newey-West (HAC for panel)
@@ -356,7 +357,8 @@ pdf_bal <- make.pbalanced(pdf, balance.type = "fill")
   reversed, time-first index -- see `./models.md`)
 - Panel diagnostic tests (serial correlation, cross-sectional dependence, unit root)
 - Dynamic GMM (Arellano-Bond, Blundell-Bond)
-- Panel IV within entity-demeaned data
+- Panel IV outside fixest's scope, such as IV with random effects (DAAF routes
+  FE + IV to fixest; plm with instruments also works)
 
 **Use fixest when:**
 - High-dimensional fixed effects (3+ way FE)
@@ -370,7 +372,9 @@ pdf_bal <- make.pbalanced(pdf, balance.type = "fill")
 - Cross-sectional regression without panel structure
 - GLMs (logit, probit, Poisson) without fixed effects
 - Classical hypothesis tests (t-test, chi-squared)
-- Time series models (ARIMA, VAR)
+- Time series models (ARIMA; VAR has no installed R VAR package, so escalate to
+  the orchestrator, per the data-scientist skill's Statistical modeling branch of
+  "Load for Specific Needs")
 
 ---
 

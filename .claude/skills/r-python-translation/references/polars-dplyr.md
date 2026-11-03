@@ -605,7 +605,7 @@ the expression within groups but keeps all rows (no aggregation).
 |-----------|--------|-------|
 | `left_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="left")` | |
 | `inner_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="inner")` | `how="inner"` is the default |
-| `full_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="full")` | NOT `how="outer"` in polars 1.x |
+| `full_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="full")` | `how="outer"` is deprecated (still runs with a DeprecationWarning) |
 | `right_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="right")` | |
 | `anti_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="anti")` | |
 | `semi_join(df1, df2, by = "key")` | `df1.join(df2, on="key", how="semi")` | |
@@ -1143,7 +1143,7 @@ df %>% group_by(g) %>% mutate(row_num = row_number())
 ```python
 # polars
 df.with_columns(
-    pl.col("x").cum_count().over("g").alias("row_num")
+    pl.int_range(1, pl.len() + 1).over("g").alias("row_num")
 )
 ```
 

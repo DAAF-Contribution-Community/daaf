@@ -14,6 +14,12 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With this set to $true under 'Stop', pwsh throws NativeCommandExitException (observed
+# 2026-11-01, PowerShell 7.6.3).
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -25,8 +31,8 @@ function Wait-AndExit {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# process environment so `docker compose` interpolation resolves the project name
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys ($known below)
+# into the process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
 # daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
@@ -120,11 +126,35 @@ if ($LASTEXITCODE -ne 0) {
     Wait-AndExit 1
 }
 
+# --- Project name for printed commands ---
+# Parity twin of the block in run_daaf.sh (see there for why): printed commands
+# carry `-p <project>` and DAAF_PROJECT_NAME for any project other than 'daaf',
+# normalized as Docker Compose does (Resolve-DaafProjectName in daaf_lib.ps1).
+# SYNC NOTE: the $HintProject line is a copy of the library's expression;
+# tests/powershell/daaf_lib.Tests.ps1 runs it over the library's fixed input set.
+# The printed reinstall also carries DAAF_BRANCH (when set and not main) and
+# DAAF_DEV=1 (when set), as in run_daaf.sh (see there for why).
+$HintProject = if ([string]::IsNullOrEmpty($env:DAAF_PROJECT_NAME)) { "daaf" } else { ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+$ComposePFlag = ""
+$RerunEnvPart = ""
+if (-not [string]::IsNullOrEmpty($HintProject) -and $HintProject -cne "daaf") {
+    $ComposePFlag = "-p $HintProject "
+    $RerunEnvPart = "`$env:DAAF_PROJECT_NAME = `"$HintProject`"; "
+}
+if (-not [string]::IsNullOrEmpty($env:DAAF_BRANCH) -and $env:DAAF_BRANCH -cne "main") {
+    $RerunEnvPart += "`$env:DAAF_BRANCH = `"$($env:DAAF_BRANCH)`"; "
+}
+if ($env:DAAF_DEV -eq "1") {
+    $RerunEnvPart += "`$env:DAAF_DEV = `"1`"; "
+}
+
 # --- Start container if not running ---
 # `docker compose ps -q daaf-docker` prints the running container's ID (empty
 # when stopped), derived from the compose project rather than a hardcoded name.
+# Stdout only (2>$null): a stderr line, such as a Compose warning, is not a container
+# ID and must not make a stopped container look running.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$CidOutput = docker compose ps -q daaf-docker 2>&1
+$CidOutput = docker compose ps -q daaf-docker 2>$null
 $ErrorActionPreference = $savedEAP
 $Running = if ([string]::IsNullOrWhiteSpace(($CidOutput | Out-String))) { 0 } else { 1 }
 
@@ -142,12 +172,15 @@ if ($Running -eq 0) {
     Write-Host "DAAF container is already running."
     # Check if environment_settings.txt has been modified since the container was created
     if (Test-Path "environment_settings.txt") {
+        # Stdout only (2>$null), as above: the ID is passed to `docker inspect`, and
+        # the inspect output is parsed as a date, so a stderr line in either would
+        # only break them.
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $_cid = docker compose ps -q daaf-docker 2>&1
+        $_cid = docker compose ps -q daaf-docker 2>$null
         $ErrorActionPreference = $savedEAP
         if ($_cid) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $_created = docker inspect --format '{{.Created}}' $_cid 2>&1
+            $_created = docker inspect --format '{{.Created}}' $_cid 2>$null
             $ErrorActionPreference = $savedEAP
             try {
                 # Truncate to 7 fractional digits -- .NET DateTimeOffset.Parse() rejects Docker's 9-digit nanoseconds
@@ -157,8 +190,10 @@ if ($Running -eq 0) {
                 if ($EnvModified -gt $ContainerStart) {
                     Write-Host ""
                     Write-Host "NOTE: Your environment_settings.txt file has been modified since this container was started." -ForegroundColor Yellow
-                    Write-Host "      To apply environment_settings.txt changes, close all DAAF sessions, then run:"
-                    Write-Host "        docker compose down"
+                    Write-Host "      To apply environment_settings.txt changes, close all DAAF sessions, then choose"
+                    Write-Host "      11) Restart Container in the DAAF Control Panel (.\daaf.ps1), which does this for you."
+                    Write-Host "      Or run these commands yourself:"
+                    Write-Host "        docker compose $($ComposePFlag)down"
                     Write-Host "        .\run_daaf.ps1"
                 }
             } catch {
@@ -177,19 +212,21 @@ $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARNING: DAAF does not appear to be installed in the container (/daaf is empty or missing key files)." -ForegroundColor Yellow
-    Write-Host "The container is running, but DAAF's repository files may not have been cloned."
-    Write-Host "You can fix this by running '.\update_daaf.ps1' from your daaf-docker folder, or manually cloning inside the container:"
-    Write-Host "  docker compose exec daaf-docker bash"
-    Write-Host "  git clone --depth 1 https://github.com/DAAF-Contribution-Community/daaf.git /tmp/daaf-clone"
-    Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
+    Write-Host "WARNING: DAAF does not appear to be installed in the container (/daaf/CLAUDE.md is missing)," -ForegroundColor Yellow
+    Write-Host "so Claude Code cannot start with DAAF. The updater cannot repair this; reinstalling can."
+    Write-Host "A reinstall replaces DAAF's framework files and local git history, and keeps your"
+    Write-Host "research files and environment_settings.txt (a backup first is still a good idea:"
+    Write-Host "Control Panel option 7) Create Backup). To reinstall, run:"
+    Write-Host "  cd `"$(Split-Path -Parent (Get-Location).Path)`""
+    Write-Host "  $($RerunEnvPart)`$env:DAAF_FORCE_REINSTALL = `"1`""
+    Write-Host "  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex"
     Wait-AndExit 1
 }
 
 # --- Launch ---
 if ($Command -eq "claude") {
     Write-Host "Launching Claude Code..."
-    Write-Host "(Press Ctrl+C twice to exit Claude Code when done)"
+    Write-Host "(Type /exit to leave Claude Code when you are done.)"
     Write-Host ""
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker compose exec daaf-docker claude

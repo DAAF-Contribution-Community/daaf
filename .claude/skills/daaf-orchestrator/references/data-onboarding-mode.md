@@ -4,19 +4,24 @@ Data Onboarding mode is triggered when a user wants to profile raw data files an
 
 ## User Orientation
 
-After mode confirmation, briefly orient the user. Key points:
+The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
-- 3 phases: Setup, Profiling (4 parts of scripted analysis), Skill Creation
-- 2 checkpoints where you review: after setup (to confirm scope) and after profiling (to confirm interpretations before they become part of the skill)
+- 3 phases: Setup, Profiling (4 parts of scripted analysis: structure, statistics, relationships, interpretation), Skill Creation; when the data comes from an API, an acquisition step first writes a fetch script for your approval and downloads the data
+- Before any data enters DAAF, a question about whether it is sensitive; if it is and your setup's protections are uncertain, a privacy-preserving path replaces in-container profiling (you run a profiling script locally and share only its summary)
+- Two checkpoints, then you review the finished skill: after setup (the setup scope check, to confirm scope) and after profiling (to confirm interpretations before they become part of the skill)
 - 1 optional offer between the profiling review and skill creation: I can research the source online first to enrich the skill (skippable in one word)
 - You receive: a standalone data source skill ready for use in future analyses, plus a research project folder with all profiling evidence
 - You need to provide: data file(s), source name, file format, and optionally any documentation, priority columns, and known exclusions
 - Key characteristic: thorough automated profiling, but you review all interpretations before they are encoded into the skill
 - Typical duration: a single session for files under 500 columns; larger files may require batched profiling across sessions
 
-**When to skip:** User has completed a data onboarding before and indicates familiarity.
-
 **For more detail:** Consult `{BASE_DIR}/user_reference/04_extending_daaf.md`.
+
+---
+
+## Scope Check
+
+**Tier:** Hard (blocking). **Where:** PSU-DI1 Setup Confirmation (§ PSU Templates), which embeds the standard block; on the synthetic path, PSU-DS1 (`WORKFLOW_PHASE_DO_SYNTHETIC.md`). **Read first:** the documentation the user pointed to (codebooks, data dictionaries, provider pages, methodology notes), only after the sensitivity question has been answered and then before PSU-DI1, per § PSU Templates > Scoping Read Before PSU-DI1 and `SKILL.md` § Scope Check > Read First. **No staging here:** DI-2 creates the project folder before PSU-DI1, so fetches, PDF ingests and the digest go straight into it. **Mode-specific carve-out:** the data files themselves are never opened before the sensitivity question (§ Sensitivity Gate); their contents are examined only by the profiling scripts. On the synthetic path, local documentation is read only after asking the user (§ PSU Templates > Scoping Read Before PSU-DI1). **Rule and standard block:** `SKILL.md` § Scope Check. **On resume:** if STATE.md's Current Position records PSU-DI1 as confirmed, do not re-present it; if it records "Awaiting Confirmation", re-present it (`session-recovery.md`).
 
 ---
 
@@ -67,6 +72,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Copy raw data into research project data/raw/                        │
 │      ├─ Initialize STATE.md from agent_reference/STATE_TEMPLATE_ONBOARDING.md   │
 │      ├─ Initialize LEARNINGS.md                                             │
+│      ├─ Scoping read: documentation the user pointed to (never the data)    │
 │      ├─ Verify {BASE_DIR}/scripts/run_with_capture.sh is accessible          │
 │      └─ Gate GDI-2: Project folder ready, STATE.md initialized              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -92,7 +98,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ DI-0b: EXECUTE PHASE — Orchestrator executes approved script      │
 │      │   ├─ Execute via run_with_capture.sh                               │
 │      │   ├─ Verify downloaded file is non-empty and loadable              │
-│      │   └─ If execution fails: present error, allow user to adjust       │
+│      │   └─ If execution fails: present error, allow user to adjust;      │
+│      │      an adjusted script is a new version made with                 │
+│      │      create_script_revision.sh (a logged script cannot re-run)     │
 │      └─ Gate GDI-0: File downloaded, accessible, non-empty                │
 │                          ↓                                                  │
 │  Feed downloaded file path(s) into DI-1 as the data file(s)                │
@@ -121,7 +129,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 03: Per-column statistics, value distributions, patterns           │
 │      ├─ Code-reviewer QA loop (QAP1)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-3: CPP1 PASSED, QAP1 PASSED/WARNING                       │
+│      └─ Gate GDI-3: CPP1 PASSED/PASSED WITH WARNINGS, QAP1 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-4: Statistical Profile (Part B — scripts 04-06)                   │
 │      ├─ 04: Distribution profiling (always)                                 │
@@ -129,7 +137,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 06: Entity coverage (conditional — if entity/geo ID found)          │
 │      ├─ Code-reviewer QA loop (QAP2)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-4: CPP2 PASSED, QAP2 PASSED/WARNING                       │
+│      └─ Gate GDI-4: CPP2 PASSED/PASSED WITH WARNINGS, QAP2 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-5: Relational Analysis (Part C — scripts 07-09)                   │
 │      ├─ 07: Key candidate identification (always)                           │
@@ -137,14 +145,14 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 09: Completeness, coded missing values, anomaly catalog (always)    │
 │      ├─ Code-reviewer QA loop (QAP3)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-5: CPP3 PASSED, QAP3 PASSED/WARNING                       │
+│      └─ Gate GDI-5: CPP3 PASSED/PASSED WITH WARNINGS, QAP3 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-6: Interpretation (Part D — scripts 10-11)                        │
 │      ├─ 10: Column semantic classification (always)                         │
 │      ├─ 11: Documentation reconciliation (conditional — if docs provided)   │
 │      ├─ Code-reviewer QA loop (QAP4)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-6: CPP4 PASSED, QAP4 PASSED/WARNING                       │
+│      └─ Gate GDI-6: CPP4 PASSED/PASSED WITH WARNINGS, QAP4 PASSED/WARNING  │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
             ┌──────────────────────────────────┐
@@ -176,7 +184,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Create SKILL.md using DATA_SOURCE_SKILL_TEMPLATE.md                 │
 │      ├─ Create reference files in .claude/skills/{skill-name}/references/   │
 │      ├─ Compliance check: template (CPP-SKILL)                              │
-│      └─ Gate GDI-7: CPP-SKILL PASSED                                       │
+│      └─ Gate GDI-7: CPP-SKILL PASSED/PASSED WITH WARNINGS                  │
 │                          ↓                                                  │
 │  Stage DI-8: Review & Delivery                                              │
 │      ├─ Collect session logs: collect_session_logs.sh                        │
@@ -192,7 +200,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 
 > **AUTHORITATIVE EXECUTION LOOP:** The Per-Part Execution Cycle referenced in each stage above (DI-3 through DI-6) is defined in full detail in the **Per-Part Execution Cycle** section below. That cycle is the MANDATORY atomic unit for all profiling work. The workflow diagram above is a visual summary; the Per-Part Execution Cycle is the binding specification.
 
-> **Note:** The "DI-" prefix on stage identifiers (DI-1 through DI-8) is a historical abbreviation from when this mode was named "Data Ingest." The prefix is retained for backward compatibility with existing projects and scripts.
+> **Note:** Stage identifiers use the prefix DI- (DI-0 to DI-8), which matches the data-ingest agent's name and the stage codes in existing onboarding projects' STATE.md.
 
 ---
 
@@ -202,7 +210,7 @@ At Stage DI-1, the orchestrator must determine the **target skill name** — the
 
 ### Convention: `{domain}-data-source-{acronym}`
 
-All data source skills follow this pattern. The `{domain}` groups related sources for pattern-based discovery, and the `{acronym}` is the standard abbreviation researchers use for the source.
+All data source skills follow this pattern. The `{domain}` part names the subject area (`education`, `election`) and groups related sources; it is not the frontmatter `metadata.domain` field, which is `data-source` for every data source skill. The `{acronym}` is the standard abbreviation researchers use for the source.
 
 **Examples:** `education-data-source-ccd`, `education-data-source-ipeds`, `election-data-source-countypres`
 
@@ -211,7 +219,7 @@ All data source skills follow this pattern. The `{domain}` groups related source
 | Rule | Correct | Incorrect | Rationale |
 |------|---------|-----------|-----------|
 | Use the standard acronym when one exists | `education-data-source-ccd` | `education-data-source-common-core` | Acronyms are how researchers reference sources |
-| Domain prefix must match `metadata.domain` | `election-data-source-countypres` (domain: `election-data`) | `voting-data-source-countypres` | Consistency enables pattern-based discovery |
+| Domain prefix names the subject area | `election-data-source-countypres` | `voting-data-source-countypres` | The prefix groups related sources (`education-`, `election-`). It is not the `metadata.domain` field, which is always `data-source` for these skills (skill-authoring `references/frontmatter.md` § Controlled Vocabulary) |
 | Identify specific tables when a source has multiple | `education-data-source-ccd-schools` | `education-data-source-ccd` (if ambiguous) | Prevents conflicts when onboarding additional tables later |
 | Follow frontmatter validation: lowercase, hyphens only | `education-data-source-nhgis` | `education_data_source_NHGIS` | Regex: `^[a-z0-9]+(-[a-z0-9]+)*$` |
 
@@ -224,11 +232,11 @@ All data source skills follow this pattern. The `{domain}` groups related source
 
 ### Sensitivity Gate (DI-1 — Before Access-Method Determination)
 
-**This is a mandatory DI-1 step, asked before determining the access method.** Before any data is brought into the container, establish whether the dataset is sensitive and whether the user has adequate protections. The framing below is user-directed — adapt the wording, keep the substance. It draws on the existing privacy guidance in `{BASE_DIR}/README.md` (§ data-privacy note), `user_reference/03_best_practices.md` (§ data privacy), and `user_reference/07_faq_technical.md` (§ Data Privacy FAQ) — reference those for depth rather than restating them. The gate fires identically regardless of how the user reached Data Onboarding — including when they were routed here from an Ad Hoc Collaboration or User Support escalation (e.g., a help conversation that surfaced sensitive data): the entry path does not change whether, or how, this gate is applied.
+**This is a mandatory DI-1 step, asked before determining the access method.** Before any data is brought into the container, establish whether the dataset is sensitive and whether the user has adequate protections. The framing below is user-directed — adapt the wording, keep the substance. It draws on the existing privacy guidance in `{BASE_DIR}/README.md` § Using DAAF with Sensitive or Regulated Data, `user_reference/03_best_practices.md` ("A note on data privacy"), and `user_reference/07_faq_technical.md` § Q: Where is my data sent? What about privacy? — reference those for depth rather than restating them. The gate fires identically regardless of how the user reached Data Onboarding — including when they were routed here from an Ad Hoc Collaboration or User Support escalation (e.g., a help conversation that surfaced sensitive data): the entry path does not change whether, or how, this gate is applied.
 
 Present, in plain language:
 
-> Before we proceed: does this dataset contain proprietary, private, or regulated information (for example student records, health data, personnel data, trade secrets)? If so, please make sure your current account setup has sufficient data privacy and security protections before we continue — analytical output (sample rows, summary statistics) transits Anthropic's servers as part of how Claude Code works, and the protections that apply depend on your license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different guarantees; see the Data Privacy FAQ). If you've confirmed your setup is appropriate, we can proceed normally. If you aren't sure, or you don't have those protections, we can run this process using the synthetic data protocol instead: your real data never enters DAAF — you'll run a profiling script on your own machine, review exactly what it captured before sharing anything, and I'll build a realistic synthetic stand-in from that profile for developing all the analysis code.
+> Before we proceed: does this dataset contain proprietary, private, or regulated information (for example student records, health data, personnel data, trade secrets)? If so, please make sure your current account setup has sufficient data privacy and security protections before we continue. Whatever I read or print during the session (sample rows, summary statistics) goes to the AI provider you connect through: Anthropic, with an Anthropic subscription or API key; OpenAI, with an OpenAI API key or ChatGPT subscription through DAAF's provider shim; OpenRouter and the model provider it routes to, with OpenRouter; or your organization's own cloud account, with AWS Bedrock or Google Vertex AI. The protections that apply depend on that provider and your agreement with it (Enterprise agreements, Bedrock, and Vertex each offer different guarantees; see "Where is my data sent? What about privacy?" in the FAQ: Technical Support guide, `user_reference/07_faq_technical.md`). If you've confirmed your setup is appropriate, we can proceed normally. If you aren't sure, or you don't have those protections, we can run this process using the synthetic data protocol instead: your real data never enters DAAF — you'll run a profiling script on your own machine, review exactly what it captured before sharing anything, and I'll build a realistic synthetic stand-in from that profile for developing all the analysis code.
 
 **Three outcomes:**
 
@@ -240,7 +248,7 @@ Present, in plain language:
 
 **"Not sure" is a respected, first-class choice — treat it exactly like outcome 3.** A user who cannot confirm their protections should never be nudged toward the normal path; the synthetic path exists precisely so that uncertainty carries no privacy cost. If sensitivity was later re-decided (e.g., the user confirms protections after all), that is a re-decision at this gate, not an ad hoc reversal mid-workflow.
 
-Record the sensitivity-gate outcome in STATE.md (Data Source Info; and the Synthetic Path Tracking section if outcome 3).
+Record the sensitivity-gate outcome in STATE.md (Data Source Info > Sensitivity Gate; and the Synthetic Path Tracking section if outcome 3). STATE.md is created at DI-2, so record an answer given at DI-1 when it is created.
 
 ### Access Method Determination
 
@@ -353,15 +361,15 @@ When the user needs to set up an API key and it's not currently available in the
 > YOUR_API_KEY_NAME=your_key_here
 > ```
 > If you don't have an `environment_settings.txt` file yet, copy the template: `cp environment_settings_example.txt environment_settings.txt`
-> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
+> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: choose **11) Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`; for a second install, add `-p` and its project name, `docker compose -p <project-name> down`).
 
 **Alternative: Set for the current session only (temporary):**
 
-> Before launching Claude Code, run this in your Docker container terminal:
+> Open a terminal in the container (**6) Open Terminal in Container** in the DAAF Control Panel) and run:
 > ```bash
 > export YOUR_API_KEY_NAME="your_key_here"
 > ```
-> You can also type `! export YOUR_API_KEY_NAME="your_key_here"` directly in the Claude Code prompt to set it for this session.
+> Then start Claude Code from that same terminal by typing `claude`. The key lasts until that terminal closes; a session started from the Control Panel's Start Claude Code does not see it.
 
 **Security notes to convey to user:**
 - The `environment_settings.txt` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
@@ -483,16 +491,44 @@ Return findings in this structure (max 3500 words):
 | GDI-0 | DI-0 | API key verified, data downloaded, file non-empty, acquisition script archived | API auth fails, empty response, rate limited (conditional — only if access method = API) |
 | GDI-1 | DI-1 | Required inputs collected, file(s) accessible and non-empty, access method determined, file structure classified | File cannot be loaded, file empty, required inputs missing, or API acquisition failed |
 | GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails |
-| GDI-3 | DI-3 | CPP1 PASSED, QAP1 PASSED or WARNING | File >1GB without sampling plan approved by user, or critical columns entirely null |
-| GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
-| GDI-5 | DI-5 | CPP3 PASSED, QAP3 PASSED or WARNING | No candidate keys identifiable across any table |
-| GDI-6 | DI-6 | CPP4 PASSED, QAP4 PASSED or WARNING | >50% of documented columns missing from data |
-| GDI-7 | DI-7 | CPP-SKILL PASSED (template compliance) | Template compliance fails after 2 revision attempts |
+| GDI-3 | DI-3 | CPP1 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP1 result is `PASSED` or `WARNING` | CPP1 `FAILED`, QAP1 `BLOCKER` after the revision budget, file >1GB without a sampling plan approved by the user, or critical columns entirely null |
+| GDI-4 | DI-4 | CPP2 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP2 result is `PASSED` or `WARNING` | CPP2 `FAILED`, QAP2 `BLOCKER` after the revision budget, or >50% of columns are entirely null |
+| GDI-5 | DI-5 | CPP3 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP3 result is `PASSED` or `WARNING` | CPP3 `FAILED`, QAP3 `BLOCKER` after the revision budget, or no candidate keys identifiable across any table |
+| GDI-6 | DI-6 | CPP4 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP4 result is `PASSED` or `WARNING` | CPP4 `FAILED`, QAP4 `BLOCKER` after the revision budget, or >50% of documented columns missing from data |
+| GDI-7 | DI-7 | CPP-SKILL verdict is `PASSED` or `PASSED WITH WARNINGS` (template compliance) | CPP-SKILL `FAILED`, or template compliance fails after 2 revision attempts |
 | GDI-8 | DI-8 | User confirms skill is acceptable | N/A (user decision point) |
 
 **Gate enforcement:** Gates GDI-1 through GDI-7 are mandatory checkpoints. If a gate's STOP condition is triggered, halt execution, present the issue to the user, and await guidance before proceeding. Update STATE.md with the gate failure and resolution.
 
+### Reading CPP and QAP Verdicts at a Gate
+
+The two checkpoint families a profiling gate reads use different vocabularies on purpose, and the gate treats them differently.
+
+| Family | Verdict line | Values | Effect on the gate |
+|--------|--------------|--------|--------------------|
+| **CPP** (in-script validation; `CPP1`-`CPP4`, `CPP-SKILL`) | `CPP{n} VALIDATION: …` | `PASSED` / `PASSED WITH WARNINGS` / `FAILED` | `PASSED` and `PASSED WITH WARNINGS` both pass the gate; `FAILED` raises in the script itself, so the part cannot complete |
+| **QAP** (code-reviewer severity; `QAP1`-`QAP4`) | `QAP{n} RESULT: …` | `PASSED` / `WARNING` / `BLOCKER` | `PASSED` and `WARNING` pass the gate; `BLOCKER` routes to the revision flow (Per-Part Execution Cycle STEP 4) and, if unresolved after 2 revisions, STOPs |
+
+**`PASSED WITH WARNINGS` passes, but the warnings travel.** A CPP verdict of `PASSED WITH WARNINGS` clears the gate and does not trigger the revision flow. Its warning count and the warning lines themselves are carried into the part's STATE.md row and into the findings the user sees at PSU-DI2 — a warning that passes a gate silently is a warning that was never raised. The same applies to a QAP result of `WARNING`.
+
+**A NOT VERIFIED count above zero is never a clean gate.** Every checkpoint prints a count line before its verdict (`… {not_verified} not verified, {skipped} skipped …`). Read it, do not read only the verdict word:
+
+- **CPP with `not_verified > 0`:** the verdict is `FAILED` by construction (a validation gate that could not obtain its evidence has not gated), the script raises, and the part does not complete. Route it through error recovery as a *missing-evidence* failure, not a data failure — see `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding). The three legitimate resolutions are: supply the missing input, fix the checkpoint configuration, or declare the check not applicable with a written reason (which converts it to `SKIPPED`). Rerunning unchanged is not one of them.
+- **QAP with `not_verified > 0`:** the result is at least `WARNING`, so the gate passes only in the "warnings travel" sense above. The reviewer's escalation decision is part of the QA return and must be recorded in STATE.md: whether each unverified check was left at WARNING or escalated to BLOCKER because the profiling protocol had promised the input (documentation was supplied, the structure was classified HIERARCHICAL, Part A found a time column). See `agent_reference/QA_CHECKPOINTS.md` § QAP Count Line and Verdict.
+- **`skipped > 0`** does not affect either verdict, but the declared reasons are recorded alongside the counts so PSU-DI2 shows the user how much of the profiling was declared away rather than performed.
+
+When recording a gate outcome in STATE.md, record the verdict **and** the counts. A recorded `PASSED` with no counts cannot be distinguished later from a `PASSED` over checks that never ran, which is the failure this contract exists to prevent.
+
 **Synthetic path (sensitivity-gate outcome 3):** When DI-1 routes to the synthetic path, gates GDI-2 through GDI-6 are replaced by the synthetic-path gates **GDS-0 through GDS-5** (tier selection, disclosure-safety of the outbound script, user local run, report intake, interpretation, synthetic generation), defined in full in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Gate Definitions (Synthetic Path). GDI-1 (intake), GDI-7 (skill authoring), and GDI-8 (delivery) still apply after rejoin.
+
+That path substitutes its own two checkpoint families for CPP/QAP, and a synthetic-path gate reads them the same way — verdict plus count line:
+
+| Family | Verdict line | Values | Effect on the gate |
+|--------|--------------|--------|--------------------|
+| **CPS** (in-script validation; `CPS-INTAKE` at DS-3, `CPS-GEN` at DS-5) | `CPS-INTAKE VALIDATION: …` / `CPS-GEN VALIDATION: …` | `PASSED` / `PASSED WITH WARNINGS` / `FAILED` | `PASSED` and `PASSED WITH WARNINGS` both pass; `FAILED` raises in the script, so the stage cannot complete. `not_verified > 0` forces `FAILED` |
+| **QAS** (code-reviewer severity; `QAS-A`, `QAS-B`, `QAS-C`) | `QAS-{A\|B\|C} RESULT: …` | QAS-A: `PASSED` / `BLOCKER` only. QAS-B/C: `PASSED` / `WARNING` / `BLOCKER` | `PASSED` (and `WARNING` for QAS-B/C) pass; `BLOCKER` routes to the revision flow. For QAS-A, `not_verified > 0` is itself `BLOCKER` and `WARNING` is not a legal verdict |
+
+Definitions are canonical in `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) with § QAS Severity Overrides (Synthetic Path), and in `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. All five outcomes are recorded — verdict and counts — in STATE.md § Synthetic QA Status. The one exception: at T4 with no profile report, CPS-INTAKE, QAS-B and CPS-GEN are not run, and their rows record `EXEMPT (T4, no profile report)` with the reason (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant).
 
 ---
 
@@ -500,7 +536,7 @@ Return findings in this structure (max 3500 words):
 
 For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NOT skip any step.** This is the Data Onboarding equivalent of the Full Pipeline's Stage 5-8 Composite Execution Pattern.
 
-> **Wave barrier discipline (async dispatch).** Subagents dispatched via the Agent tool run in the background by default; their completion arrives as async task notifications rather than a synchronous return. The "WAIT for … return before proceeding" steps below therefore mean a hard barrier: do not evaluate QA severity, update STATE.md conclusions, advance to the next part, or present PSU-DI2 until the dispatched subagent has actually returned. Where a step dispatches more than one subagent, wait for ALL of them before acting, and synthesize once over the complete set — a failed or early-returning subagent still counts as a completion to be handled during that whole-set synthesis, not as a mid-wave trigger. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Wave barrier discipline (async dispatch).** See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. However they arrive, the "WAIT for … return before proceeding" steps below mean a hard barrier: do not evaluate QA severity, update STATE.md conclusions, advance to the next part, or present PSU-DI2 until the dispatched subagent has actually returned. Where a step dispatches more than one subagent, wait for ALL of them before acting, and synthesize once over the complete set — a failed or early-returning subagent still counts as a completion to be handled during that whole-set synthesis, not as a mid-wave trigger.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -534,13 +570,17 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      │                                                                      │
 │      └─ WAIT for code-reviewer to return before proceeding                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 3: EVALUATE QA severity                                               │
+│  STEP 3: EVALUATE QAP result AND count line                                 │
+│      ├─ Read the count line, not just the verdict word                     │
 │      ├─ PASSED → Log to STATE.md, proceed to STEP 5                        │
-│      ├─ WARNING → Log to STATE.md (for PSU-DI2 review), proceed to STEP 5 │
+│      ├─ WARNING → Log verdict + counts to STATE.md, go to STEP 5           │
+│      ├─ not_verified > 0 → at least WARNING; record the reviewer's         │
+│      │     escalation decision for each unverified check in STATE.md       │
 │      └─ BLOCKER → Go to STEP 4                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 4: REVISION FLOW (if BLOCKER)                                         │
 │      ├─ Re-invoke data-ingest subagent to revise failing script(s)         │
+│      │   (new version via create_script_revision.sh: _a, then _b)           │
 │      ├─ Re-invoke code-reviewer on revised scripts                         │
 │      ├─ If still BLOCKER → Create next revision, re-invoke code-reviewer   │
 │      └─ If still BLOCKER after 2 revisions → STOP and escalate to user    │
@@ -549,7 +589,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      ├─ Profiling Progress table: update Status, CPP, QA Status for each  │
 │      │   script in this part; record skip reasons in Notes column           │
 │      ├─ Checkpoint Status tables: update CPP row (Primary Validation)      │
-│      │   and QAP row (Secondary Validation) for this part                  │
+│      │   and QAP row (Secondary Validation) with verdict + counts          │
 │      ├─ QA Findings Summary: append BLOCKERs Resolved / WARNINGs Logged   │
 │      │   incrementally (don't defer to DI-8)                               │
 │      ├─ Error Budget Consumed: update per-part and session totals         │
@@ -561,7 +601,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      ├─ If Part D: populate Interpretation Tracking (Preliminary column)   │
 │      │   from subagent return; populate Documentation Reconciliation       │
 │      │   Summary from Part D discrepancy findings (if docs provided)       │
-│      ├─ Verify gate criteria (CPP + QAP status) before proceeding         │
+│      ├─ Verify gate criteria before proceeding: CPP verdict, QAP result    │
+│      │     and both count lines; not_verified > 0 is not a clean gate      │
 │      └─ Proceed to next part or PSU-DI2                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 6: PROGRESS UPDATE (informational — no user action required)         │
@@ -571,7 +612,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      │                                                                      │
 │      │   **Profiling progress: [Part Name] complete**                     │
 │      │   - [1-2 key findings from this part]                              │
-│      │   - Next: [what comes next — next part or PSU-DI2 review]          │
+│      │   - Next: [the next profiling part, or your review of findings]    │
 │      │                                                                      │
 │      │   This is a heartbeat, not a checkpoint. No user action needed.    │
 │      │   Keep it to 3-4 lines. Do NOT present detailed findings —         │
@@ -590,7 +631,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 **Turn-end briefing.** The Step 6 heartbeat and the PSU-DI checkpoints are this mode's instances of DAAF's general Turn-End Briefing standard — the heartbeat as the in-cycle, non-blocking form, the PSUs as the heavyweight review points. Every *other* substantive turn that returns control to the user (an error-recovery pause, an intake question answered mid-profiling) still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
-**Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`.
+**Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Claude Code picks up a skill placed in `.claude/skills/` within the running session, without a restart (verified against the Claude Code skills docs on 2026-11-02).
 
 **Stage DI-8 (Review & Delivery):** Finalizes STATE.md and consolidates LEARNINGS.md as described in the Output Format section. The LEARNINGS.md consolidation protocol for DI-8:
 1. Review LEARNINGS.md entries captured during profiling phases (DI-3 through DI-6)
@@ -603,13 +644,15 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 | Event | Required STATE.md Field Updates |
 |-------|--------------------------------|
+| STATE.md initialized (DI-2) | Session Metadata → DAAF Version (`git rev-parse --short HEAD`), Session Model ID, Provider Route (how this installation reaches its models; see `AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route; empty rather than guessed if still not evident, so the disclosure asks the researcher), Model Settings (the route's reasoning-effort settings, same section), Subagent Model Tiers, Session Date(s); Data Source Info → Sensitivity Gate and the intake fields; Current Position (Current Phase DO-1 (Intake & Setup), Current Stage DI-2) |
+| User checkpoint presented / answered (PSU-DI1, PSU-DI2; PSU-DS1, PSU-DS2 on the synthetic path) | Current Position → Status = Awaiting Confirmation when presented, In Progress once answered; the answer goes in Key Decisions Made |
 | DI-0 script approved and executed | Profiling Progress row 00 → DONE; API Access Info → all fields populated; Files Created; Current Position |
 | DI-0 blocked (auth failure, empty response) | Blockers → Execution Blockers; Current Position → Status=Blocked |
-| Part starts (DI-3/4/5/6) | Current Position → Current Stage, Current Phase |
+| Part starts (DI-3/4/5/6), or DS-1 starts on the synthetic path | Current Position → Current Stage (DI-n or DS-1); Current Phase → DO-2 (Profiling & Reconciliation) |
 | Part cycle Step 5 completes | Profiling Progress → script Status and CPP columns for each script in part |
 | Conditional script skipped | Profiling Progress → Status=SKIPPED, Notes=reason; Key Decisions Made |
-| CPP checkpoint passes | Checkpoint Status → Primary Validation (CPP row for this part) |
-| QA completes (QAP1-4) | Checkpoint Status → Secondary Validation (QAP row); QA Findings Summary |
+| CPP checkpoint returns a verdict | Checkpoint Status → Primary Validation (CPP row for this part): verdict string plus the count line's passed / warnings / failed / not verified / skipped values |
+| QA completes (QAP1-4) | Checkpoint Status → Secondary Validation (QAP row): result string plus passed / warnings / blockers / not verified / skipped / info counts; QA Findings Summary |
 | QA BLOCKER encountered | QA Blockers (Pending Resolution) table; Error Budget Consumed |
 | QA BLOCKER resolved via revision | QA Blockers → Status=Resolved; Profiling Progress → Revisions column |
 | Gate passes (GDI-3/4/5/6) | Current Position → Status; Next Actions |
@@ -624,13 +667,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 ### Context Management
 
-Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions. Trigger points are **threshold-profile-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the profile selected from its own exact model ID. Profile selection is version-specific and independent of physical context-window mapping. Exact GPT 5.6 Sol has a separate validated profile that shares the standard 40%/60%/75% percentage boundaries (also used by the conservative default) while retaining higher validated absolute gates (300k/400k/500k). For that profile, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of the Claude Fable/Mythos model family. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated and registered, even when the wider GPT 5.6 family maps to a 1,050,000-token physical window. That 1,050,000 figure is itself route-conditional: it holds on the API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped at approximately 370,000 tokens (measured for Sol, 2026-07-16), which DAAF's hooks lane-gate automatically. At that cap, exact Sol's 40%/60%/75% percentage boundaries are 148k, 222k, and 277.5k tokens, respectively, and therefore fire before its 300k/400k/500k absolute gates; the same exact-Sol quality profile applies on both lanes even though their physical windows differ.
-
-| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
-|-------------------|------------|-------------|---------|-------------|
-| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **Exact GPT 5.6 Sol validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
-| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+Context utilization thresholds apply to Data Onboarding mode. See CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile. The `context-reporter` hook selects the threshold profile for each agent from the model ID of that agent and reports the severity; act on that severity (profile-selection rules: `agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md`). The Per-Part Execution Cycle is the atomic unit for gating decisions.
 
 The status levels and their Data Onboarding actions are identical across profiles (NOMINAL is any utilization below the ELEVATED trigger):
 
@@ -649,7 +686,7 @@ After the user responds to PSU-DI2 (confirming/rejecting/modifying interpretatio
 
 1. **Interpretation Tracking table:** For each interpretation, populate User Decision (CONFIRMED/REJECTED/MODIFIED) and Final Interpretation columns from the user's response
 2. **Documentation Reconciliation Summary:** If discrepancies were reported in Part D, populate the table from Part D subagent's findings
-3. **Current Position:** Update to DI-7 (Skill Authoring)
+3. **Current Position:** Current Stage DI-7 (Skill Authoring), Current Phase DO-3 (Skill Authoring & Delivery)
 4. **Next Actions:** Set to "Invoke skill authoring subagent"
 
 This is a **mandatory gate** — DI-7 cannot be invoked until Interpretation Tracking has Final Interpretation values for all rows.
@@ -660,12 +697,25 @@ After this update procedure completes, present the **Pre-Authoring Research Offe
 
 ## PSU Templates
 
+### Scoping Read Before PSU-DI1
+
+PSU-DI1 is this mode's Scope Check (`SKILL.md` § Scope Check), so the setup scope it proposes should rest on the documentation the user pointed to, not on the intake answers alone. A codebook can name the source's standard acronym (the skill name), its known exclusions, which columns are dates or entity IDs (the conditional scripts), and whether it describes one table or several (the file structure).
+
+- **What to read:** documentation only — codebooks, data dictionaries, provider web pages, methodology notes, README files. Never the data files: those are opened only after the sensitivity question (§ Sensitivity Gate), by the scripts that profile them.
+- **When:** only after the sensitivity question has been answered (§ Sensitivity Gate), and then before PSU-DI1. A codebook can carry frequency tables or example records, so even documentation waits for that answer. Fetches, PDF ingests and a digest wait for DI-2's project folder and go straight into it: the scratchpad staging in `SKILL.md` § Scope Check > Read First is unnecessary here, because DI-2 creates the project before PSU-DI1, this mode's Scope Check, and the folder holds only this onboarding's records. A short local document may be read earlier, once the sensitivity question is answered and still during DI-1, when it helps answer an intake question such as the skill name. On the synthetic path (the data is sensitive and the setup unprotected), ask the user before reading any local documentation, flagged or not: a codebook for that data can carry example records whether or not the user thinks to flag it. Public provider pages may still be fetched.
+- **How** (`SKILL.md` § Scope Check > Read First): local documents in full; provider pages with `bash {BASE_DIR}/scripts/web_fetch.sh URL {PROJECT_DIR}/web_fetches/` (`web-retrieval` skill); every PDF, and long or many documents, through one `search-agent` digest dispatch, which ingests PDFs into `{PROJECT_DIR}/papers/` and writes its record to `{PROJECT_DIR}/output/preliminary_notes/{date}_{slug}_materials-digest.md`.
+- **Not documentation reconciliation:** this read grounds the setup scope. It does not replace DI-6 script 11, which compares the documentation against the actual data in an audited, QA-reviewed script. Pass what the read found to the profiling parts as documentation context (the "Documentation excerpts inlined" item in § Context Completeness Checklists > Profiling Invocation Checklist); claims about whether the data matches the documentation still come only from script 11.
+- **Nothing referenced:** PSU-DI1 rests on the intake answers alone, and its "What I read" line says so.
+
 ### PSU-DI1: Setup Confirmation
 
-Present after Stage DI-2 completes. All user-facing text uses plain language — no internal terms (gate, QA, CPP, stage DI-N).
+Present after Stage DI-2 and the scoping read complete. All user-facing text uses plain language — no internal terms (gate, QA, CPP, stage DI-N). Record PSU-DI1 in STATE.md's Current Position as "Awaiting Confirmation" when presenting it, and as confirmed once the user agrees.
 
 ```
-**Data Onboarding: Setup Complete**
+**Data Onboarding: Setup Complete — Scope Check**
+
+**What I read:** [each document you pointed to, one line on what in it shapes the setup] (or "Nothing beyond your answers to my setup questions")
+**What changed from your original request:** [differences the documentation introduced — e.g., "the codebook calls this source NSLDS, so I propose the skill name education-data-source-nslds", "the documentation lists a date column, so the temporal analysis will run" — or "Nothing — your request and the documentation agree"]
 
 **Data Source Summary:**
 - File(s): [file name(s) and path(s); list all if multi-file]
@@ -698,11 +748,13 @@ The following profiling parts will run automatically:
 - Part C: Relational analysis — per-file + cross-file linkage testing (scripts 07a, 07b, 08?, 09a, etc.)
 - Part D: Interpretation — per-file + cross-file schema map (scripts 10a, 10b, [11])
 
-[Note which scripts are conditional and why they will/will not run based on intake info.]
+[Note which scripts are conditional and why they will/will not run based on the intake answers and the documentation read.]
+
+**Decisions for you:** [each independent decision still open, on its own line with its default — e.g., the proposed skill name, unified vs. per-entity skills — or "None"]
 
 **What You Receive:**
 - A standalone data source skill for use in future DAAF analyses
-- A research project folder with all profiling scripts, outputs, and QA reviews
+- A research project folder with all profiling scripts, outputs, and quality reviews
 [If API:] - A reproducible API fetch script you can re-run any time
 
 **What Happens Next:**
@@ -783,6 +835,12 @@ Present after Stage DI-6 completes. This is the CRITICAL user review point — i
 - Coded values: [list of columns with coded values and their mappings if identified]
 - Anomalies: [unexpected patterns, potential data quality issues]
 - Suppression: [any suppressed or redacted values found]
+
+**Checks We Could Not Complete:**
+[List every check that was skipped or could not be verified, in plain language, with the reason. Draw these from the not-verified and skipped counts in each part's checkpoint results — do not omit them just because the parts passed.]
+- [e.g., "We could not confirm the file covers every school district, because no reference list of districts was available to compare against."]
+- [e.g., "Documentation checks did not run — no documentation was provided for this source."]
+[If everything ran:] - None — every planned check ran on real data.
 
 **Preliminary Interpretations:**
 
@@ -881,6 +939,8 @@ Before dispatching a code-reviewer subagent (QAP1 through QAP4), verify:
 - [ ] IAT compliance expectations stated
 - [ ] QA tolerance thresholds specified (BLOCKER if, WARNING if)
 - [ ] Prior QA findings inlined (for QAP2-QAP4: issues from earlier parts)
+- [ ] Conditional-script outcomes stated explicitly (which of 05, 06, 07b, 08, 11 ran, which did not, and why) — the reviewer needs this to tell a legitimately not-applicable check from one that could not be verified
+- [ ] Reminder that the QA return must carry the `QAP{n} RESULT:` line **and** its count line (passed / warnings / blockers / not verified / skipped / info), plus the escalation decision for every NOT VERIFIED check
 
 ### Skill Authoring Invocation Checklist
 
@@ -907,12 +967,18 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 │   ├── profile_relational/                        # Part C profiling scripts
 │   ├── profile_interpretation/                    # Part D profiling scripts
 │   ├── stage5_fetch/                              # API fetch scripts (if API acquisition)
+│   ├── local_profiling/                           # Synthetic path: profiler or synthesizer handed to the user
+│   ├── profile_report_intake/                     # Synthetic path: report validation (CPS-INTAKE)
+│   ├── synth_generate/                            # Synthetic path: generation (CPS-GEN) or T4 import
 │   └── cr/                                        # QA review scripts (phase-based)
 ├── data/
-│   └── raw/                                       # Original data files (immutable after drop)
+│   ├── profile_report/                            # Synthetic path: returned report (T4: rows + synthesis_log.txt)
+│   ├── synthetic/                                 # Synthetic path: seeded synthetic parquet
+│   └── raw/                                       # Original data files (immutable after drop; absent on the synthetic path)
 │       ├── {file1}.parquet
 │       └── {file2}.parquet
 └── output/
+    ├── profiling/                                 # Parquet that scripts 05 and 10 save for the CPP2/CPP4 reloads
     ├── skill_draft/                               # Draft skill before final placement
     │   └── SKILL.md
     └── preliminary_notes/                         # Lossless agent returns persisted by orchestrator
@@ -932,11 +998,11 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 
 ### Final Delivery (Stage DI-8)
 
-Before presenting to the user, collect session logs into the project:
+Before presenting to the user, run the Scratch Graduation Check (`{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check; the new skill and its bundled scripts never cite project scratch), then collect session logs into the project:
 ```
 bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
 ```
-Then update STATE.md Session Metadata to confirm log collection.
+Then update STATE.md Session Metadata to confirm log collection and record any graduated files.
 
 Present to the user after Stage DI-7 completes and the skill passes compliance:
 
@@ -953,12 +1019,12 @@ Present to the user after Stage DI-7 completes and the skill passes compliance:
 - [Key quality findings in 2-3 bullets]
 - [Temporal/geographic coverage summary if applicable]
 
-The skill is automatically discoverable via its YAML frontmatter and ready for use in future analyses. If you'd like to adjust the description or trigger conditions, edit the skill's frontmatter in `.claude/skills/{skill-name}/SKILL.md`.
+The skill is ready to use now, in this session and in future analyses. If you'd like to adjust the description or trigger conditions, edit the skill's frontmatter in `.claude/skills/{skill-name}/SKILL.md`.
 
 **Research Project:**
 - Location: [absolute path to research project folder]
-- Contains: [N] profiling scripts, [N] QA reviews, STATE.md, LEARNINGS.md
-- Session logs: `logs/` (collected via `collect_session_logs.sh`)
+- Contains: [N] profiling scripts, [N] quality reviews, STATE.md, LEARNINGS.md
+- Session logs: `logs/`
 
 **Explore Session Logs:**
 To browse the session timeline interactively in your browser, run in the Docker terminal:
@@ -993,8 +1059,9 @@ The orchestrator loads these files progressively — only when the corresponding
 | DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
 | DO-2 (Synthetic path) | `WORKFLOW_PHASE_DO_SYNTHETIC.md` | When the DI-1 sensitivity gate returns outcome 3, before Stage DS-1 (replaces the standard profiling phase; raw data never enters the container) |
 | DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before the Pre-Authoring Research Offer / Stage DI-7 (this file also contains the optional pre-authoring research dispatch) |
+| Any stage (errors) | `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding) | When a script, QA review, validation checkpoint or skill compliance check fails, or a STOP condition fires (the section's stage table and STOP conditions; § Data Onboarding Error Budgets holds the budgets) |
 
-**Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
+**Do NOT load these files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
 
 ---
 
@@ -1026,6 +1093,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 4. Create analysis scripts or run statistical models (profiling only, not analysis)
 5. Proceed past PSU-DI2 without explicit user confirmation of interpretations
 6. **(Synthetic path)** Request or accept the raw sensitive file, write synthetic data to `data/raw/`, or present synthetic-data results as findings — the full synthetic-path boundaries (including redirecting a user who tries to paste raw microdata) are in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Boundaries
+7. Open a data file, even to look at it for scoping, before the user has answered the sensitivity question (the scoping read before PSU-DI1 covers documentation only, and it too waits for that answer)
 
 ---
 
@@ -1037,7 +1105,7 @@ After skill creation completes (Stage DI-8), the user may want to analyze the da
 
 > "The data source skill is ready. Would you like to proceed with a Full Pipeline analysis using this data?"
 
-If confirmed, load `{SKILL_REFS}/full-pipeline-mode.md` and begin Full Pipeline mode. The newly created skill is immediately available for the pipeline's domain configuration.
+If confirmed, load `{SKILL_REFS}/full-pipeline-mode.md` and begin Full Pipeline mode. The skill just created is available in this session for the pipeline's domain configuration, because Claude Code picks up a skill without a restart (stamped in § Per-Part Execution Cycle > Stage DI-7).
 
 ### Full Pipeline Phase 1 to Data Onboarding
 

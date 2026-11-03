@@ -21,7 +21,7 @@ from fairlearn.postprocessing import ThresholdOptimizer
 from fairlearn.reductions import ExponentiatedGradient, DemographicParity, EqualizedOdds
 ```
 
-**Version note:** fairlearn 0.12.0 is pinned in the DAAF Dockerfile. Version 0.13.0 declares `scipy<1.16.0` but the environment has scipy 1.17.0, making it incompatible. Monitor for 0.14.0+ which may resolve this.
+**Version note:** fairlearn 0.12.0 is pinned in the DAAF Dockerfile. Version 0.13.0 declares `scipy<1.16.0` but the environment has scipy 1.17.0, making it incompatible. fairlearn 0.15.0 (latest on PyPI, checked 2026-11-01) declares `scipy>=1.9.3` with no upper cap; upgrading the pin is a Dockerfile decision for the user.
 
 ## Assessing Fairness: MetricFrame
 
@@ -126,7 +126,7 @@ print(f"Demographic parity ratio: {dpr:.3f}")
 
 ThresholdOptimizer finds group-specific decision thresholds that optimize a performance objective subject to a fairness constraint. It does **not** retrain the model -- it adjusts decision boundaries on the existing model's probability outputs.
 
-**When to use:** Quick fairness improvement without retraining. Requires the base model to produce probability scores (`predict_proba` or `decision_function`).
+**When to use:** Quick fairness improvement without retraining. Works best with probability scores (`predict_proba` or `decision_function`); with only `predict`, it thresholds hard labels.
 
 ```python
 from fairlearn.postprocessing import ThresholdOptimizer
@@ -147,7 +147,7 @@ y_pred_fair = to.predict(X_test, sensitive_features=A_test, random_state=42)
 ```
 
 **Score extraction:** ThresholdOptimizer uses `predict_method` to determine how
-scores are obtained from the base model. Default is `"deprecated"` (auto-detect).
+scores are obtained from the base model. Default is `"auto"` (tries `predict_proba`, then `decision_function`, then `predict`).
 Set explicitly if your model lacks `predict_proba`:
 
 ```python

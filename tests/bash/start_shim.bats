@@ -131,7 +131,7 @@ PY
     unset LEGACY_STOP_GATE LEGACY_REAL_MANAGER LEGACY_SHIM_PY LEGACY_LOG_DIR
     unset LEGACY_STOP_ENTERED LEGACY_STOP_RELEASE LEGACY_STREAM_DIR
     unset PID_HELPER_WRAPPER_MODE PID_HELPER_TARGET PID_HELPER_UNCERTAINTY
-    unset SHIM_BACKEND_MODE
+    unset SHIM_BACKEND_MODE DAAF_SHIM_TEST_RENDER_TIMEOUT_S
 }
 
 teardown() {
@@ -573,7 +573,7 @@ SH
 @test "cleanly stopped status exits zero without launching a process" {
     run "$MANAGER" --status
     assert_success
-    assert_output "STATUS: stopped"
+    assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
     [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
     [ "$(count_exact_arg_processes "$MANAGER")" -eq 0 ]
     [ ! -e "${LOG_DIR}/supervisor.pid" ]
@@ -591,7 +591,7 @@ SH
         case "$kind" in
             malformed|oversized)
                 assert_success
-                assert_output "STATUS: stopped"
+                assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
                 ;;
             *)
                 assert_failure
@@ -655,7 +655,7 @@ SH
         create_pid_fixture_object "$kind" "$pid_path" "$referent"
         run timeout 3 "$MANAGER" --status
         assert_success
-        assert_output "STATUS: stopped"
+        assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
         remove_pid_fixture_object "$pid_path"
     done
 
@@ -933,6 +933,48 @@ SH
     assert_output --partial "expires in 2"
     refute_output --partial "FORGED"
     refute_output --partial "rm -rf"
+}
+
+@test "chatgpt-lane auth preflight accepts a pre-existing-format auth.json unchanged (codex 0.153.2 upgrade regression guard)" {
+    # Regression guard for the Codex CLI 0.144.1 -> 0.153.2 upgrade. Primary-source
+    # verification (maintainer-only notes, not shipped:
+    # research/2026-09-05_FrameworkDev_GPT6-Astra, notes 05) found NO
+    # change to `codex login status`, the auth.json schema/location, or the
+    # device-auth flow across releases 0.145.0-0.153.4. This locks in that the
+    # launcher's chatgpt-lane auth-store preflight still READS a pre-existing
+    # (0.144.1-era) auth.json and yields the SAME success shape post-upgrade: exit 0
+    # plus the stable "auth store present" line. The launcher never spawns codex, so
+    # the live `codex login status` exit-code/stdout round-trip is a separate concern
+    # covered by the Python delegated-refresh suite (test_v130_auth_delegation.py +
+    # fake_codex.py) and by the post-rebuild live smoke phase.
+    export SHIM_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_BACKEND_MODE=chatgpt
+    CODEX_HOME="${SHIM_TEST_ROOT}/codex-home"
+    mkdir -p "$CODEX_HOME"
+    chmod 0700 "$CODEX_HOME"
+    # Pre-existing-format auth.json: a tokens.access_token JWT plus sibling fields —
+    # exactly the 0.144.1-era on-disk shape the shim only READS (v1.3.0+; codex is the
+    # sole writer). Every token here is a transparently fabricated test-only value.
+    cat > "${CODEX_HOME}/auth.json" <<'JSON'
+{
+  "OPENAI_API_KEY": null,
+  "tokens": {
+    "id_token": "FABRICATED.TEST.IDTOKEN",
+    "access_token": "eyJhbGciOiJub25lIn0.eyJleHAiOjQ4NzAwMDAwMDAsIm1hcmtlciI6IkZBQlJJQ0FURURfVEVTVF9PTkxZIn0.ZmFrZS1zaWc",
+    "refresh_token": "FABRICATED-TEST-REFRESH",
+    "account_id": "fabricated-test-account"
+  },
+  "last_refresh": "2026-09-04T00:00:00Z"
+}
+JSON
+    chmod 0600 "${CODEX_HOME}/auth.json"
+    export CODEX_HOME
+    run "$MANAGER" --start
+    assert_manager_success
+    assert_output --partial "strictly ready"
+    # Stable preflight success line ($CODEX_HOME is printed literally by the launcher).
+    assert_output --partial "chatgpt auth store present at \$CODEX_HOME/auth.json."
+    refute_output --partial "auth store is missing/unreadable"
 }
 
 @test "non-200 health response is reachable unexpected and blocks manager launch" {
@@ -2349,7 +2391,7 @@ SH
     # A clean stop is indistinguishable from never-started: plain "stopped".
     run "$MANAGER" --status
     assert_success
-    assert_output "STATUS: stopped"
+    assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
 }
 
 @test "unsafe symlink supervisor.state target is rejected by lifecycle preflight" {
@@ -2429,4 +2471,107 @@ SH
     assert_output ""
     [ ! -e "$LOG_FILE" ]
     [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
+}
+
+# --- Codex config.toml renderer wiring --------------------------------------
+
+isolate_codex_renderer_env() {
+    # The container's own CODEX_HOME and provider settings must never reach the
+    # renderer under test: point CODEX_HOME at the isolated fixture and clear the
+    # inputs it derives from.
+    local name
+    export CODEX_HOME="${SHIM_TEST_ROOT}/codex-home"
+    unset SHIM_BACKEND_BASE_URL SHIM_BACKEND_API_KEY ANTHROPIC_DEFAULT_OPUS_MODEL
+    for name in $(compgen -e); do
+        case "$name" in
+            DAAF_CODEX_CONFIG_*) unset "$name" ;;
+        esac
+    done
+}
+
+@test "auto renders codex config.toml even when DAAF_PROVIDER_SHIM is unset" {
+    isolate_codex_renderer_env
+    cp "${REPO_ROOT}/scripts/provider_shim/render_codex_config.py" "${SHIM_TEST_ROOT}/"
+    unset DAAF_PROVIDER_SHIM
+    export DAAF_CODEX_CONFIG_1='model_reasoning_effort="high"'
+
+    run "$MANAGER" --auto
+
+    assert_success
+    assert_output --partial "wrote 1 setting(s)"
+    head -n 1 "${CODEX_HOME}/config.toml" | grep -q '^# Managed by DAAF'
+    grep -qx 'model_reasoning_effort = "high"' "${CODEX_HOME}/config.toml"
+    [ "$(stat -c '%a' "${CODEX_HOME}/config.toml")" = "600" ]
+    # Rendering is independent of the shim: nothing was started or logged.
+    [ ! -e "$LOG_FILE" ]
+    [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
+}
+
+@test "renderer failure is non-fatal for auto and the shim still becomes ready" {
+    isolate_codex_renderer_env
+    cat > "${SHIM_TEST_ROOT}/render_codex_config.py" <<'PY'
+import os, sys
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "renderer.ran"), "w").close()
+sys.exit(3)
+PY
+    export DAAF_PROVIDER_SHIM=openai
+
+    run "$MANAGER" --auto
+
+    assert_success
+    [ -e "${SHIM_TEST_ROOT}/renderer.ran" ]
+    assert_output --partial "Codex config.toml rendering exited 3; continuing"
+    [ "$(grep -c 'MANAGER SHIM_AUTO_READY status=ready' "$LOG_FILE")" -eq 1 ]
+    wait_for_ready
+}
+
+@test "renderer failure is non-fatal for an explicit start" {
+    isolate_codex_renderer_env
+    printf 'import sys\nsys.exit(1)\n' > "${SHIM_TEST_ROOT}/render_codex_config.py"
+
+    run "$MANAGER" --start
+
+    assert_manager_success
+    assert_output --partial "Codex config.toml rendering exited 1; continuing"
+    assert_output --partial "strictly ready"
+}
+
+@test "a hanging renderer is cut off by the timeout and auto continues" {
+    isolate_codex_renderer_env
+    printf 'import time\ntime.sleep(60)\n' > "${SHIM_TEST_ROOT}/render_codex_config.py"
+    unset DAAF_PROVIDER_SHIM
+    export DAAF_SHIM_TEST_RENDER_TIMEOUT_S=1
+    local started="$SECONDS"
+
+    run "$MANAGER" --auto
+
+    unset DAAF_SHIM_TEST_RENDER_TIMEOUT_S
+    assert_success
+    # GNU timeout exits 124 when it had to stop the command.
+    assert_output --partial "Codex config.toml rendering exited 124; continuing"
+    [ $((SECONDS - started)) -lt 20 ]
+    [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/render_codex_config.py")" -eq 0 ]
+}
+
+@test "status prints the last codex config render summary without values" {
+    isolate_codex_renderer_env
+    cp "${REPO_ROOT}/scripts/provider_shim/render_codex_config.py" "${SHIM_TEST_ROOT}/"
+    unset DAAF_PROVIDER_SHIM
+    export DAAF_CODEX_CONFIG_1='model="VALUE_SENTINEL_7781"'
+    export DAAF_CODEX_CONFIG_X='ignored=1'
+
+    run "$MANAGER" --auto
+    assert_success
+    assert_output --partial "DAAF_CODEX_CONFIG_X ignored"
+    [ "$(stat -c '%a' "${LOG_DIR}/codex_config.log")" = "600" ]
+    [ "$(grep -c 'VALUE_SENTINEL_7781' "${LOG_DIR}/codex_config.log")" = "0" ]
+
+    run "$MANAGER" --status
+    assert_success
+    [ "${lines[0]}" = "STATUS: stopped" ]
+    assert_output --partial "CODEX CONFIG: "
+    assert_output --partial "summary: wrote 1 setting(s)"
+    assert_output --partial "1 problem(s)"
+    assert_output --partial "(exit 2)"
+    refute_output --partial "VALUE_SENTINEL_7781"
 }

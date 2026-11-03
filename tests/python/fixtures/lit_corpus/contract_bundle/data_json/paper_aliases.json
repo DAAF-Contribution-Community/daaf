@@ -1,0 +1,103 @@
+{
+ "rows": [
+  {
+   "alias_kind": "doi",
+   "alias_value": "10.9999/fixture.0001",
+   "first_seen_version": 1,
+   "paper_key": "user_f1c70001",
+   "source": "c09eeee2d5087e7579880dd31dcd7fc40c9b45b74e8fa9586497088455eed691"
+  },
+  {
+   "alias_kind": "citekey_history",
+   "alias_value": "fixture-allen2019tutoring",
+   "first_seen_version": 1,
+   "paper_key": "user_f1c70001",
+   "source": "c09eeee2d5087e7579880dd31dcd7fc40c9b45b74e8fa9586497088455eed691"
+  },
+  {
+   "alias_kind": "doi",
+   "alias_value": "10.9999/fixture.0002",
+   "first_seen_version": 2,
+   "paper_key": "user_f1c70002",
+   "source": "73a594a7a678c3d47873bb8ea5687c845e671d3fda046aad1bfdfc077203bf97"
+  },
+  {
+   "alias_kind": "citekey_history",
+   "alias_value": "fixture-baker2020reading",
+   "first_seen_version": 2,
+   "paper_key": "user_f1c70002",
+   "source": "73a594a7a678c3d47873bb8ea5687c845e671d3fda046aad1bfdfc077203bf97"
+  },
+  {
+   "alias_kind": "doi",
+   "alias_value": "10.9999/fixture.0003",
+   "first_seen_version": 3,
+   "paper_key": "user_f1c70003",
+   "source": "cc762db77006e3b08d482117ba12b6937ca68df7adc23bdc94d6ea4f150616da"
+  },
+  {
+   "alias_kind": "citekey_history",
+   "alias_value": "fixture-chen2021library",
+   "first_seen_version": 3,
+   "paper_key": "user_f1c70003",
+   "source": "cc762db77006e3b08d482117ba12b6937ca68df7adc23bdc94d6ea4f150616da"
+  },
+  {
+   "alias_kind": "doi",
+   "alias_value": "10.9999/fixture.0004",
+   "first_seen_version": 4,
+   "paper_key": "user_f1c70004",
+   "source": "f571f1225272b50c7d617fd8de19d56f429dbaa40498f3167d944d47da2b9cf8"
+  },
+  {
+   "alias_kind": "citekey_history",
+   "alias_value": "fixture-diaz2022teachers",
+   "first_seen_version": 4,
+   "paper_key": "user_f1c70004",
+   "source": "f571f1225272b50c7d617fd8de19d56f429dbaa40498f3167d944d47da2b9cf8"
+  },
+  {
+   "alias_kind": "openalex",
+   "alias_value": "W900000001",
+   "first_seen_version": 5,
+   "paper_key": "user_f1c70001",
+   "source": "afe79665aa37af66d3b8a836182761b50c2cc8e292f8f44ba00e4e7b8b40396c"
+  },
+  {
+   "alias_kind": "openalex",
+   "alias_value": "W900000011",
+   "first_seen_version": 5,
+   "paper_key": "user_f1c70001",
+   "source": "afe79665aa37af66d3b8a836182761b50c2cc8e292f8f44ba00e4e7b8b40396c"
+  },
+  {
+   "alias_kind": "openalex",
+   "alias_value": "W900000005",
+   "first_seen_version": 5,
+   "paper_key": "W900000005",
+   "source": "afe79665aa37af66d3b8a836182761b50c2cc8e292f8f44ba00e4e7b8b40396c"
+  },
+  {
+   "alias_kind": "doi",
+   "alias_value": "10.9999/fixture.0005",
+   "first_seen_version": 5,
+   "paper_key": "W900000005",
+   "source": "afe79665aa37af66d3b8a836182761b50c2cc8e292f8f44ba00e4e7b8b40396c"
+  },
+  {
+   "alias_kind": "citekey_history",
+   "alias_value": "evans2018invented",
+   "first_seen_version": 5,
+   "paper_key": "W900000005",
+   "source": "afe79665aa37af66d3b8a836182761b50c2cc8e292f8f44ba00e4e7b8b40396c"
+  },
+  {
+   "alias_kind": "openalex",
+   "alias_value": "W900000004",
+   "first_seen_version": 5,
+   "paper_key": "user_f1c70004",
+   "source": "0f7549e5eeb79e57972efab626b85091e77c813541dd451878a2e1be48069a60"
+  }
+ ],
+ "source": "data/paper_aliases_v9.parquet"
+}

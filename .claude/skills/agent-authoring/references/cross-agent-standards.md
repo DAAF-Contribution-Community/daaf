@@ -157,12 +157,14 @@ No other sections use tag wrappers.
 
 ### 8. Path Resolution
 
-Every agent's Invocation Pattern MUST include:
+Every invocation template for an agent (the canonical one in its WORKFLOW_PHASE or mode reference file, and any full Agent() example in the agent's own Invocation section) MUST include:
 
 ```markdown
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 ```
+
+The one exception is a fixed prompt that is hashed and sent verbatim (citation-adjudicator): any added line would change the hashed text, so its bundle path is absolute and nothing else is added.
 
 All file paths in Agent prompts to subagents MUST be absolute paths. Relative paths in documentation are for human readability only.
 
@@ -177,8 +179,9 @@ Every agent MUST include YAML frontmatter:
 name: agent-name-here           # lowercase, hyphens, matches filename
 description: >
   Third person. What it does AND when to use it.
-tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist (omit for all)
-permissionMode: default          # Or: plan (read-only agents)
+tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist; never omit, never list Agent/Task
+permissionMode: default          # Or: plan (read-only agents; ignored under an auto, bypassPermissions or acceptEdits parent, so read-only = no Write/Edit in tools)
+# With Bash in tools: register enforce-file-first.sh under hooks (FRAMEWORK_INTEGRATION_CHECKLIST.md A13)
 model: sonnet                    # DAAF two-tier routing: opus | sonnet
 ---
 ```
@@ -187,6 +190,7 @@ model: sonnet                    # DAAF two-tier routing: opus | sonnet
 - Third person ("Reviews executed scripts..." not "Review executed scripts...")
 - Includes WHAT the agent does AND WHEN to use it
 - No angle brackets in description text
+- Written for its primary reader, the orchestrator deciding when to dispatch; user-friendly wording is added only where it also helps that reader. The rest of the agent file follows `agent_reference/DOCUMENTATION_STANDARDS.md` for agent-facing text (§ Audiences)
 
 **Model rules:**
 - Present on every DAAF agent; assign `opus` (high-judgment/adversarial/synthesis) or `sonnet` (well-specified/mechanical/skill-guided). Haiku is excluded by policy.

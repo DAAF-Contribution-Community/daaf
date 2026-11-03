@@ -2,7 +2,7 @@
 # ============================================================================
 # DAAF Log Explorer (macOS / Linux)
 # ============================================================================
-# Opens the interactive session log viewer in your browser.
+# Starts the session log viewer and prints the link to open in your browser.
 # Starts the DAAF container if needed, recovers any orphaned session logs,
 # presents available log sources, and starts an HTTP server.
 # Sources daaf_lib.sh when available (used by the menu wrapper; no auto-open
@@ -30,14 +30,23 @@ if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
 # load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
 # -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
 # Bash 3.2 safe. Prefer the library function when daaf_lib.sh was sourced.
 if command -v load_daaf_settings >/dev/null 2>&1; then
-    load_daaf_settings
+    # An existing but unreadable file makes the loader return non-zero without
+    # printing anything (its open check silences only bash's raw "Permission
+    # denied" line), so say what to fix instead of exiting silently -- the same
+    # message daaf.sh gives at startup. The call keeps its stderr: any other
+    # loader error (a bug) must stay visible.
+    if ! load_daaf_settings; then
+        echo "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it." >&2
+        echo "Fix that (or move the file aside), then run view_logs.sh again." >&2
+        exit 1
+    fi
 else
     _daaf_load_settings() {
         local settings_file="./environment_settings.txt"
@@ -62,6 +71,22 @@ else
         done < "${settings_file}"
     }
     _daaf_load_settings
+fi
+
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.sh prints it. Without daaf_lib.sh the name
+# is printed as set.
+COMPOSE_P_FLAG=""
+if command -v resolve_project_name >/dev/null 2>&1; then
+    HINT_PROJECT="$(resolve_project_name)"
+else
+    HINT_PROJECT="${DAAF_PROJECT_NAME:-daaf}"
+fi
+if [ -n "${HINT_PROJECT}" ] && [ "${HINT_PROJECT}" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${HINT_PROJECT} "
 fi
 
 # Pause before exit so the user can review output.
@@ -152,7 +177,7 @@ if [ -z "${RUNNING_CID}" ]; then
     echo "Starting DAAF container..."
     if ! docker compose up -d; then
         echo "ERROR: Failed to start the container." >&2
-        echo "  Try: docker compose logs daaf-docker" >&2
+        echo "  Try: docker compose ${COMPOSE_P_FLAG}logs daaf-docker" >&2
         exit 1
     fi
     echo "Container started."
@@ -245,7 +270,7 @@ if ! docker compose exec daaf-docker bash /daaf/scripts/generate_log_viewer.sh "
     echo "" >&2
     echo "ERROR: Failed to generate log viewer." >&2
     echo "  The container may not be running, or there may be no session logs to display." >&2
-    echo "  Try: docker compose logs daaf-docker" >&2
+    echo "  Try: docker compose ${COMPOSE_P_FLAG}logs daaf-docker" >&2
 fi
 
 # If the server was already running, the command above returns immediately

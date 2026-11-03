@@ -1,7 +1,7 @@
 ---
 name: linearmodels
 description: >-
-  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series). R equivalent: plm (use when execution language is R).
+  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series). R equivalent (use when execution language is R): plm for panel RE/between/FD/Fama-MacBeth, fixest for panel FE; LIML, non-panel GMM-IV, SUR and 3SLS have no installed R equivalent.
 metadata:
   audience: research-coders
   domain: python-library
@@ -113,7 +113,7 @@ System of equations?
 │   └─ → ./references/system-models.md
 ├─ System GMM → IVSystemGMM
 │   └─ → ./references/system-models.md
-├─ Cross-equation parameter restrictions → LinearConstraint
+├─ Cross-equation parameter restrictions → mod.add_constraints()
 │   └─ → ./references/system-models.md
 └─ Not sure which → Start with SUR
     └─ → ./references/system-models.md
@@ -202,8 +202,8 @@ print(f"Index levels: {df.index.nlevels}")
 # IV bracket notation
 "y ~ 1 + exog + [endog ~ instrument1 + instrument2]"
 
-# Suppress intercept
-"y ~ x1 + x2 - 1"
+# No intercept unless you add "1 +" (formulas never add one)
+"y ~ x1 + x2"
 ```
 
 ## Topic Index

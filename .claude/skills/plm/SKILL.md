@@ -117,7 +117,7 @@ What panel estimation method?
 +-- Fixed effects (within estimator)
 |   +-- 1-2 way FE, no IV --> plm (model = "within") or fixest feols
 |   +-- 3+ way FE --> fixest (plm max 2-way via twoways)
-|   +-- FE + IV combined --> plm with instruments or fixest 3-part formula
+|   +-- FE + IV combined --> fixest 3-part formula (DAAF's routing; plm with instruments also works)
 |   +-- FE + DiD --> fixest (plm has no DiD)
 +-- Random effects (GLS) --> plm (model = "random")
 |   --> ./references/models.md
@@ -247,8 +247,8 @@ is.pbalanced(pdf)    # Check balance
 | Pooled OLS | `plm(y ~ x1 + x2, data = pdf, model = "pooling")` |
 | Panel IV | `plm(y ~ x1 + x2 \| z1 + z2, data = pdf, model = "within")` |
 | Hausman test | `phtest(fe_fit, re_fit)` |
-| Robust SEs | `coeftest(fit, vcov = vcovHC(fit, type = "HC1"))` |
-| Clustered SEs | `coeftest(fit, vcov = vcovHC(fit, cluster = "group"))` |
+| Entity-clustered SEs, HC1 (default `method = "arellano"`, `cluster = "group"`; White: `method = "white1"`) | `coeftest(fit, vcov = vcovHC(fit, type = "HC1"))` |
+| Entity-clustered SEs, HC0 (default `type`) | `coeftest(fit, vcov = vcovHC(fit, cluster = "group"))` |
 | Driscoll-Kraay | `coeftest(fit, vcov = vcovSCC(fit))` |
 | Summary | `summary(fit)` |
 | Dynamic GMM | `pgmm(y ~ lag(y, 1) + x1 \| lag(y, 2:99), data = pdf)` |
@@ -342,7 +342,7 @@ Software & Tools references:
 
 For estimatr:
 
-> Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2022).
+> Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2025).
 > estimatr: Fast Estimators for Design-Based Inference. R package.
 > https://CRAN.R-project.org/package=estimatr
 

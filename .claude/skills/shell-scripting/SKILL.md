@@ -25,7 +25,7 @@ Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (Pow
 | `powershell-standards.md` | Preambles, dual error system, defensive coding, PSScriptAnalyzer | Writing or reviewing any `.ps1` file |
 | `error-handling.md` | Fail-closed philosophy, output conventions, exit codes, Docker errors, dependency validation | Designing error paths for any script |
 | `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy, DAAF safety-hook regression batteries | Setting up or running script tests; writing or modifying a `bash-safety.sh` / `enforce-single-command.sh` hook |
-| `gotchas.md` | Bash traps, PowerShell surprises, cross-platform pitfalls | Debugging unexpected script behavior |
+| `gotchas.md` | Bash traps, PowerShell surprises, cross-platform and test-suite pitfalls | Debugging unexpected script behavior |
 
 ### Reading Order
 
@@ -45,7 +45,7 @@ What kind of script?
 │   ├─ Preamble and structure → ./references/bash-standards.md
 │   ├─ Error handling design → ./references/error-handling.md
 │   ├─ Signal handling / cleanup → ./references/bash-standards.md
-│   └─ Scratch probe that makes symlinks (self-cleaning) → ./references/bash-standards.md
+│   └─ Scratch probe that makes symlinks or hostile-named fixtures (self-cleaning) → ./references/bash-standards.md
 ├─ PowerShell (.ps1)
 │   ├─ Preamble and structure → ./references/powershell-standards.md
 │   ├─ Native command error handling → ./references/powershell-standards.md
@@ -86,17 +86,34 @@ Script behaving unexpectedly?
 │   ├─ Exit code masked → ./references/gotchas.md (local var=$(cmd))
 │   ├─ Variable empty/unset → ./references/bash-standards.md (nounset)
 │   ├─ Pipeline hiding failure → ./references/bash-standards.md (pipefail)
+│   ├─ $(fn 2>&1 > /dev/null) hangs until a background job ends → ./references/gotchas.md (forked subshell keeps the pipe)
 │   └─ cd went to wrong dir → ./references/gotchas.md (cd without || exit)
 ├─ PowerShell
 │   ├─ Native command error ignored → ./references/gotchas.md ($LASTEXITCODE)
+│   ├─ Native stderr missing from a 2>&1 capture or a 2>> file on PS 5.1 → ./references/gotchas.md (SilentlyContinue drops it)
+│   ├─ "Program ... ended with non-zero exit code" line / NativeCommandExitException → ./references/gotchas.md ($PSNativeCommandUseErrorActionPreference)
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md
 │   ├─ Validation not firing → ./references/gotchas.md (omitted params)
-│   └─ irm | iex fails with BOM error → ./references/gotchas.md (UTF-8 BOM)
+│   ├─ irm | iex fails with BOM error → ./references/gotchas.md (UTF-8 BOM)
+│   ├─ Child path/arg with a space splits → ./references/gotchas.md (Start-Process -ArgumentList)
+│   └─ Child ExitCode is $null / failure read as success → ./references/gotchas.md (Start-Process -PassThru)
 └─ Cross-platform
     ├─ Env var case mismatch → ./references/gotchas.md
     ├─ Aliases missing → ./references/gotchas.md
-    └─ Exit code truncated → ./references/gotchas.md
+    ├─ Exit code truncated → ./references/gotchas.md
+    ├─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink/name abort)
+    ├─ Windows file count too low / folders skipped → ./references/gotchas.md (PS 5.1 Get-ChildItem long paths)
+    ├─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
+    ├─ Ctrl+C stopped a container's sh -c between commands → ./references/gotchas.md (--sig-proxy=false + trap : INT TERM HUP)
+    ├─ docker volume create reused stale data / --filter name= matched too much → ./references/gotchas.md (exact-name inspect + labels)
+    ├─ A Ctrl+C left behind something the run had just created → ./references/gotchas.md ("created" flag set after the create)
+    ├─ docker volume rm says "volume is in use" after an interrupted run → ./references/gotchas.md (never-started Created container)
+    ├─ A volume removed mid-run came back empty / two empty trees "matched" → ./references/gotchas.md (docker run -v re-creates a vanished volume)
+    ├─ Space check passed but the host drive filled up → ./references/gotchas.md (in-container df on Docker Desktop)
+    ├─ A container image behaves differently than when tested → ./references/gotchas.md (upstream re-push/retag: pin by digest)
+    ├─ "Docker is not running" / API version errors with a mismatched CLI and Engine → ./references/gotchas.md (Docker 29 API floor)
+    └─ PowerShell script exits 0 after Ctrl+C → ./references/gotchas.md (Ctrl+C inside try/finally)
 ```
 
 ### "I need to set up tests"
@@ -106,11 +123,13 @@ Testing shell scripts?
 ├─ Bash testing
 │   ├─ BATS setup → ./references/testing.md
 │   ├─ Mocking Docker → ./references/testing.md
+│   ├─ A test passes despite a failing early assertion / wrong line reported after sourcing a script → ./references/testing.md (sourcing in test mode)
 │   └─ What to test → ./references/testing.md
 ├─ PowerShell testing
 │   ├─ Pester setup → ./references/testing.md
 │   ├─ Mocking native commands → ./references/testing.md
 │   └─ What to test → ./references/testing.md
+├─ Every end-to-end test fails after a new startup docker call → ./references/gotchas.md (Testing Gotchas: silent mock default arm)
 └─ CI integration
     ├─ GitHub Actions matrix → ./references/testing.md
     ├─ Lint-only vs full test → ./references/testing.md
@@ -159,6 +178,8 @@ Existing patterns in DAAF scripts that this skill codifies:
 | 8 | Errors via `Write-Error` with guidance | Error output |
 | 9 | ASCII-only content (no BOM) | `file script.ps1` reports "ASCII text" |
 | 10 | No interactive native commands in expression-context function calls | No `if (Fn)`, `$x = Fn` for functions with `docker exec`, `ssh`, etc. |
+| 11 | `Start-Process`: one quoted `-ArgumentList` string; `.Handle` cached; `$null` ExitCode = unknown | `ConvertTo-DaafNativeArg`; no `-ArgumentList @(...)` (see `powershell-standards.md`) |
+| 12 | No `Get-ChildItem -Recurse ... -ErrorAction SilentlyContinue` as an authoritative count or size | Count container-side, or capture `-ErrorVariable` and report a lower bound (see `powershell-standards.md` item 18) |
 
 ## Exit Code Conventions
 
@@ -180,8 +201,9 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash variable handling | `./references/bash-standards.md` |
 | ShellCheck integration | `./references/bash-standards.md` |
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
-| Probe / test-harness hygiene (self-cleaning symlinks, workspace invariant checker) | `./references/bash-standards.md` |
+| Probe / test-harness hygiene (self-cleaning symlinks and hostile-name fixtures, workspace invariant checker) | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
+| Comment content (purpose and reason; no line restatement or change history) | `./references/bash-standards.md` |
 | Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
 | Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
 | BSD vs GNU userland pitfalls (`sed -i`, `date -d`, `stat`, `readlink -f`) | `./references/bash-standards.md` |
@@ -191,25 +213,36 @@ Existing patterns in DAAF scripts that this skill codifies:
 | PowerShell dual error system | `./references/powershell-standards.md` |
 | PowerShell defensive coding | `./references/powershell-standards.md` |
 | PowerShell output streams | `./references/powershell-standards.md` |
+| PowerShell child processes (`Start-Process`, `ConvertTo-DaafNativeArg`) | `./references/powershell-standards.md` |
 | PSScriptAnalyzer | `./references/powershell-standards.md` |
 | Fail-closed principle | `./references/error-handling.md` |
 | User-facing output formatting | `./references/error-handling.md` |
+| Plain first sentence for messages users see (host-script output, hook denials) | `./references/error-handling.md` |
 | Exit code conventions | `./references/error-handling.md` |
 | Docker error handling | `./references/error-handling.md` |
 | Dependency validation | `./references/error-handling.md` |
 | NO_COLOR and TTY detection | `./references/error-handling.md` |
 | BATS test framework | `./references/testing.md` |
+| Sourcing a script in test mode (`DAAF_TEST_MODE=1 source`) inside a bats test: keep errexit (`set -e +u`; pipefail stays on unless a test needs it off) and reinstall bats's saved ERR trap with `eval`; a `VAR=x source` prefix does not persist; `run bash -c` children keep strict mode | `./references/testing.md` |
 | Pester test framework | `./references/testing.md` |
 | CI workflow setup | `./references/testing.md` |
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
 | In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
+| In-container bats/Pester runs: set `TMPDIR` to the workspace's `scripts/scratch/tmp` (no `/tmp` fixtures; self-cleaning teardown) | `./references/testing.md` |
+| In-container temp directories: `mktemp -d` with an in-project template, never the `/tmp` default; host scripts may use the system temp dir | `./references/bash-standards.md` |
 | Safety-hook regression batteries (`test_safety_hooks.sh`, `test_enforce_single_command.sh`) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
+| Bash `$(fn 2>&1 > /dev/null)` waits for a subshell `fn` left in the background (exec'd children drop the saved pipe) | `./references/gotchas.md` |
 | PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
+| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (text shown to the user: bracket with `Continue`; emptiness or ID check: `2>$null`, not `Continue`; pwsh 7 cannot reproduce it: from 7.2 the preference no longer applies to redirected native stderr; AST guard `native_stderr_capture.Tests.ps1` plus a 5.1 CI probe) | `./references/gotchas.md` |
+| `$PSNativeCommandUseErrorActionPreference` (pwsh 7.4+): a native nonzero exit adds an error line or throws; set it to `$false` in scripts that read `$LASTEXITCODE` | `./references/gotchas.md` |
+| PowerShell `$null` exit code read as success (unknown is not success) | `./references/gotchas.md` |
+| PowerShell `Start-Process -ArgumentList` array joined without quoting | `./references/gotchas.md` |
+| PowerShell `Start-Process -PassThru` `ExitCode` `$null` (cache `.Handle`) | `./references/gotchas.md` |
 | PowerShell UTF-8 BOM breaks iex | `./references/gotchas.md` |
 | PowerShell implicit returns | `./references/gotchas.md` |
 | PowerShell $null pipeline behavior | `./references/gotchas.md` |
@@ -218,4 +251,17 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform exit code truncation | `./references/gotchas.md` |
 | Cross-platform path separators | `./references/gotchas.md` |
 | Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
+| Windows `docker cp` aborts at FIFO/device node/symlink/uncreatable name (stage + strip + count) | `./references/gotchas.md` |
+| PS 5.1 `Get-ChildItem -Recurse` silently skips long paths (count container-side, `-ErrorVariable`) | `./references/gotchas.md` |
+| busybox `find` never runs the last batch of `-exec ... {} +` inside `\( \)` (keep batched actions top-level) | `./references/gotchas.md` |
+| Container `sh -c` as PID 1 still catches a forwarded Ctrl+C (`--sig-proxy=false` + `trap : INT TERM HUP` for destructive programs) | `./references/gotchas.md` |
+| PowerShell Ctrl+C inside `try`/`finally` runs the `finally`, then exits 0 (`[Environment]::Exit` only in a child process) | `./references/gotchas.md` |
+| `docker volume create` silently reuses a name; `docker volume ls --filter name=` is an unanchored regex (exact `inspect` + labels) | `./references/gotchas.md` |
+| A "created" flag set after the create misses a Ctrl+C during it (record the attempt before the call; on cleanup, adopt it only when it carries this run's label) | `./references/gotchas.md` |
+| Interrupted `docker run --rm` leaves a never-started (Created) container that keeps its volumes "in use" (`docker ps -a --filter volume=`, plain `docker rm`, then `docker volume rm`) | `./references/gotchas.md` |
+| `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (per-run label checked before any mount; marker guard with its own exit code; nonzero entry counts) | `./references/gotchas.md` |
+| In-container `df` / `stat -f` on Docker Desktop measures the VM's virtual disk, not the host drive | `./references/gotchas.md` |
+| Upstream images re-push and retag (busybox `latest` moved to 1.38.0, `1.37.0` re-pushed): pin by digest, one constant per script plus compose, parity test | `./references/gotchas.md` |
+| Docker 29 API floor: a 29.x client cannot talk to an Engine below 25.0 (startup `docker version` check; a mismatched pair can look like "not running") | `./references/gotchas.md` |
+| A new startup docker call fails every test mock whose default arm prints nothing (add the arm to the shared mock and every inline one) | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

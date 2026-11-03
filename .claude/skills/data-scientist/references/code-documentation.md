@@ -60,9 +60,9 @@ Data science code should be MORE documented than typical code because:
 
 ### For Every Code Block
 
-1. **GOAL**: What are you trying to accomplish?
-2. **APPROACH**: Why this method vs. alternatives?
-3. **ASSUMPTIONS**: What must be true for this to work?
+1. **INTENT**: What are you trying to accomplish?
+2. **REASONING**: Why this method vs. alternatives?
+3. **ASSUMES**: What must be true for this to work?
 4. **EXPECTED RESULT**: What should the output look like?
 
 ### For Data Operations
@@ -70,13 +70,13 @@ Data science code should be MORE documented than typical code because:
 **Python:**
 ```python
 # ================================================================
-# GOAL: Filter to customers with valid purchase history
+# INTENT: Filter to customers with valid purchase history
 # 
-# APPROACH: Require at least one purchase in the last 365 days.
+# REASONING: Require at least one purchase in the last 365 days.
 # We chose 365 days (vs. 90 or 180) because seasonal customers
 # (e.g., holiday-only shoppers) are still valuable for this analysis.
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - 'last_purchase_date' is populated for all customers with purchases
 # - Customers with NULL last_purchase_date have never purchased
 #
@@ -95,13 +95,13 @@ print(f"Retained {retention_rate:.1f}% of customers")
 **R:**
 ```r
 # ================================================================
-# GOAL: Filter to customers with valid purchase history
+# INTENT: Filter to customers with valid purchase history
 # 
-# APPROACH: Require at least one purchase in the last 365 days.
+# REASONING: Require at least one purchase in the last 365 days.
 # We chose 365 days (vs. 90 or 180) because seasonal customers
 # (e.g., holiday-only shoppers) are still valuable for this analysis.
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - 'last_purchase_date' is populated for all customers with purchases
 # - Customers with NA last_purchase_date have never purchased
 #
@@ -121,9 +121,9 @@ cat(sprintf("Retained %.1f%% of customers\n", retention_rate))
 **Python:**
 ```python
 # ================================================================
-# GOAL: Handle outliers in transaction amounts
+# INTENT: Handle outliers in transaction amounts
 #
-# METHOD: Winsorization at 1st and 99th percentiles
+# REASONING: Winsorization at 1st and 99th percentiles
 #
 # WHY WINSORIZE vs. REMOVE:
 # - Removing outliers loses data and may bias toward "normal" transactions
@@ -134,7 +134,7 @@ cat(sprintf("Retained %.1f%% of customers\n", retention_rate))
 # - Need to preserve original scale for business interpretation
 # - Log transform would complicate downstream aggregations
 #
-# ASSUMPTION: Outliers are measurement/entry errors, not real events
+# ASSUMES: Outliers are measurement/entry errors, not real events
 # (Verified: extreme values correspond to known data quality issues)
 # ================================================================
 p01 = df["amount"].quantile(0.01)
@@ -148,9 +148,9 @@ df = df.with_columns(
 **R:**
 ```r
 # ================================================================
-# GOAL: Handle outliers in transaction amounts
+# INTENT: Handle outliers in transaction amounts
 #
-# METHOD: Winsorization at 1st and 99th percentiles
+# REASONING: Winsorization at 1st and 99th percentiles
 #
 # WHY WINSORIZE vs. REMOVE:
 # - Removing outliers loses data and may bias toward "normal" transactions
@@ -161,7 +161,7 @@ df = df.with_columns(
 # - Need to preserve original scale for business interpretation
 # - Log transform would complicate downstream aggregations
 #
-# ASSUMPTION: Outliers are measurement/entry errors, not real events
+# ASSUMES: Outliers are measurement/entry errors, not real events
 # (Verified: extreme values correspond to known data quality issues)
 # ================================================================
 p01 <- quantile(df$amount, 0.01, na.rm = TRUE)
@@ -176,14 +176,14 @@ df <- df |>
 **Python:**
 ```python
 # ================================================================
-# GOAL: Enrich orders with customer demographic data
+# INTENT: Enrich orders with customer demographic data
 #
-# JOIN TYPE: Left join
+# REASONING: Left join (not inner) on customer_id
 # - Keep all orders even if customer demographics missing
 # - Missing demographics will be analyzed separately
 #
-# JOIN KEY: customer_id
-# - Verified unique in customers table (1:1 relationship)
+# ASSUMES:
+# - customer_id is unique in the customers table (verified; the join is many:1, many orders per customer)
 # - Some orders may have customer_id not in customers table (new customers)
 #
 # EXPECTED RESULT:
@@ -208,14 +208,14 @@ print(f"Customer match rate: {match_rate:.1f}%")
 **R:**
 ```r
 # ================================================================
-# GOAL: Enrich orders with customer demographic data
+# INTENT: Enrich orders with customer demographic data
 #
-# JOIN TYPE: Left join
+# REASONING: Left join (not inner) on customer_id
 # - Keep all orders even if customer demographics missing
 # - Missing demographics will be analyzed separately
 #
-# JOIN KEY: customer_id
-# - Verified unique in customers table (1:1 relationship)
+# ASSUMES:
+# - customer_id is unique in the customers table (verified; the join is many:1, many orders per customer)
 # - Some orders may have customer_id not in customers table (new customers)
 #
 # EXPECTED RESULT:
@@ -330,7 +330,8 @@ For research scripts, validate data inline rather than building validator classe
 # Validate directly where you use the data
 assert df["id"].null_count() == 0, "IDs must not be null"
 assert df.select("id", "year").n_unique() == len(df), "id+year must be unique"
-valid_states = set(range(1, 57))  # FIPS codes
+# State FIPS: 1-56 skips 3, 7, 14, 43, 52 (Census state list); add 60, 66, 69, 72, 74, 78 if territories belong
+valid_states = set(range(1, 57)) - {3, 7, 14, 43, 52}  # 50 states + DC
 invalid = set(df["fips"].unique().to_list()) - valid_states
 assert not invalid, f"Invalid FIPS codes: {invalid}"
 ```
@@ -340,14 +341,19 @@ assert not invalid, f"Invalid FIPS codes: {invalid}"
 # Validate directly where you use the data
 stopifnot("IDs must not be null" = !any(is.na(df$id)))
 stopifnot("id+year must be unique" = nrow(distinct(df, id, year)) == nrow(df))
-valid_states <- 1:56  # FIPS codes
+# State FIPS: 1-56 skips 3, 7, 14, 43, 52 (Census state list); add 60, 66, 69, 72, 74, 78 if territories belong
+valid_states <- setdiff(1:56, c(3, 7, 14, 43, 52))  # 50 states + DC
 invalid <- setdiff(unique(df$fips), valid_states)
 stopifnot("Invalid FIPS codes found" = length(invalid) == 0)
 ```
 
 ## Marimo Cell Documentation
 
+The patterns in this section are for **standalone marimo apps** (an exploratory or diagnostic app built on request), not Stage 9 notebooks. A Stage 9 notebook computes nothing: it archives the executed Stage 5-8 scripts with their execution logs and may add only a bounded preview of an existing Parquet file or an already-created figure (`marimo` skill § Stage 9 Notebook Assembly and § ABSOLUTE PROHIBITIONS for Stage 9; assembled by the `notebook-assembler` agent). In a standalone app too, prefer showing results an executed script already saved over computing new ones in a cell, so the numbers keep their audit trail.
+
 ### Cell Organization Pattern
+
+Standalone-app example: Cell 4 computes inside the notebook, which a Stage 9 notebook never does.
 
 ```python
 # Cell 1: Setup (minimal documentation needed)
@@ -377,7 +383,7 @@ transaction data. Key questions:
 The following cells examine each of these dimensions.
 """)
 
-# Cell 4: Analysis with inline comments
+# Cell 4: Analysis with inline comments (standalone app only, never Stage 9)
 # Check for missing values in critical columns
 # Critical = columns that would invalidate the transaction if missing
 critical_columns = ["transaction_id", "customer_id", "amount", "transaction_date"]
@@ -396,7 +402,7 @@ mo.md(f"""
 """)
 ```
 
-> **R equivalent:** When execution language is R, DAAF uses Quarto (.qmd) notebooks instead of Marimo. The same documentation principles apply -- use markdown cells for narrative context and code chunk comments for technical detail. See the `quarto` skill for Quarto-specific conventions.
+> **R:** DAAF's Stage 9 notebook format for R is Quarto (.qmd), and a Stage 9 Quarto notebook follows the `quarto` skill's archive rules (§ CRITICAL: Stage 9 is Script COMPILATION, Not Report Authoring, and `references/daaf-notebook.md`), not this section. For a standalone Quarto document outside Stage 9, the same documentation principles apply as for a standalone marimo app: markdown for narrative context, code chunk comments for technical detail.
 
 ### When to Use Markdown Cells
 
@@ -414,7 +420,10 @@ Keep in code comments:
 
 ### Reactive Validation Documentation
 
+> Interactive widgets such as `mo.ui.dropdown` belong only in standalone marimo apps, never in Stage 9 notebooks (`marimo` skill § ABSOLUTE PROHIBITIONS for Stage 9).
+
 ```python
+# Standalone app only, never Stage 9: this cell computes on each selection
 # Interactive column selector for exploration
 # Purpose: Allow user to quickly inspect any column's distribution
 column_selector = mo.ui.dropdown(
@@ -429,7 +438,7 @@ mo.md(f"""
 ### Column: `{column_selector.value}`
 
 - **Type**: {df[column_selector.value].dtype}
-- **Null count**: {df[column_selector.value].null_count().item()}
+- **Null count**: {df[column_selector.value].null_count()}
 - **Unique values**: {df[column_selector.value].n_unique()}
 
 **Sample values**: {df[column_selector.value].unique().head(10).to_list()}
@@ -457,7 +466,9 @@ customer_summary = (
 # Validate immediately
 post_total = customer_summary["total_spend"].sum()
 print(f"Total spend preserved: {pre_total:,.2f} → {post_total:,.2f}")
-assert abs(pre_total - post_total) < 1e-10, "STOP: Total spend changed during aggregation"
+# Relative tolerance: float sums differ in the last bits after regrouping
+tol = 1e-12 * max(1.0, transactions["amount"].abs().sum())
+assert abs(pre_total - post_total) <= tol, "STOP: Total spend changed during aggregation"
 ```
 
 **R:**
@@ -475,7 +486,9 @@ post_total <- sum(customer_summary$total_spend, na.rm = TRUE)
 cat(sprintf("Total spend preserved: %s -> %s\n",
             format(pre_total, big.mark = ",", nsmall = 2),
             format(post_total, big.mark = ",", nsmall = 2)))
-stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_total) < 1e-10)
+# Relative tolerance: float sums differ in the last bits after regrouping
+tol <- 1e-12 * max(1, sum(abs(transactions$amount), na.rm = TRUE))
+stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_total) <= tol)
 ```
 
 ## Documentation Examples
@@ -487,7 +500,7 @@ stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_
 **Python:**
 ```python
 # Loop through customers
-for customer in customers:
+for customer in customers.iter_rows(named=True):
     # Get customer id
     customer_id = customer["id"]
     # Filter transactions for this customer
@@ -513,7 +526,7 @@ for (i in seq_len(nrow(customers))) {
 # 1. Memory constraints: full aggregation exceeds available RAM
 # 2. Partial results: we want to checkpoint progress every 1000 customers
 # 3. Custom logic: per-customer CLV model requires sequential processing
-for customer in customers:
+for customer in customers.iter_rows(named=True):
     customer_id = customer["id"]
     customer_transactions = transactions.filter(pl.col("customer_id") == customer_id)
 ```
@@ -572,9 +585,9 @@ cat(sprintf("Removed %d non-positive amount records\n", original_count - nrow(df
 # ANALYSIS: Customer Segmentation by Purchase Frequency
 # ============================================================================
 # 
-# OBJECTIVE: Segment customers into frequency tiers for targeted marketing
+# INTENT: Segment customers into frequency tiers for targeted marketing
 #
-# METHODOLOGY:
+# REASONING:
 # - Calculate purchase frequency (orders per month) for each customer
 # - Segment into quartiles: Low, Medium, High, Very High frequency
 # - Quartiles chosen over fixed thresholds because:
@@ -582,7 +595,7 @@ cat(sprintf("Removed %d non-positive amount records\n", original_count - nrow(df
 #   - Ensures balanced segment sizes for marketing capacity
 #   - Standard approach aligns with previous analyses
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - Only counting orders with status='complete' (not cancelled/pending)
 # - Using 12-month lookback window to smooth seasonality
 # - New customers (<3 months tenure) excluded (not enough history)
@@ -602,7 +615,7 @@ customer_frequency = (
     .group_by("customer_id")
     .agg([
         pl.len().alias("order_count"),
-        (pl.col("order_date").max() - pl.col("order_date").min()).dt.days().alias("active_days")
+        (pl.col("order_date").max() - pl.col("order_date").min()).dt.total_days().alias("active_days")
     ])
     .with_columns(
         # Orders per 30-day month
@@ -612,7 +625,7 @@ customer_frequency = (
 )
 
 # Assign quartile-based segments
-# Using qcut logic manually since Polars doesn't have qcut
+# Manual quantile cut-points (Series.qcut also exists)
 q25 = customer_frequency["monthly_frequency"].quantile(0.25)
 q50 = customer_frequency["monthly_frequency"].quantile(0.50)
 q75 = customer_frequency["monthly_frequency"].quantile(0.75)
@@ -638,9 +651,9 @@ print(segment_distribution)
 # ANALYSIS: Customer Segmentation by Purchase Frequency
 # ============================================================================
 # 
-# OBJECTIVE: Segment customers into frequency tiers for targeted marketing
+# INTENT: Segment customers into frequency tiers for targeted marketing
 #
-# METHODOLOGY:
+# REASONING:
 # - Calculate purchase frequency (orders per month) for each customer
 # - Segment into quartiles: Low, Medium, High, Very High frequency
 # - Quartiles chosen over fixed thresholds because:
@@ -648,7 +661,7 @@ print(segment_distribution)
 #   - Ensures balanced segment sizes for marketing capacity
 #   - Standard approach aligns with previous analyses
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - Only counting orders with status='complete' (not cancelled/pending)
 # - Using 12-month lookback window to smooth seasonality
 # - New customers (<3 months tenure) excluded (not enough history)

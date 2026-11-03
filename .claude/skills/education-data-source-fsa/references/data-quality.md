@@ -38,6 +38,8 @@ FSA data provides valuable information on federal student aid programs but has i
 | `fsa/colleges_fsa_composite_scores` | 2006 | 2016 | 11 |
 | `fsa/colleges_fsa_90_10_revenue_percentages` | 2014 | 2021 | 8 |
 
+> **Loans: rows from 1999, volume from 2003.** The year range above is row presence. In the pinned mirror vintage (Portal v0.26.1, probed 2026-10-27), `fsa/colleges_fsa_loans` has rows for 1999-2002, but `value_loan_disbursements_unitid` sums to 0 in each of those years for both Direct Loan (codes 3+6+9) and FFEL (codes 10+11+14); the first non-zero year is 2003 (FFEL $36.1B, Direct $11.9B). Within FFEL PLUS, the combined code 14 carries volume from 2003, but its split is empty earlier: Parent PLUS (12) is null in every row before 2006, and Grad PLUS (13) first has positive values in 2005 (337 rows, $69M). Grad PLUS loans began with disbursements on or after 1 July 2006, so the 2005 values need a year-convention check before use (inference, not probed); use code 14 for FFEL PLUS totals before 2006. Only the unitid-level disbursement column was checked. Maintainer-only run log, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-27_mF_fsa_probe.py`.
+
 ### Timeline Visualization
 
 ```
@@ -89,7 +91,7 @@ FSA data covers institutions that:
 | Loans | ~5,500-6,500 | Varies by year |
 | Campus-Based | ~4,500-5,500 | Varies by year |
 | Financial Responsibility | ~2,500-3,500 | Private/for-profit only |
-| 90/10 | ~2,000-3,000 | For-profit only |
+| 90/10 | ~1,700-2,000 | For-profit only |
 
 ## Data Timing and Lag
 
@@ -99,8 +101,8 @@ FSA data covers institutions that:
 |-----------|------------------|------------|
 | Grants/Loans | Award year | July 1 - June 30 (e.g., 2017-18) |
 | Campus-Based | Award year | July 1 - June 30 |
-| Financial Responsibility | Fiscal year | Institution's fiscal year end |
-| 90/10 | Fiscal year | Institution's fiscal year end |
+| Financial Responsibility | Fiscal years ending in the award year | `year` = fall start year of that award year (2015 = FYE 7/1/2015-6/30/2016) |
+| 90/10 | Fiscal years ending in the award year | `year` = fall start year of that award year (2015 = FYE 7/1/2015-6/30/2016) |
 
 ### Data Publication Lag
 
@@ -113,7 +115,7 @@ FSA data covers institutions that:
 
 ### Example: What Data is Available When?
 
-If current date is January 2026:
+If current date is January 2026 (illustrative; verify against the FSA Data Center):
 - Grants/Loans: Likely through 2023-24 or 2024-25 award year
 - Financial Responsibility: Likely through 2022 or 2023 fiscal year
 - 90/10: Likely through 2022 or 2023 fiscal year
@@ -126,7 +128,7 @@ If current date is January 2026:
 |-------|-------------|--------|
 | Pell timing | Disbursements vs. obligations | May not match other sources |
 | Year-round Pell | Multiple grants per student | Recipient counts may double-count |
-| FSEOG variability | Campus-based allocation varies | Not comparable across institutions |
+| FSEOG variability (campus-based dataset, `award_type` 1; not a grants-dataset code) | Campus-based allocation varies | Not comparable across institutions |
 
 ### Loan Data Issues
 
@@ -152,7 +154,7 @@ If current date is January 2026:
 |-------|-------------|--------|
 | Limited years | 2014-2021 available | 8-year time series |
 | Proportion format | `rev_pct_90_10` is a proportion (0-1), not percentage (0-100) | Compare to 0.90 threshold, not 90 |
-| Pre-2021 methodology | VA/DoD not counted as federal before 2021 | Not comparable to current rule |
+| ARPA (P.L. 117-2) definition not in Portal | All Portal years (2014-2021) use the pre-ARPA Title IV-only numerator; VA/DoD and other federal education funds count as federal only for fiscal years beginning on or after 2023-01-01 | Portal data are not comparable to post-2023 ED 90/10 reports |
 | Revenue recognition | Timing differences | Annual figures may be volatile |
 | Audit adjustments | May differ from published data | Verify with official sources |
 
@@ -170,9 +172,11 @@ If current date is January 2026:
 ### Common Missing Data Scenarios
 
 **Grants Dataset:**
-- Institution doesn't participate in FSEOG → FSEOG values = -2
 - No students received Pell → Pell values = 0 or -1
 - Data not yet available → null
+
+**Campus-Based Dataset:**
+- Institution doesn't participate in FSEOG (`award_type` 1) → FSEOG values = -2
 
 **Loans Dataset:**
 - Undergraduate-only school → Grad PLUS = -2
@@ -227,10 +231,10 @@ df <- df |> mutate(
 
 | Year | Change | Impact |
 |------|--------|--------|
-| 2010 | Direct Loan transition | FFEL phased out; Direct Loan data increases |
+| 2010 (= 2010-11) | First Portal year with no new FFEL loans (HCERA, P.L. 111-152) | In the pinned mirror vintage (Portal v0.26.1; `fsa/colleges_fsa_loans`, probed 2026-10-27), FFEL codes 10-14 keep their rows every year through 2021 (the same row count as every other loan_type in a year, e.g. 5,266 in 2010), but from `year` 2010 every `value_loan_disbursements_unitid` value is null (0 of 300,570 rows above zero). Direct Loan disbursements (codes 3+6+9) rise from $42.6B (2009) to $91.1B (2010). FFEL subsequent disbursements still made in 2010-11 under GEN-10-05 do not appear in the file. Treat FFEL rows from 2010 as structurally empty, not as zero lending; earlier years mix FFEL and Direct Loan |
 | 2012 | Grad subsidized eliminated | Grad loan composition changes |
-| 2017 | Perkins discontinued | No new Perkins loans after this |
-| 2021 | 90/10 methodology change | VA/DoD now counted as federal |
+| 2017 | Perkins discontinued | No new Perkins loans after September 30, 2017; final disbursements permitted through June 30, 2018, so Portal campus-based `year`=2017 (2017-18) can still contain Perkins disbursements |
+| 2023 (FYs beginning on/after Jan 1) | ARPA 90/10 definition | VA/DoD funds count as federal; outside Portal coverage |
 | 2024 | SAI replaces EFC | May affect Pell eligibility patterns |
 
 ### Comparability Issues
@@ -239,7 +243,7 @@ df <- df |> mutate(
 |------------|---------|----------------|
 | Year-over-year | Enrollment changes | Calculate per-student metrics |
 | Cross-sector | Different program participation | Control for sector |
-| Pre/post-2010 | FFEL to Direct Loan | Combine loan types or note break |
+| Pre/post-2010 | FFEL to Direct Loan (`year` 2010 = 2010-11 is the first year with no new FFEL loans) | Combine loan types or note break |
 | State-level | Different state aid programs | Account for state context |
 
 ### Inflation Adjustment

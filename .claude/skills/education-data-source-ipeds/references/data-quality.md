@@ -20,7 +20,7 @@ Understanding data quality considerations, missing data, and analytical pitfalls
 
 | Strength | Description |
 |----------|-------------|
-| High response rate | ~99% due to mandatory reporting |
+| High response rate | Greater than 99 percent for each component in the Spring 2018 collection; about 89 to over 99 percent for Title IV institutions since web collection began (NCES Handbook of Survey Methods) |
 | Consistent definitions | Standardized across institutions |
 | Longitudinal coverage | Many surveys since 1980s |
 | Public access | Free, well-documented |
@@ -31,7 +31,7 @@ Understanding data quality considerations, missing data, and analytical pitfalls
 | Limitation | Description |
 |------------|-------------|
 | Institutional-level only | No student-level data |
-| Title IV only | Non-Title IV institutions excluded |
+| Title IV focus | Non-Title IV institutions report only voluntarily; their coverage is partial |
 | Cohort definitions | GR excludes many students |
 | Accounting differences | GASB vs FASB |
 | Lag time | 1-2 year delay for most data |
@@ -87,7 +87,7 @@ df <- df |>
 ### Privacy Suppression (-3)
 
 Small cell counts are suppressed to protect privacy:
-- Typically cells with fewer than 10 individuals
+- Threshold not documented here; check the Portal codebook for -3 usage
 - Common in demographic breakdowns
 - More common at smaller institutions
 
@@ -114,11 +114,7 @@ Code `-2` is used when item doesn't apply:
 
 ### IPEDS Imputation Process
 
-For non-respondents, IPEDS imputes values using:
-
-1. **Prior year data** - carry forward from previous year
-2. **Peer group mean** - average of similar institutions
-3. **Ratio adjustment** - based on related variables
+For non-respondents, IPEDS performs a single imputation after all editing is complete, using a nearest-neighbor approach (earlier years used cold-deck imputation, updated by ratio methods, and hot-deck imputation). NCES cautions that imputed values are intended for national totals, not as an accurate portrayal of an individual institution; check response-status and item imputation flags.
 
 ### Imputation Flags
 
@@ -156,10 +152,7 @@ cat(sprintf("Imputation rate: %.1f%%\n", imputation_rate))
 
 ### Overall Response
 
-IPEDS achieves ~99% overall response because:
-- Required for Title IV participation
-- Financial penalties for non-response
-- Extensive follow-up
+IPEDS unit response rates are very high (greater than 99 percent for each component in the Spring 2018 collection; about 89 to over 99 percent for Title IV institutions since web collection began; NCES Handbook of Survey Methods) because reporting is mandatory for Title IV participants and NCES follows up extensively. Nonrespondents are imputed.
 
 ### Component-Specific Response
 
@@ -172,7 +165,7 @@ IPEDS achieves ~99% overall response because:
 | GR | Some small cohorts suppressed |
 | F | Some delayed reporting |
 | HR | High response |
-| AL | Biennial; some non-response |
+| AL | Annual from 2014-15 (biennial before) |
 
 ### Unit Non-Response
 
@@ -237,7 +230,7 @@ Individual items missing:
 | Problem | GASB vs FASB; passthrough transactions |
 |---------|---------------------------------------|
 | Impact | Cross-sector analysis problematic |
-| Mitigation | See `finance-data.md`; use Delta Cost |
+| Mitigation | See `finance-data.md`; Delta Cost Project (AIR) harmonized data cover 1986-87 through 2011-12 only |
 
 ### Issue 8: Graduation Rate Cohort
 
@@ -316,23 +309,24 @@ peers <- df |>
 | 1986 | IPEDS begins | Start of consistent data |
 | 1997 | FASB finance | Private finance changes |
 | 2002-04 | GASB finance | Public finance changes |
-| 2008 | Race/ethnicity categories | Two+ races added |
-| 2010 | Award level changes | Doctoral split |
+| 2008-09 to 2011-12 | New race/ethnicity categories phased in (required 2010-11 for EF/HR, 2011-12 for all components) | Two or more races and separate NHPI added; transition years mix schemes |
+| 2008-09 to 2010-11 | Postbaccalaureate award levels restructured (phase-in from 2008-09; required 2010-11) | First-professional degree and certificate categories eliminated; doctor's split into research/scholarship, professional practice, other (Portal `award_level` 20/21 "until 2008", 22-24 "starting 2007") |
 | 2012 | Distance education added | New data element |
 | 2015 | Outcome Measures begins | New survey |
 | 2020 | COVID impacts | Major disruption |
 
-### Pre-2008 Race/Ethnicity
+### Old-Scheme Race/Ethnicity (Before the 2008-09 to 2011-12 Phase-In)
 
-Before 2008-09:
+Before adoption (EF/HR: 2010-11; other components: 2011-12):
 - No "Two or more races" category
 - "Asian" included Pacific Islander
 - Different classification rules
 
 ```python
 # Combining old and new race data
-# Two+ races: only available 2008-09+
-# Pre-2008: Asian includes Pacific Islander
+# Two+ races: phased in from 2008-09; required 2010-11 (EF/HR), 2011-12 (other components)
+# Old scheme: Asian includes Pacific Islander. The year cutoff below is illustrative —
+# during the 2008-09 to 2010-11 phase-in, check which scheme each institution reported.
 
 if year < 2008:
     asian_combined = asian  # Includes Pacific Islander
@@ -342,8 +336,9 @@ else:
 
 ```r
 # Combining old and new race data
-# Two+ races: only available 2008-09+
-# Pre-2008: Asian includes Pacific Islander
+# Two+ races: phased in from 2008-09; required 2010-11 (EF/HR), 2011-12 (other components)
+# Old scheme: Asian includes Pacific Islander. The year cutoff below is illustrative —
+# during the 2008-09 to 2010-11 phase-in, check which scheme each institution reported.
 
 asian_combined <- if (year < 2008) {
   asian  # Includes Pacific Islander
@@ -358,7 +353,7 @@ Cannot directly compare:
 - Pre-1997 private to post-1997 private
 - Pre-2004 public to post-2004 public
 
-Delta Cost Project provides harmonized historical data.
+Delta Cost Project (AIR) provides harmonized data for 1986-87 through 2011-12 only.
 
 ## Validation Checks
 
@@ -517,8 +512,8 @@ suspicious <- df |> filter(abs(yoy_change) > max_change)
 | Portal Variable | Description | Check |
 |-----------------|-------------|-------|
 | `currently_active_ipeds` | Currently active | Should be 1 for analysis |
-| `inst_category` | Institution category | Check for changes |
-| `year_deleted` | Year closed | Exclude closed institutions |
+| `inst_category` | Institutional category (degree-granting level, codes 1-6) — not a status | Check for changes |
+| `year_deleted` | Year deleted from IPEDS (closure, merger, or out of scope; -2 = not applicable) | Exclude deleted institutions (`year_deleted` > 0) |
 | `inst_status` | Institution status | Active vs inactive |
 
 > **Note:** NCES raw file documentation may use different variable names (e.g., `CYACTIVE`, `INSTCAT`, `DEATHYR`). The Portal uses the lowercase descriptive names shown above. Always verify against the actual data columns.
@@ -539,7 +534,7 @@ import polars as pl
 # Example: Quality-filtered analysis using Portal variable names
 analysis_data = df.filter(
     (pl.col("currently_active_ipeds") == 1) &  # Active institutions
-    (pl.col("year_deleted").is_null()) &        # Not closed
+    ((pl.col("year_deleted").is_null()) | (pl.col("year_deleted") < 0)) &  # Not deleted (-2 = not applicable)
     (pl.col("enrollment") > 100)               # Minimum size (if applicable)
 )
 
@@ -556,7 +551,7 @@ library(dplyr)
 analysis_data <- df |>
   filter(
     currently_active_ipeds == 1,   # Active institutions
-    is.na(year_deleted),           # Not closed
+    (is.na(year_deleted) | year_deleted < 0),  # Not deleted (-2 = not applicable)
     enrollment > 100               # Minimum size (if applicable)
   )
 

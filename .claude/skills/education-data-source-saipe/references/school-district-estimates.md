@@ -146,7 +146,7 @@ When grade assignments are ambiguous:
 - Provide baseline poverty shares from sample data
 - More stable than 1-year estimates
 - Updated with each release cycle
-- Currently using ACS 2006-2010 (updated for 2010+ SAIPE)
+- Uses the most recent ACS 5-year sample available at production (ACS 2006-2010 was used for the 2010 estimates)
 
 Previously used Census 2000 long-form sample (through 2009 SAIPE).
 
@@ -193,7 +193,7 @@ Unlike state/county estimates, school district estimates do not have published c
 
 ## Coefficient of Variation by District Size
 
-From Census Bureau evaluation studies:
+From the Census Bureau evaluation for SAIPE 2009 (pre-ACS method); Census describes these as an approximate upper bound for SAIPE 2010 school-district estimates (applying them to later years is DAAF inference):
 
 | District Population | Median CV | Interpretation |
 |---------------------|-----------|----------------|

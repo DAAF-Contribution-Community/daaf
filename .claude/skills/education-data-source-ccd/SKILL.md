@@ -70,7 +70,7 @@ What information do you need?
 │   ├─ District-level detail → School District Finance Survey (F-33)
 │   └─ See ./references/survey-components.md#finance
 ├─ Graduation/dropout rates → Dropout and Completers
-│   └─ See ./references/survey-components.md#dropout-completers
+│   └─ See ./references/survey-components.md#dropout-and-completers
 └─ School type, charter status, locale → Directory
     └─ See ./references/survey-components.md#directory
 ```
@@ -86,25 +86,25 @@ Unexpected data values?
 ├─ State appears as outlier → Check state-specific reporting
 │   └─ See ./references/data-quality.md#state-variations
 ├─ Large number of zeros → Check suppression rules
-│   └─ See ./references/data-quality.md#suppression
+│   └─ See ./references/data-quality.md#data-suppression
 └─ Locale codes don't match → Pre/post 2006 locale system change
-    └─ See ./references/historical-changes.md#locale-codes
+    └─ See ./references/historical-changes.md#locale-codes-2006
 ```
 
 ### Can I compare across time?
 
 ```
 Building a time series?
-├─ Race/ethnicity categories → Major change in 2010
-│   └─ See ./references/historical-changes.md#race-ethnicity
+├─ Race/ethnicity categories → Major change from 2008-09 to 2010-11 (file years 2008-2010)
+│   └─ See ./references/historical-changes.md#raceethnicity-categories-2008-09-to-2010-11
 ├─ Locale codes → Completely revised in 2006
-│   └─ See ./references/historical-changes.md#locale-codes
+│   └─ See ./references/historical-changes.md#locale-codes-2006
 ├─ School/district IDs → Check for ID changes
 │   └─ See ./references/variable-definitions.md#identifiers
 ├─ Free/reduced lunch → CEP and direct certification changes
-│   └─ See ./references/data-quality.md#frpl
+│   └─ See ./references/data-quality.md#freereduced-price-lunch-frpl-limitations
 └─ Finance data → Definition changes and inflation
-    └─ See ./references/historical-changes.md#finance
+    └─ See ./references/data-quality.md#finance-data-quality
 ```
 
 ## Quick Reference: CCD Components
@@ -115,7 +115,7 @@ Building a time series?
 | Membership | School, LEA, State | Enrollment by grade, race, sex | 1986+ | Annual |
 | Staffing | School, LEA, State | FTE teachers, staff by category | 1987+ | Annual |
 | Finance (State) | State | Revenue, expenditure by source/function | 1989+ | Annual (1-2 yr lag) |
-| Finance (District) | LEA | Revenue, expenditure, per-pupil | 1989+ | Annual (2 yr lag) |
+| Finance (District) | LEA | Revenue, expenditure, per-pupil | FY 1980+ (all LEAs annually FY 1995+) | Annual (2 yr lag) |
 | Dropout/Completers | LEA, State | Dropout counts, diploma recipients | 1991+ | Annual |
 
 > **Note:** Not all components listed above are available through the Portal mirrors. See the Data Access section for which datasets are mirrored.
@@ -240,7 +240,7 @@ Schools → Local Education Agencies (LEAs)
         CCD Public Data Files
 ```
 
-**Timeline**: Data for school year 20XX-YY typically submitted spring 20YY, released fall 20YY (preliminary) to spring 20YY+1 (provisional/final).
+**Timeline**: Since SY 2022-23 (EDPass), states submit by about July after the school year and NCES releases within about 4 months (SY 2023-24 example). See `./references/data-collection.md`.
 
 ## Data Access
 
@@ -274,7 +274,7 @@ url = get_codebook_url("ccd/codebook_schools_ccd_directory")
 # R equivalent -- get_codebook_url() is a Python helper; construct the URL directly
 # Mirror failover: see education-data-query/references/fetch-patterns.md (R pattern)
 mirrors <- yaml::read_yaml("mirrors.yaml")
-url <- paste0(mirrors$mirrors[[1]]$root_url, "ccd/codebook_schools_ccd_directory.xls")
+url <- paste0(mirrors$mirrors[[1]]$root_url, "/", mirrors$mirrors[[1]]$vintage$hf_revision, "/", "ccd/codebook_schools_ccd_directory.xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
@@ -340,13 +340,14 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Assuming `-1` is missing | In enrollment `grade` data, `-1` = Pre-K | Check variable format in codebook |
 | Reading `highest_grade_offered == -1` as a grade | In directory grade-span (GSLO/GSHI), `-1` = MISSING, not Pre-K/≥9 | Exclude `-1` before grade-span filters (see variable-definitions.md) |
 | Cross-state comparison | Different state definitions | Check state methodology first |
-| Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
+| Using FRPL as poverty measure | CEP schools may report all students as free-lunch eligible | Supplement with MEPS or SAIPE data |
 | Locale time series | 2006 code system change | Analyze pre/post-2006 separately |
 | Charter school counts | Early years incomplete | Verify against state records pre-2010 |
 | Dropout rate comparison | State definitions vary | Within-state comparisons only |
 | Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
 | Assuming `charter=1/2` | Portal uses `0=No, 1=Yes` | Empirically verified; not NCES `1=Yes, 2=No` |
 | Identifier type/width across files | Prior HF Parquet objects may expose integer `leaid`/`ncessch`, losing leading-zero/display-width semantics | Normalize to strings; validate `leaid` length 7 and `ncessch` length 12 before joining |
+| Float `race`/`sex` in one district file | `schools_ccd_lea_enrollment_2016` stores `race` and `sex` as Float64 (whole-number values); the other 77 CCD enrollment files store Int64. In Polars, filters such as `race == 1` still match, but a join to an Int64 `race` key and a strict concat with another year raise `SchemaError`, and a `diagonal_relaxed` multi-year concat makes both columns Float64 for every year (pinned mirror, probe 2026-10-31) | Cast `race` and `sex` to Int64 after reading, or after a multi-year concat (values are whole numbers, so the cast is lossless), before joining or filtering on code lists |
 
 ## Coverage Notes
 
@@ -370,7 +371,7 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
 | `education-data-source-edfacts` | CCD nonfiscal data flows through EDFacts | Same underlying data |
-| `education-data-source-crdc` | Biennial; uses CCD school IDs | Need discipline, course access, equity data |
+| `education-data-source-crdc` | Often called biennial, but no odd/even-year rule (2020-21 and 2021-22 are consecutive collections); uses CCD school IDs | Need discipline, course access, equity data |
 | `education-data-source-saipe` | Uses CCD district IDs | Need poverty estimates (better than FRPL) |
 | `education-data-source-meps` | School-level poverty estimates | Need school-level poverty (better than FRPL) |
 | `education-data-source-ipeds` | Separate system for postsecondary | Need college/university data |
@@ -401,6 +402,6 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | FRPL limitations | `./references/data-quality.md` |
 | Data suppression | `./references/data-quality.md` |
 | Locale code changes (2006) | `./references/historical-changes.md` |
-| Race/ethnicity changes (2010) | `./references/historical-changes.md` |
+| Race/ethnicity changes (2008-09 to 2010-11) | `./references/historical-changes.md` |
 | LEA type changes (2007) | `./references/historical-changes.md` |
 | ID changes over time | `./references/historical-changes.md` |

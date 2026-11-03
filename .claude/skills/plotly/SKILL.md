@@ -214,7 +214,7 @@ fig.write_html("plot.html")
 When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
-> Plotly Technologies Inc. Plotly: Interactive graphing library [Computer software]. https://plotly.com/
+> Kruchten, N., Seier, A., & Parmer, C. (2026). An interactive, open-source, and browser-based graphing library for Python (plotly.py) [Computer software]. https://doi.org/10.5281/zenodo.14503524
 
 **Cite when:** Plotly is the primary visualization library producing interactive figures included in the report or notebook.
 **Do not cite when:** Only used for quick exploratory plots not included in deliverables.

@@ -167,11 +167,12 @@ summary(fit_fd)
 | Observations lost | 1 per entity | 0 |
 | Under AR(1) errors | More efficient when rho~1 | More efficient when rho~0 |
 | Under MA errors | FD can be more efficient | Within is more efficient |
-| With T=2 | FD = Within (identical) | FD = Within (identical) |
+| With T=2 | No-intercept FD (`- 1`) = one-way Within; plm's default FD (with intercept) = two-way Within | Same as the FD column |
 | Time-invariant vars | Differenced out | Demeaned out |
 
 ```r
-# With T=2, FD and Within produce identical estimates
+# With T=2, FD without an intercept (y ~ x - 1) equals one-way Within;
+# plm's default FD keeps an intercept and equals effect = "twoways" Within
 # (a useful sanity check with two-period panels)
 ```
 

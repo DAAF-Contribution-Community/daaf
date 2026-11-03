@@ -167,13 +167,13 @@ Content here.
 | Component | Limit | Notes |
 |-----------|-------|-------|
 | Name | 64 chars | Lowercase hyphen-case |
-| Description (frontmatter) | 1,024 chars | Validation limit (Agent Skills spec). Display: combined `description` + `when_to_use` is truncated at 1,536 chars in the skill listing, with a startup warning on truncation |
+| Description (frontmatter) | 1,024 chars | Validation limit (Agent Skills spec). Display: combined `description` + `when_to_use` is truncated at 1,536 chars per skill in the skill listing (the `skillListingMaxDescChars` default); the truncation breakdown is reported by `/doctor`, not a startup notification |
 | Description (body) | 2-5 sentences (~400-1,000 chars) | Expanded description as plain paragraph after `# Title`; at least as informative as the frontmatter description, adding detail omitted from the listing for budget economy |
 | SKILL.md body | <500 lines | Guideline, not enforced |
 | SKILL.md body | <5000 words | Keep concise |
 | Metadata per skill | ~100 words | Always in context |
 
-> **Version note:** Display caps reflect Claude Code behavior as of v2.1.105 / June 2026 (the listing cap was raised from 250 to 1,536 chars in that release) and are configurable via the `maxSkillDescriptionChars` setting. If observed truncation behavior differs, verify against current Claude Code docs rather than assuming this table is correct. See `./references/frontmatter.md` for the full length model, including the aggregate listing budget shared across all skills.
+> **Version note:** Display caps verified against the Claude Code settings reference on 2026-09-05 (CC 2.1.261). The per-skill listing cap is 1,536 chars (the `skillListingMaxDescChars` default; positive integer). The listing as a whole is bounded by `skillListingBudgetFraction` (a fraction >0 and ≤1, default 0.01 = 1% of the context window; DAAF sets 0.1 as a guardrail — well above any listing size DAAF ships, so truncation only fires if the listing ever grows past 10% of the window); when the listing exceeds that budget, the least-used skills' descriptions are dropped first (names kept). The truncation breakdown is inspectable via `/doctor` (since 2.1.144), not a startup notification. If observed behavior differs, verify against current Claude Code docs rather than assuming this table is correct. See `./references/frontmatter.md` for the full length model, including the aggregate listing budget shared across all skills.
 
 ### Core Principles
 
@@ -191,6 +191,8 @@ Content here.
 
 - Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Before authoring, consider a scoped online survey of the skill's domain (best practices, alternative implementations, practitioner guides) — external grounding beats ungrounded inference. When working with a user, offer this rather than silently skipping it (formalized in Framework Development mode as the Pre-Authoring Research Offer: `.claude/skills/daaf-orchestrator/references/framework-development-mode.md` § Pre-Authoring Research Offer)
+- Write to `agent_reference/DOCUMENTATION_STANDARDS.md` for the skill's audience: skill text is agent-facing, so precise internal terms are fine; any text the skill gives an agent to show a user follows § S3 Plain for Users
+- Write the description for its primary reader, the orchestrator (and any agent deciding whether to load the skill): optimize it for routing, and add user-friendly wording only where it also helps that reader
 - Include "what it does" AND "when to use it" in description
 - Write a complete, information-rich frontmatter description (up to the 1,024-char validation limit) — this is the ONLY text agents see when deciding whether to load a skill, so it should carry the full triggering context, not a compressed teaser
 - Practice budget-aware economy: 40+ DAAF skills share an aggregate skill-listing budget (~1% of the context window). When the listing overflows, descriptions for the least-invoked skills are dropped first — so spend characters where they earn triggering accuracy, not on exhaustive feature lists
@@ -219,7 +221,7 @@ Content here.
 - Don't start/end name with hyphens
 - Don't use heavy-handed ALWAYS/NEVER/MUST in all caps — explain reasoning instead
 - Don't offer too many options — provide a default with an escape hatch
-- Don't include time-sensitive information (use "Old patterns" `<details>` sections if needed)
+- Don't narrate history: describe how things work in this release, give reasons in the present tense, and leave change stories to CHANGELOG.md. A data-source skill keeps the data's own history (schema changes across years), and a short fenced "recognizing older forms" note is allowed only where agents will meet legacy material in a user's files (`agent_reference/DOCUMENTATION_STANDARDS.md` § S5 Current State; see `./references/structure.md` § Current State, Not History)
 - Don't use Windows-style backslash paths (always forward slashes)
 
 ### Skill Registration

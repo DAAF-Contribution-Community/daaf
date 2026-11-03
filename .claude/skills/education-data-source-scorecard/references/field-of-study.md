@@ -56,9 +56,9 @@ Field of study data links outcomes to specific academic programs:
 
 | Level | Institution Earnings | Field Earnings |
 |-------|---------------------|----------------|
-| Reference point | Entry (first enrollment) | Completion |
+| Reference point | Entry (estimated entry year at the institution) | Completion |
 | Includes non-completers | Yes | No |
-| Time frame meaning | "6 years after entry" | "1-2 years after completion" |
+| Time frame meaning | "6 years after entry" | "x years after completion"; the FoS technical documentation (Version: October 2026) describes 1-7 years (`EARN_MDN_HI_1YR`/`EARN_MDN_1YR`, `EARN_MDN_HI_2YR`, `EARN_NE_MDN_3YR`, `EARN_MDN_4YR`/`5YR`/`7YR`) plus national 4/5/7-year values (`EARN_MDN_xYR_NAT`); check which are populated in your release |
 
 ### Field-Level Time Frames
 
@@ -92,7 +92,7 @@ Field of study data links outcomes to specific academic programs:
 
 | Variable | Description |
 |----------|-------------|
-| `NUM_AWARDS` | Number of awards conferred |
+| `NUM_AWARDS` | Number of awards conferred (illustrative variable name; verify in the data dictionary) |
 | `IPEDSCOUNT1` | IPEDS completions count |
 | `IPEDSCOUNT2` | IPEDS completions, alternate count |
 
@@ -101,14 +101,16 @@ Field of study data links outcomes to specific academic programs:
 | Variable | Description |
 |----------|-------------|
 | `MAIN` | Main campus indicator |
-| `BRANCH` | Branch campus indicator |
-| `DISTONLY` | Distance-only program |
+| `BRANCH` | Branch campus indicator (illustrative variable name; verify in the data dictionary) |
+| `DISTANCE` | Distance education indicator for the field of study (not reported to IPEDS / no / some / all credentials completable via distance education; check value codes in the data dictionary) |
 
 ## Suppression in Field Data
 
 ### High Suppression Rates
 
 Field-level data has much higher suppression than institution-level:
+
+(Illustrative, unsourced ranges — measure suppression in your extract.)
 
 | Data Type | Typical Suppression |
 |-----------|-------------------|
@@ -131,7 +133,7 @@ import polars as pl
 
 # Count suppressed/missing records
 # Note: Field-of-study data is from Scorecard bulk downloads, not Portal mirrors.
-# Suppression may use null, -3, or "PrivacySuppressed" depending on file format.
+# Suppression may use null, -3, "PS", or (pre-May-2024 files) "PrivacySuppressed" depending on file format.
 suppressed = df.filter(
     pl.col("earn_mdn_hi_2yr").is_null() |
     (pl.col("earn_mdn_hi_2yr") == -3)
@@ -181,12 +183,14 @@ cat(sprintf("Programs with valid earnings data: %d\n", nrow(with_data)))
 
 ### Fields with High Grad School Rates
 
-| CIP | Field | Effect on Earnings |
-|-----|-------|-------------------|
-| 26 | Biology | Understated (many in grad school) |
-| 40 | Physical Sciences | Understated |
-| 42 | Psychology | Understated |
-| 45 | Social Sciences | Understated |
+FoS earnings exclude graduates who were enrolled in school during the measurement year, and the CY2017/CY2018 and CY2018/CY2019 calculations also excluded graduates who received a higher-level credential than the credential level of the field of study measured (FoS technical documentation, October 2026, footnote 4). In fields where many graduates go on to graduate school, the earnings cohort is therefore a selected subset. The documentation does not state the direction of the resulting bias. Illustrative fields (graduate-school rates not sourced here):
+
+| CIP | Field |
+|-----|-------|
+| 26 | Biology |
+| 40 | Physical Sciences |
+| 42 | Psychology |
+| 45 | Social Sciences |
 
 ## Analytical Considerations
 
@@ -227,6 +231,7 @@ field_summary = (
     .group_by("cipcode")
     .agg([
         pl.col("earn_mdn_hi_2yr").median().alias("median_earnings"),
+        # num_awards: illustrative variable name; verify in the data dictionary
         pl.col("num_awards").sum().alias("total_completers")
     ])
 )
@@ -240,6 +245,7 @@ field_summary <- df |>
   group_by(cipcode) |>
   summarise(
     median_earnings = median(earn_mdn_hi_2yr),
+    # num_awards: illustrative variable name; verify in the data dictionary
     total_completers = sum(num_awards)
   )
 ```
@@ -287,13 +293,13 @@ Good: "Computer Science graduates at School X earn $75,000
       two years after graduation"
 
 Better: "Computer Science bachelor's degree graduates at School X 
-        who received federal aid and are working full-time earn 
+        who received federal aid and had earnings during the year earn 
         a median of $75,000 two years after graduation"
 
 Best: "Computer Science bachelor's degree graduates at School X 
       who received federal aid earn a median of $75,000 two years 
-      after graduation. This excludes graduates who continued to 
-      graduate school, are self-employed, or are not working. 
+      after graduation. This excludes graduates who were enrolled in 
+      school during the measurement year or had no earnings that year. 
       Based on XX completers in the cohort."
 ```
 
@@ -338,5 +344,5 @@ combined <- field_df |> left_join(
 | Post-completion timing | Not comparable to institution-level entry cohorts |
 | Completers only | Excludes program non-completers |
 | Title IV only | Same selection bias as institution level |
-| Working only | Excludes grad school, unemployed |
-| 1-2 year earnings | Very early career only |
+| Earners only | Excludes graduates enrolled in school during the measurement year and those with no earnings that year (no earnings ≠ unemployed; the CY2018/CY2019 three-year measure included non-workers) |
+| Early-career earnings | 1-7 years after completion depending on the measure (FoS technical documentation, October 2026) |

@@ -18,7 +18,7 @@ This reference provides side-by-side translations for every major regression tas
 > R: fixest 0.14.0, lmtest 0.9-40, sandwich 3.1-1, plm 2.6-7, lme4 2.0-1
 > See SKILL.md § Library Versions for the complete version table.
 
-> **Sources:** Berge, Butts, & McDermott, *fixest* (CRAN, v0.13);
+> **Sources:** Bergé, Butts, & McDermott, *fixest* (CRAN, v0.13);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (v7.0);
@@ -227,7 +227,8 @@ The three-part formula is identical in both languages.
 
 ### ivreg / linearmodels Two-Part Formula
 
-**R (ivreg):**
+**R (ivreg):** `ivreg` is not installed in DAAF; a DAAF R pipeline fits IV with
+fixest's three-part formula above.
 ```r
 library(ivreg)
 # Two-part formula: outcome ~ exog + endog | exog + instruments
@@ -267,7 +268,7 @@ summary(fit, stage = 1)          # First-stage results
 **Python (pyfixest):**
 ```python
 fit = pf.feols("y ~ 1 | fe | x_endog ~ z1 + z2", data=df)
-fit.IV_Diag()                    # Comprehensive diagnostics
+fit.IV_Diag()                    # First-stage F and effective F only (pyfixest 0.60.0)
 first_stage = fit._model_1st_stage
 first_stage.summary()
 ```
@@ -324,7 +325,7 @@ fit = RandomEffects.from_formula("y ~ 1 + x1 + x2", data=df_panel).fit()
 | First difference | `plm(..., model="fd")` | `FirstDifferenceOLS.from_formula("y ~ x", data)` |
 | Pooled OLS | `plm(..., model="pooling")` | `PooledOLS.from_formula("y ~ 1 + x", data)` |
 | Two-way FE | `plm(..., effect="twoways")` | `PanelOLS.from_formula("y ~ x + EntityEffects + TimeEffects", data)` |
-| Fama-MacBeth | Not in plm | `FamaMacBeth.from_formula("y ~ 1 + x", data)` |
+| Fama-MacBeth | `pmg(..., model="mg")` on a time-first index (plm `references/models.md`) | `FamaMacBeth.from_formula("y ~ 1 + x", data)` |
 
 ### Key Difference: Data Preparation
 
@@ -556,7 +557,7 @@ fit.vcov({"CRV1": "state+year"})
 
 ```python
 # At estimation time
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1")
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1", use_t=True)
 
 # Or post-estimation
 fit = smf.ols("y ~ x1 + x2", data=df).fit()
@@ -564,7 +565,7 @@ robust = fit.get_robustcov_results(cov_type="HC1")
 
 # Clustered SEs
 fit = smf.ols("y ~ x1 + x2", data=df).fit(
-    cov_type="cluster", cov_kwds={"groups": df["state"]}
+    cov_type="cluster", cov_kwds={"groups": df["state"]}, use_t=True
 )
 ```
 
@@ -573,15 +574,15 @@ fit = smf.ols("y ~ x1 + x2", data=df).fit(
 | SE Type | R (sandwich) | R (fixest) | pyfixest | statsmodels |
 |---------|-------------|-----------|----------|-------------|
 | IID | Default | `"iid"` | `"iid"` | Default |
-| HC0 (White) | `vcovHC(type="HC0")` | N/A | N/A | `cov_type="HC0"` |
-| HC1 | `vcovHC(type="HC1")` | `"hetero"` or `"HC1"` | `"hetero"` or `"HC1"` | `cov_type="HC1"` |
-| HC2 | `vcovHC(type="HC2")` | N/A | `"HC2"` (no FE/IV) | `cov_type="HC2"` |
-| HC3 | `vcovHC(type="HC3")` | N/A | `"HC3"` (no FE/IV) | `cov_type="HC3"` |
-| 1-way cluster | `vcovCL(cluster=...)` | `vcov = ~g` | `{"CRV1": "g"}` | `cov_type="cluster"` |
-| 2-way cluster | `vcovCL(cluster=cbind(...))` | `vcov = ~g1 + g2` | `{"CRV1": "g1+g2"}` | Not built-in |
-| Cluster jackknife | N/A | N/A | `{"CRV3": "g"}` | N/A |
-| Newey-West (HAC) | `vcovHAC(fit)` | `"NW"` | `"NW"` | `cov_type="HAC"` |
-| Driscoll-Kraay | N/A | `"DK"` | `"DK"` | N/A (use linearmodels) |
+| HC0 (White) | `vcovHC(type="HC0")` | `"hetero"` + `ssc = ssc(K.adj = FALSE)` | N/A | `cov_type="HC0"` |
+| HC1 | `vcovHC(type="HC1")` | `"hetero"` or `"HC1"` | `"hetero"` or `"HC1"` | `cov_type="HC1", use_t=True` |
+| HC2 | `vcovHC(type="HC2")` | `"hc2"` | `"HC2"` (no FE/IV; variance is sandwich/statsmodels HC2 times N/(N-K) unless `ssc=pf.ssc(k_adj=False)`, observed 2026-11-01, pyfixest 0.60.0) | `cov_type="HC2"` |
+| HC3 | `vcovHC(type="HC3")` | `"hc3"` | `"HC3"` (no FE/IV; variance is sandwich/statsmodels HC3 times N/(N-K) unless `ssc=pf.ssc(k_adj=False)`, observed 2026-11-01, pyfixest 0.60.0) | `cov_type="HC3"` |
+| 1-way cluster | `vcovCL(cluster=...)` | `vcov = ~g` | `{"CRV1": "g"}` | `cov_type="cluster", use_t=True` |
+| 2-way cluster | `vcovCL(cluster=cbind(...))` | `vcov = ~g1 + g2` | `{"CRV1": "g1+g2"}` | `cov_type="cluster"` (2-column integer `groups`) |
+| Cluster jackknife | `vcovJK(fit, cluster = ~g, center = "estimate")` | N/A | `{"CRV3": "g"}` | N/A |
+| Newey-West (HAC) | `NeweyWest(fit)` | `"NW"` | `"NW"` | `cov_type="HAC", cov_kwds={"maxlags": L}` |
+| Driscoll-Kraay | `vcovPL(fit, cluster = ~id + time)` | `"DK"` | `"DK"` | `cov_type="hac-groupsum"` (`time`, `maxlags`) |
 
 **Driscoll-Kraay in linearmodels:**
 ```python
@@ -594,8 +595,12 @@ fit = PanelOLS.from_formula("y ~ x + EntityEffects", data=df_panel).fit(
 
 - **HC2 and HC3 in pyfixest** are only available for models without fixed effects
   or IV. With FE, use HC1 or clustered SEs.
-- **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
-  linearmodels instead.
+- **Two-way clustering in statsmodels** takes a 2-column integer `groups` array
+  (`cov_kwds={"groups": df[["g1", "g2"]]}`); its SEs can differ from pyfixest's
+  two-way CRV1.
+- **statsmodels p-values** use the normal distribution for every robust
+  `cov_type` passed to `.fit()` unless `use_t=True` is added;
+  `get_robustcov_results()` on a default fit already uses t.
 - **Default SE changed in pyfixest 0.40** (unchanged through 0.60): Both R fixest
   0.13 and pyfixest (0.40 onward, including the current 0.60.0) default to `"iid"`.
   Older code that relied on automatic clustering by the first FE will silently
@@ -760,7 +765,7 @@ have the same convention — `I(x**2)` is required for squaring.
 - patsy: `C(x, Treatment('baseline'))`
 - formulaic: `i(x, ref='baseline')` or `C(x)` (default reference is first level)
 
-> **Sources:** Berge, *fixest* reference manual (lrberge.github.io/fixest/);
+> **Sources:** Bergé, *fixest* reference manual (lrberge.github.io/fixest/);
 > pyfixest documentation (pyfixest.org, accessed 2026-03-28);
 > statsmodels documentation (statsmodels.org, v0.14.6);
 > Sheppard, *linearmodels* documentation (bashtage.github.io/linearmodels/, v7.0);

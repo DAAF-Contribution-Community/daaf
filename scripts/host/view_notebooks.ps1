@@ -3,7 +3,11 @@
 # ============================================================================
 # Opens marimo's notebook browser in your browser -- browse, open, create, and
 # edit marimo notebooks across all your research projects.
-# Starts the DAAF container if needed.
+# Starts the DAAF container if needed. The notebook server requires an access
+# token that changes with every launch; the printed link carries it. A fresh
+# launch keeps the server in this window until Ctrl+C and only prints the link;
+# the browser opens automatically only when a notebook server was already
+# running.
 #
 # Usage:
 #   cd daaf-docker
@@ -19,6 +23,12 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With it set to $true under 'Stop', a nonzero native exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -30,7 +40,7 @@ function Wait-AndExit {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
@@ -66,6 +76,16 @@ function Import-DaafSettingsInline {
 }
 Import-DaafSettingsInline
 
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.ps1 prints it. The name is normalized the
+# way Resolve-DaafProjectName in daaf_lib.ps1 does it.
+$HintProject = 'daaf'
+if ($env:DAAF_PROJECT_NAME) { $HintProject = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+$ComposePFlag = if ($HintProject -and $HintProject -ne 'daaf') { "-p $HintProject " } else { "" }
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -76,6 +96,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         switch -Wildcard ($argStr) {
             "*info*" { return }
             "*compose ps -q daaf-docker*" { Write-Output "abc123" }
+            "*--print-token*" { Write-Output "dryruntoken"; return }
             "*compose up*" { return }
             "*compose exec*" { return }
             default {
@@ -123,8 +144,10 @@ if ($LASTEXITCODE -ne 0) {
 # --- Start container if not running ---
 # `docker compose ps -q daaf-docker` prints the running container's ID (empty
 # when stopped), derived from the compose project rather than a hardcoded name.
+# Stdout only (2>$null): a stderr line, such as a Compose warning, is not a container
+# ID and must not make a stopped container look running.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$CidOutput = docker compose ps -q daaf-docker 2>&1
+$CidOutput = docker compose ps -q daaf-docker 2>$null
 $ErrorActionPreference = $savedEAP
 $Running = if ([string]::IsNullOrWhiteSpace(($CidOutput | Out-String))) { 0 } else { 1 }
 
@@ -152,7 +175,41 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to start the notebook browser." -ForegroundColor Red
     Write-Host "  The container may not be running, or marimo may not be installed." -ForegroundColor Red
-    Write-Host "  Try: docker compose logs daaf-docker" -ForegroundColor Yellow
+    Write-Host "  Try: docker compose ${ComposePFlag}logs daaf-docker" -ForegroundColor Yellow
+}
+
+# Open the browser (parity with view_notebooks.sh). The URL uses the HOST-published
+# port (DAAF_PORT_MARIMO); the container port stays fixed at 2718.
+# marimo requires the access token launch_marimo.sh generates for each launch, so
+# ask the running server for it (--print-token). Its stdout carries only the token,
+# which stays in a variable and is never written to a file or log. -T: no TTY, so
+# the captured value has no CR. Stdout only (2>$null): the exit code, not a stderr
+# line, decides. If nothing is running any more (a foreground launch ended with
+# Ctrl+C) or the server has no known token (an older launcher's --no-token server;
+# launch_marimo.sh printed what to do), --print-token fails and nothing is opened.
+$MarimoHostPort = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }
+$savedEAP = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "SilentlyContinue"
+    $MarimoTokenOutput = docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token 2>$null
+    $TokenExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $savedEAP
+}
+$MarimoToken = ($MarimoTokenOutput | Out-String) -replace '\s', ''
+if ($TokenExit -eq 0 -and $MarimoToken -match '^[A-Za-z0-9_-]+$') {
+    Write-Host "Opening the notebook browser in your default browser..."
+    $NotebookUrl = "http://localhost:$MarimoHostPort/?access_token=$MarimoToken"
+    if ($env:DAAF_DRY_RUN -ne "1") {
+        try {
+            # FilePath-only open of a URL (no argv; pinned in native_arg_quoting.Tests.ps1).
+            $null = Start-Process $NotebookUrl
+        } catch {
+            # No handler available (headless, restricted shell) -- the link printed
+            # above by launch_marimo.sh still works when opened by hand.
+            Write-Verbose "Silenced: $_"
+        }
+    }
 }
 
 # If marimo was already running, the container-side script returns immediately

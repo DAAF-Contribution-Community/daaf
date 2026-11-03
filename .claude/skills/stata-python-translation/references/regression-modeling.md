@@ -25,9 +25,10 @@ as variables. There is no `estimates store` / `estimates restore` — every
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
-> Turrell, "Coming from Stata" in *Coding for Economists* (aeturrell.github.io);
+> Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
+> Turrell, "Coming from Stata" in *Coding for Economists* (https://aeturrell.github.io/coding-for-economists/);
 > pyfixest PR #897, "Show how to replicate Stata results";
-> Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024)
+> Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09)
 
 ---
 
@@ -72,13 +73,15 @@ fit = pf.feols("y ~ x1 + x2", data=df, vcov="HC3")     # HC3
 
 **Python (statsmodels):**
 ```python
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1")  # Must specify HC1 explicitly
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC3")
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1", use_t=True)  # Must specify HC1 explicitly; use_t=True for t p-values
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC3", use_t=True)
 ```
 
 Stata's `robust` option produces HC1 standard errors (small-sample adjusted
 White SEs). pyfixest's `vcov="hetero"` defaults to HC1, matching Stata.
-statsmodels defaults to IID, so you must specify `cov_type="HC1"` to match.
+statsmodels defaults to IID, so you must specify `cov_type="HC1"` to match the
+SEs, and `use_t=True` to match the p-values (without it, every robust
+`cov_type` uses the normal distribution).
 
 ### OLS with Clustered Standard Errors
 
@@ -97,9 +100,10 @@ fit = pf.feols("y ~ x1 + x2", data=df, vcov={"CRV1": "state+year"})  # Two-way
 **Python (statsmodels):**
 ```python
 fit = smf.ols("y ~ x1 + x2", data=df).fit(
-    cov_type="cluster", cov_kwds={"groups": df["state"]}
+    cov_type="cluster", cov_kwds={"groups": df["state"]}, use_t=True
 )
-# Note: statsmodels does not support two-way clustering natively
+# Two-way: integer-coded groups, cov_kwds={"groups": df[["state_id", "year"]]};
+# its SEs can differ from pyfixest's two-way CRV1
 ```
 
 ### Accessing Results
@@ -127,7 +131,7 @@ fit = smf.ols("y ~ x1 + x2", data=df).fit(
 | Requires `.fit()` | No | No | **Yes** |
 | Formula quoting | Unquoted | String | String |
 | Default SE | IID | IID (since v0.40) | IID |
-| `robust` shortcut | `, robust` | `vcov="hetero"` | `cov_type="HC1"` |
+| `robust` shortcut | `, robust` | `vcov="hetero"` | `cov_type="HC1", use_t=True` |
 | Auto-prints results | Yes | No | No |
 
 ---
@@ -225,9 +229,15 @@ fe = fit.fixef()       # Returns dict of Series
 fe["state"]            # State-level FE estimates
 ```
 
-pyfixest uses the same iterative demean algorithm as `reghdfe` (Correia, 2016)
-and produces numerically equivalent results. pyfixest is generally faster for
-datasets with many FE levels.
+pyfixest and `reghdfe` both demean iteratively, but the algorithms differ.
+Correia (2016) uses symmetric projections with conjugate-gradient acceleration.
+The current pyfixest docs ("When Are Fixed Effects Estimations Difficult?")
+describe pyfixest's alternating-projections demeaner as running without
+acceleration and name a modified LSMR solver as the default; those docs may
+postdate pyfixest 0.60.0, so check which demeaner your installed version uses.
+Coefficients should agree up to the convergence tolerance; standard errors match
+only when small-sample corrections and singleton handling are aligned (DAAF
+inference — verify on your data).
 
 ---
 
@@ -363,7 +373,7 @@ estat endogeneity
 **Python (pyfixest):**
 ```python
 fit = pf.feols("y ~ x_exog | 0 | x_endog ~ z1 + z2", data=df)
-fit.IV_Diag()                        # Comprehensive diagnostics (effective F, etc.)
+fit.IV_Diag()                        # First-stage F and effective F
 fit._model_1st_stage.summary()       # First-stage results
 ```
 
@@ -382,7 +392,7 @@ print(fit.wu_hausman())              # Endogeneity test
 | `estat firststage` | `fit.IV_Diag()` | `fit.first_stage` |
 | `estat overid` | Not built-in | `fit.sargan` |
 | `estat endogeneity` | Not built-in | `fit.wu_hausman()` |
-| First-stage F | `fit.IV_Diag()` (effective F) | Cragg-Donald F |
+| First-stage F | `fit.IV_Diag()` (first-stage F and effective F) | `fit.first_stage` (partial F per endogenous regressor; linearmodels 7.0 has no Cragg-Donald F, 7.1 adds `fit.first_stage.cragg_donald_f`) |
 
 ---
 
@@ -413,7 +423,7 @@ np.exp(fit.params)
 fit = smf.probit("y ~ x1 + x2", data=df).fit()
 
 # Robust SEs
-fit = smf.logit("y ~ x1 + x2", data=df).fit(cov_type="HC1")
+fit = smf.logit("y ~ x1 + x2", data=df).fit(cov_type="HC0")  # Logit returns HC0 for "HC1"-"HC3" too
 ```
 
 ### Ordered and Multinomial Models
@@ -454,7 +464,7 @@ nbreg y x1 x2
 ```python
 # Poisson (statsmodels)
 fit = smf.poisson("y ~ x1 + x2", data=df).fit()
-fit = smf.poisson("y ~ x1 + x2", data=df).fit(cov_type="HC1")  # Robust
+fit = smf.poisson("y ~ x1 + x2", data=df).fit(cov_type="HC0")  # Robust (HC1-HC3 also return HC0 here)
 
 # Poisson pseudo-ML with FE (pyfixest — matches ppmlhdfe)
 fit = pf.fepois("y ~ x1 + x2 | state + year", data=df)
@@ -623,9 +633,10 @@ There is no built-in `marginsplot` equivalent. Extract results from
 | `margins group` | `avg_slopes(fit, by="group")` or `predictions(fit, by="group")` | By group |
 | `marginsplot` | Manual with plotnine | No built-in equivalent |
 
-**Caveat:** The Python `marginaleffects` package is described by its author as an
-alpha release. There are known numerical discrepancies in some edge cases. For
-published research, verify critical marginal effects calculations against Stata.
+**Caveat:** When the Python port was announced in July 2023, its author called it
+an "alpha" release with results that still needed checking; it has matured since
+(pinned here at 0.5.0). For published research, verify critical marginal-effects
+calculations against Stata.
 
 ### 6d. Predictions
 
@@ -749,14 +760,18 @@ results, different p-values, and potentially different conclusions.
 | Stata | pyfixest | statsmodels | Notes |
 |-------|----------|-------------|-------|
 | (default, no option) | `vcov="iid"` | default | IID (classical) |
-| `, robust` | `vcov="hetero"` | `cov_type="HC1"` | HC1 (Stata's robust default) |
-| `, vce(hc2)` | `vcov="HC2"` | `cov_type="HC2"` | HC2 (no FE/IV in pyfixest) |
-| `, vce(hc3)` | `vcov="HC3"` | `cov_type="HC3"` | HC3 (no FE/IV in pyfixest) |
-| `, vce(cluster cl)` | `vcov={"CRV1": "cl"}` | `cov_type="cluster"` | One-way cluster |
-| `, vce(cluster cl1 cl2)` | `vcov={"CRV1": "cl1+cl2"}` | Not supported | Two-way cluster |
-| `, vce(bootstrap)` | Wild bootstrap (pyfixest) | `cov_type="hac-panel"` | Bootstrap |
-| (Newey-West HAC) | `vcov="NW"` | `cov_type="HAC"` | Time series |
-| (Driscoll-Kraay) | `vcov="DK"` | Not supported | Panel; use linearmodels |
+| `, robust` | `vcov="hetero"` | `cov_type="HC1", use_t=True` | HC1 (Stata's robust default) |
+| `, vce(hc2)` | `vcov="HC2"` | `cov_type="HC2"` | HC2 (no FE/IV in pyfixest); pyfixest's variance is statsmodels' times N/(N-K) unless `ssc=pf.ssc(k_adj=False)` (observed 2026-11-01, pyfixest 0.60.0) |
+| `, vce(hc3)` | `vcov="HC3"` | `cov_type="HC3"` | HC3 (no FE/IV in pyfixest); pyfixest's variance is statsmodels' times N/(N-K) unless `ssc=pf.ssc(k_adj=False)` (observed 2026-11-01, pyfixest 0.60.0) |
+| `, vce(cluster cl)` | `vcov={"CRV1": "cl"}` | `cov_type="cluster", use_t=True` | One-way cluster |
+| `, vce(cluster cl1 cl2)` | `vcov={"CRV1": "cl1+cl2"}` | `cov_type="cluster"`, 2-column integer `groups` | Two-way cluster |
+| `, vce(bootstrap)` | Wild bootstrap (pyfixest) | No bootstrap `cov_type` (resample by hand) | Bootstrap |
+| (Newey-West HAC) | `vcov="NW"` | `cov_type="HAC", cov_kwds={"maxlags": L}` | Time series |
+| (Driscoll-Kraay) | `vcov="DK"` | `cov_type="hac-groupsum"` (`time`, `maxlags`) | Panel; or linearmodels |
+
+statsmodels p-values use the normal distribution for every robust `cov_type`
+unless `.fit(..., use_t=True)` is passed; with it, HC1 and one-way cluster match
+pyfixest (cluster df = G - 1).
 
 ### Switching SEs Post-Estimation
 
@@ -782,16 +797,17 @@ fit.summary()                          # Now shows new SEs
 
 - **HC2 and HC3 in pyfixest** are only available for models without fixed effects
   or IV. With FE, use HC1 or clustered SEs.
-- **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
-  linearmodels instead.
+- **Two-way clustering in statsmodels** takes a 2-column integer `groups` array
+  (`cov_kwds={"groups": df[["g1", "g2"]]}`); its SEs can differ from pyfixest's
+  two-way CRV1.
 - **Default SE changed in pyfixest v0.40** (still the default through 0.60): Both
   R fixest 0.13 and pyfixest (v0.40 onward, including the 0.60.0 DAAF ships) now
   default to `"iid"`. Older pyfixest code that relied on automatic clustering by
   the first FE variable will silently produce different results.
 - **Stata's `robust` = HC1**: When a Stata do-file uses `, robust`, the Python
-  equivalent is `vcov="hetero"` (pyfixest) or `cov_type="HC1"` (statsmodels). Do
-  not use HC0 or HC3 when replicating Stata results unless the Stata code
-  explicitly specifies those.
+  equivalent is `vcov="hetero"` (pyfixest) or `cov_type="HC1", use_t=True`
+  (statsmodels). Do not use HC0 or HC3 when replicating Stata results unless the
+  Stata code explicitly specifies those.
 
 ### Driscoll-Kraay in linearmodels
 
@@ -958,7 +974,8 @@ complexity in one command, Python requires manual assembly.
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
-> Turrell, "Coming from Stata" (aeturrell.github.io);
-> Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024);
+> Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
+> Turrell, "Coming from Stata" (https://aeturrell.github.io/coding-for-economists/);
+> Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09);
 > Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
-> Huntington-Klein, *The Effect* (CRC Press, 2021)
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022)

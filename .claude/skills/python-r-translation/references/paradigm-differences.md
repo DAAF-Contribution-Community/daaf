@@ -143,7 +143,7 @@ to worry about `NaN` vs `null` vs `None`. Everything is `NA`, and `is.na()` catc
 it all.
 
 > **Sources:** R Language Definition -- NA (stat.ethz.ch/R-manual, accessed 2026-03-28);
-> Wickham, *Advanced R* 2nd ed., Ch. 3.5.1 (2019)
+> Wickham, *Advanced R* 2nd ed., §3.2.3 -- Missing values (2019)
 
 ---
 
@@ -202,9 +202,14 @@ df2 = df
 
 **What you know from Python:** `df2 = df` creates an alias. You need `.clone()`
 or `.copy()` for an independent copy.
-**What R does:** `df2 <- df` creates a shallow copy. The moment you modify `df2`,
-R automatically creates a deep copy of the modified portion ("copy-on-modify").
-This means mutations are always isolated by default.
+**What R does:** `df2 <- df` binds a second name to the same object; nothing is
+copied yet. The moment you modify `df2`, R copies the object and rebinds `df2` to
+the copy ("copy-on-modify"), leaving `df` unchanged. For data frames that copy is
+shallow: modifying a column copies only that column (unmodified columns stay
+shared), while modifying a row copies every column. Mutations are isolated by
+default. The exceptions to copy-on-modify are objects with a single binding
+(modified in place, which no other name can observe) and environments, which are
+always modified in place and shared by every binding (Advanced R §2.5).
 
 > **Sources:** Wickham, *Advanced R* 2nd ed., Ch. 2.3 -- Copy-on-modify (2019)
 
@@ -366,7 +371,7 @@ The same tibble/data.frame passes through `dplyr |>` wrangling, `lm()` modeling,
 and `ggplot()` visualization without conversion. This is one of R's major
 ergonomic advantages.
 
-> **Sources:** Wickham & Grolemund, *R for Data Science* 2nd ed. -- Tibbles (2023)
+> **Sources:** Wickham, *Advanced R* 2nd ed., §3.6 -- Data frames and tibbles (2019)
 
 ---
 
@@ -385,7 +390,7 @@ R's `stringr` uses `str_*` prefix functions; polars uses `.str.*` namespace meth
 | `pl.col("x").str.len_chars()` | `str_length(x)` |
 | `pl.concat_str(["x", "y"], separator="_")` | `str_c(x, y, sep = "_")` |
 
-> **Sources:** Wickham, *R for Data Science* 2nd ed., Ch. 14 (2023)
+> **Sources:** Wickham, Çetinkaya-Rundel, & Grolemund, *R for Data Science* 2nd ed., Ch. 14 -- Strings (O'Reilly, 2023)
 
 ---
 
@@ -406,7 +411,7 @@ R's `lubridate` uses intuitive named parsers. Polars uses strftime format string
 separators. Polars requires an explicit format string. R's date handling is
 more forgiving and intuitive.
 
-> **Sources:** Grolemund & Wickham, *R for Data Science* 2nd ed., Ch. 17 (2023)
+> **Sources:** Wickham, Çetinkaya-Rundel, & Grolemund, *R for Data Science* 2nd ed., Ch. 17 -- Dates and times (O'Reilly, 2023)
 
 ---
 
@@ -469,4 +474,4 @@ explicit namespacing with `::`.
 | Module-level scope | `.GlobalEnv` |
 
 > **Sources:** R Language Definition -- Scope (CRAN, accessed 2026-03-28);
-> Wickham, *R Packages* 2nd ed., Ch. 10 (2023)
+> Wickham & Bryan, *R Packages* 2nd ed., Ch. 10 -- Dependencies: Mindset and Background (O'Reilly, 2023)

@@ -125,6 +125,58 @@ teardown() {
 ./test/libs/bats/bin/bats --tap tests/bash/
 ```
 
+### Sourcing a Script in Test Mode: Keep bats's Errexit and ERR Trap
+
+DAAF host scripts are unit-tested by sourcing them with `DAAF_TEST_MODE=1`, which defines their functions and returns before the main body. Whatever the script runs before that return happens in the sourcing shell. When that shell is the bats test itself, two things leak in:
+
+- `set -euo pipefail`. bats runs a test under `set -eET` (`/usr/libexec/bats-core/bats-exec-test`, line 2) with no nounset and no pipefail, and it fails a test only through errexit.
+- The script's own ERR trap (`trap cleanup_on_error ERR`). It **replaces** bats's `trap 'bats_error_trap' ERR` (`/usr/lib/bats-core/tracing.bash`, line 366), which is what records the failing line.
+
+The quick ways to undo this go wrong. `trap - ERR; set +eu` turns errexit off, so no assertion in the test can fail it, not even the last one: the test passes whatever its assertions say. `trap - ERR` alone, with errexit kept, fails the test but reports the wrong line. Keeping the script's trap reports the right line but also runs the script's handler, which prints its error banner into the failure output (`update_daaf.sh`'s handler also makes a `docker compose exec` call).
+
+```bash
+# BAD: the test passes whatever any of its assertions says, the last one included
+DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/x.sh"
+trap - ERR
+set +eu
+
+# GOOD: save bats's ERR trap, keep errexit, drop nounset, reinstall the trap
+saved="$(trap -p ERR)"                     # trap -- 'bats_error_trap' ERR
+DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/x.sh"
+set -e +u                                  # pipefail stays on, as in production
+if [ -n "${saved}" ]; then
+    eval "${saved}"                        # trap -p prints a re-runnable command
+else
+    trap - ERR                             # fails the test, but may name the wrong line
+fi
+```
+
+`trap -p ERR` prints a command that can be run again as it is, with any quotes in the handler already escaped, so `eval` reinstalls the handler verbatim. Stripping the `trap -- '` prefix and `' ERR` suffix instead breaks on a handler that contains a `'`. The `else` branch only runs if no ERR trap was set before sourcing; bats 1.2.1, 1.10.0 and 1.13.0 all set `trap 'bats_error_trap' ERR`, so it is not reached on them.
+
+Keep `pipefail` on unless a specific test needs it off, and say why in a comment where you turn it off. The functions under test run with it in production, and without it a pipeline reports its last command's status: `migrate_daaf.sh`'s `container_git` is `docker ... | tr -d '\r'`, so with pipefail off a failing `docker` looks like success. `tests/bash/test_migration.bats` does turn it off (`set -e +u +o pipefail`), because its pins run `grep ... | head -1 | cut` pipelines in which `head` may exit before `grep` has finished writing.
+
+A script that sets no ERR trap before its test-mode return needs only the `set -e +u` line. Do not add `trap - ERR` there: it would remove bats's own trap.
+
+Two related rules:
+- **A `VAR=x source file` prefix does not outlive the `source`.** Afterwards `DAAF_TEST_MODE` is unset again, in the test and in any child it starts. A later `run bash -c '...'` child that sources the script must set `DAAF_TEST_MODE=1` itself, or it runs the script's whole main body first.
+- **`run bash -c '...'` children are a different case.** There the script's preamble changes only the child; the test body keeps bats's options, so its own assertions always counted. Keep the script's `set -euo pipefail` in the child. Those are the options the functions run under in production, and a failing setup step, or a failing call with more commands after it, then ends the child with that failure, which `assert_success` sees (under `set +eu` only the child's last command counted). Keep `trap - ERR` in the child, so a failure does not also print the script's banner (and, for `update_daaf.sh`, run its docker call) into the output under test. A step placed before the `source` line runs before the strict preamble, so give it its own `|| exit 1`. Errexit does not apply inside a function called in an `||`, `&&` or `if` context, so `f || true` runs `f` without it. And because any failing step now ends the child non-zero, a test that expects failure must not rely on `assert_failure` alone: pin the exit code (`assert_failure 1`) and a line the function prints last.
+
+**Probe (this dev container, bash 5.2.21, Bats 1.10.0, 2026-10-12; maintainer probe, `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/probes/engineer60/probe_source_test_mode.sh` (maintainer-only, not shipped), self-cleaning).** A stand-in script with `set -euo pipefail`, `trap cleanup_on_error ERR` and a test-mode `return`, sourced in tests whose first assertion is a failing `[ a = b ]`, followed by `true`:
+- `trap - ERR; set +eu`: `ok 1`, so the test passed.
+- `trap - ERR`, then `set -e +u +o pipefail`: `not ok 2`, reported at line 15 as `` `set -e +u +o pipefail' failed ``. The assertion is on line 16.
+- Script trap kept: `not ok 3` at line 23, `` `[ a = b ]' failed ``, followed by `SCRIPT BANNER: Something went wrong`.
+- Saved and reinstalled: `not ok 4` at line 34, `` `[ a = b ]' failed ``, and nothing else.
+- `trap -p ERR` before sourcing printed `trap -- 'bats_error_trap' ERR`. After the prefixed `source`, `DAAF_TEST_MODE` read as unset in the test, and a `bash -c` child that sourced the script printed `child sees [unset]` and then `MAIN BODY RAN`.
+- `run bash -c` children: with `set +eu`, `false; echo last` gave `status=0` and `last`; with strict mode kept, `status=1`. A `cd` into a missing folder before the `source` line gave `status=0` and `last` even in strict mode; with `|| exit 1`, `status=1`.
+
+**Second probe (same container, 2026-10-12; maintainer probe, `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/probes/engineer61/probe_61.sh` and `mutants_61.sh` (maintainer-only, not shipped), self-cleaning).**
+- `trap - ERR; set +eu` in `setup()` (the old `test_migration.bats` setup), with a test whose only, and so last, assertion fails: `ok 1` for `[ "last" = "mismatch" ]` and `ok 2` for `assert_output "WRONG"`. With `set -e +u +o pipefail` the same tests gave `not ok` at the assertion's line.
+- Handler `echo 'handler ran'`: `trap -p ERR` printed `trap -- 'echo '\''handler ran'\''' ERR`. After `eval`, `trap -p ERR` printed the identical text and the handler printed `handler ran`. The stripped text, reinstalled with `trap`, failed with `unexpected EOF while looking for matching` when the trap fired.
+- After `source_migrate_test_mode`: `before=[trap -- 'bats_error_trap' ERR] after=[trap -- 'bats_error_trap' ERR] opts=[ehBET] pipefail=on`.
+- With the `docker` stub in `container_git executes git in container` changed to `return 1`, the test passed with `+o pipefail` and failed (`assert_success failed: status=1`) without it.
+
+**Where it lives in DAAF:** `source_migrate_test_mode` in `tests/bash/migrate_daaf.bats` (10 call sites). `setup()` in `tests/bash/test_migration.bats` restores only the options, because `test_migration.sh` sets no ERR trap before its return (commit 8679605). The header comment above the behavioral tests in `tests/bash/update_daaf.bats` documents the child rules; its two persistence tests that `cd` before sourcing carry `|| exit 1`, and its expected-failure test `handle_conflict returns 1 when conflicts remain` pins `assert_failure 1` plus two lines of the function's output. The `container_git_verbose` test in `migrate_daaf.bats` is the prefix case: its child used to source without `DAAF_TEST_MODE=1` and ran the whole mocked migration before its one call.
+
 ---
 
 ## Docker Mocking (Bash)
@@ -394,22 +446,109 @@ Notes:
 - `Invoke-ScriptAnalyzer -Path` takes a **single** string, not an array — lint one
   file per invocation (loop for multiple files).
 
+### Set `TMPDIR` for In-Container bats and Pester Runs
+
+Both runners put their fixtures under the system temp directory, which is `/tmp`
+unless `TMPDIR` says otherwise. bats sets `BATS_TMPDIR="${TMPDIR:-/tmp}"`
+(`/usr/libexec/bats-core/bats`), and a suite's own `mktemp -d` fixtures follow
+`TMPDIR` too. Pester's `$TestDrive` comes from `[System.IO.Path]::GetTempPath()`
+on Linux (`Get-TempDirectory` in `Pester.psm1`), which reads `TMPDIR`. DAAF forbids
+working-file writes to `/tmp` because it sits outside the backup and audit boundary
+(CLAUDE.md § Provenance Boundary). The command line names no `/tmp` path, so the
+`bash-safety.sh` guard cannot see these writes. Point `TMPDIR` at a scratch
+directory inside the project instead: `{PROJECT_DIR}/scripts/scratch/tmp`, in a
+research project and in a Framework Development workspace alike (one scratch
+location per project; CLAUDE.md § Project Conventions > Scratch Files). Create it
+first, because bats refuses to start when `BATS_TMPDIR` does not exist. One command
+per Bash call:
+
+```bash
+mkdir -p <project>/scripts/scratch/tmp
+```
+
+```bash
+env TMPDIR=<project>/scripts/scratch/tmp bats tests/bash/x.bats
+```
+
+```bash
+env TMPDIR=<project>/scripts/scratch/tmp pwsh -NoProfile -Command "Invoke-Pester -Path tests/powershell/x.Tests.ps1 -Output Detailed"
+```
+
+Notes:
+- **Fixtures must clean themselves up.** An in-session `rm -r` of a leftover
+  fixture directory may be denied by the permission system (this happened to both
+  the orchestrator and review subagents during the 2026-09-29 backup work), so do
+  not plan on removing fixtures after the run. Remove anything a test creates
+  (e.g. a `mktemp -d` from `setup`) in `teardown` / `AfterAll`, on pass and on
+  failure. The runners clean up their own directories: bats removes its run
+  directory on exit unless `--no-tempdir-cleanup` is given, and Pester removes
+  `$TestDrive` when the top-level block finishes.
+- **Fixtures with hostile names must be removed in teardown.** Hostile names
+  include a control character (newline, tab) or any of `< > : " | ? * \`, a
+  trailing dot or space, a reserved device name such as `CON` or `nul.txt`, and
+  case-only pairs such as `MF1`/`mf1`. They are exactly what breaks a Windows
+  backup if they outlive the test: `docker cp` stops at the first name Windows
+  cannot create. Create them only under the test's own temp directory and delete
+  that tree in `teardown` / `AfterAll`. `bash scripts/check_workspace_invariants.sh`
+  flags them anywhere outside `.git` (Invariant 3). The pattern is in
+  `bash-standards.md` > "Probe and Test-Harness Hygiene".
+- **An interrupted run can leave the bats run directory behind.** That directory
+  holds a symlink that bats creates for each test file
+  (`bats-exec-file`), which `bash scripts/check_workspace_invariants.sh` flags as
+  unauthorized. Run the checker after in-container test runs, and ask the user to
+  remove any leftovers it reports. The same symlink exists while a run is in
+  progress, so a checker run *during* a bats run, whether a concurrent one or a
+  test that checks the live `/daaf`, reports it too.
+
 ---
 
 ## DAAF Safety-Hook Regression Batteries
 
-DAAF ships two standing regression batteries for the security-critical PreToolUse hooks. Read these before writing or modifying `bash-safety.sh` or `enforce-single-command.sh` — the battery is where you add a case for any new block (or allow) behavior, and how you prove a change before it goes live.
+DAAF ships **four** standing regression surfaces for the two security-critical PreToolUse hooks — a `.sh` battery and a `bats` suite for each hook — plus `bats` suites for the other safety-relevant hooks, the execution wrapper and the checked-in permission rules (see "Other hook and wrapper suites" below). Read these before writing or modifying `bash-safety.sh` or `enforce-single-command.sh`: they are where you add a case for any new block (or allow) behavior, and how you prove a change before it goes live.
 
-| Battery | Covers | Invocation |
+| Surface | Covers | Invocation |
 |---------|--------|------------|
-| `scripts/test_safety_hooks.sh` | `bash-safety.sh` (destructive commands, pipe-to-shell, exfiltration, container escape, /tmp provenance guard, anti-tampering, package-install guard, and the §0 quote-aware commit-message carve-out) | `bash scripts/test_safety_hooks.sh` tests the **live** hook. Pass a path to test a **staged draft** before install: `bash scripts/test_safety_hooks.sh <draft-path>` |
-| `scripts/test_enforce_single_command.sh` | `enforce-single-command.sh` (command-chaining detection: `&&`/`;`/`\|\|`/newlines, quote- and nesting-aware) | `bash scripts/test_enforce_single_command.sh` |
+| `scripts/test_safety_hooks.sh` | `bash-safety.sh` (destructive commands, pipe-to-shell, exfiltration, container escape, /tmp provenance guard, anti-tampering, package-install guard, accidental environment disclosure, the site-file load, the §0 quote-aware commit-message carve-out, and the 2026-09-18 stage-0a–0e classification pipeline) | `bash scripts/test_safety_hooks.sh` tests the **live** hook. Pass a path to test a **staged draft** before install, with a `bash-safety.site.sh` beside the draft (see "Site-file testing note" below): `bash scripts/test_safety_hooks.sh <draft-path>` |
+| `tests/bash/bash_safety.bats` | `bash-safety.sh` — the full hook (see below) | `bats tests/bash/bash_safety.bats`; override with `BASH_SAFETY_SH=<draft-path>` (site file beside the draft) |
+| `scripts/test_enforce_single_command.sh` | `enforce-single-command.sh` (command-chaining detection: `&&`/`;`/`\|\|`/background `&`/newlines, quote- and nesting-aware) | `bash scripts/test_enforce_single_command.sh`; pass a draft path as `$1` (or set `HOOK=<draft-path>`): `bash scripts/test_enforce_single_command.sh <draft-path>` |
+| `tests/bash/enforce_single_command.bats` | `enforce-single-command.sh` — quoting, nesting, heredocs, comments, and the documented residuals | `bats tests/bash/enforce_single_command.bats`; override with `ENFORCE_SINGLE_COMMAND_SH=<draft-path>` |
 
-The draft-path argument on `test_safety_hooks.sh` is the sanctioned way to validate a hook change **before** it is installed: `.claude/hooks/` is write-protected (anti-tampering guard), so the workflow is stage the draft to a scratch path, run the battery against it, then hand the user the install command (see `../../../../agent_reference/ERROR_RECOVERY.md` > "PreToolUse Safety-Hook Blocks" for the staged-draft → user-install pattern).
+Each surface accepts a **draft path**, which is the sanctioned way to validate a hook change **before** it is installed: `.claude/hooks/` is write-protected (anti-tampering guard), so the workflow is stage the draft in the session workspace's `drafts/` folder (not scratch: the user deploys from it), run every surface for that hook against it, then hand the user the install command (see `../../../../agent_reference/ERROR_RECOVERY.md` > "PreToolUse Safety-Hook Blocks" for the staged-draft → user-install pattern). Note the mechanism differs by surface: the `.sh` batteries take the draft path as a **positional argument** (the chaining battery also reads the **`HOOK=` environment variable** when no argument is given), while the two `bats` suites take a per-suite **environment override**.
 
-**Companion bats suite — `tests/bash/bash_safety.bats`.** The §0 quote-aware commit-message carve-out (added 2026-07-17) also has a focused `bats` suite that is draft-testable the same way, via a `BASH_SAFETY_SH` override (mirroring `block_nested_dispatch.bats`'s `BLOCK_NESTED_DISPATCH_SH`): `BASH_SAFETY_SH=/path/to/draft/bash-safety.sh bats tests/bash/bash_safety.bats`. It defaults to the live hook, against which its carve-out ALLOW cases fail by design (the carve-out is exactly what makes them pass). Case strings live inside the file and reach the hook through a `jq` PreToolUse envelope, never a command line — the same technique the `.sh` batteries use.
+**`tests/bash/bash_safety.bats`.** No longer a focused §0 carve-out suite: as of the 2026-09-18 hardening pass it is the broad suite for the whole hook — the companion suite spanning stage 0a (heredoc-body classification), 0b (the original commit-message carve-out), 0c (general quoted-span classification), 0d (escape canonicalization), 0e (the `$IFS` block), and §§1–9 (destructive filesystem and git operations, privilege escalation, network patterns, container escape, the /tmp provenance boundary, safety-system tampering, package installs, accidental environment disclosure), plus the site-file load and timing gates. The two timing gates run tracked fixtures, `tests/fixtures/bash_safety/perf_probe.sh` (a ~20 kB command with 300 quoted spans and 20 heredocs) and `tests/fixtures/bash_safety/perf_gate.sh` (32 kB and 64 kB padded commands that must still BLOCK), each under a 2 s budget; both resolve the hook path from their own location, accept a draft path as `$1` (with the site file beside the draft), and a missing fixture FAILs rather than skips — which is why they live under `tests/`, not in a git-excluded research workspace where a fresh clone or CI would not find them. Draft-testable via a `BASH_SAFETY_SH` override (mirroring `block_nested_dispatch.bats`'s `BLOCK_NESTED_DISPATCH_SH`): `BASH_SAFETY_SH=/path/to/draft/bash-safety.sh bats tests/bash/bash_safety.bats`. It defaults to the live hook, against which the ALLOW cases from any not-yet-installed hardening pass fail by design (the pass is exactly what makes them pass).
 
-**Key technique — case strings live inside the battery, never on the command line.** Each battery feeds its test-case command strings to the hook from *inside* the battery file. Passing a case string as a command-line argument to the invocation would route it through the live PreToolUse hooks, which would vet (and potentially block) the case string itself before the battery ever ran. So the batteries are always invoked **bare** (the single optional argument to `test_safety_hooks.sh` is a hook *path*, not a case string). When adding coverage, add the case to the battery file — do not try to exercise it from the invoking command line.
+**Site-file testing note.** `bash-safety.sh` is a site-neutral body: it holds no project value and reads DAAF's settings (`SITE_ROOT`, `SITE_EXTRA_PROTECTED_DIRS`, the scratch-dir, rebuild and environment-print hints) from the sibling file `bash-safety.site.sh`, which it sources from its own directory only (no environment variable or argument can point it elsewhere). So a draft body must be tested with a site file beside it: copy `.claude/hooks/bash-safety.site.sh`, or the drafted site file, into the draft's folder. Without one, every row blocks by design (the load is fail-closed), so every ALLOW row fails, and `perf_probe.sh` and `perf_gate.sh` fail too (each checks a benign control command first, so a hook that blocks everything cannot pass it vacuously). In the two bash-safety suites, the cases that carry a case ID are **mirrored 1:1** (same IDs, strings and verdicts; the two ID lists match); older cases without an ID are not paired one-for-one. Keep them mirrored by generating each block for both files from one row specification rather than hand-editing one suite and copying to the other, and confirm the ID sets match (an empty `comm -3` of the two ID lists). A row whose verdict depends on a site value (`/daaf`, a `/daaf/.git` or `/daaf/.claude` form, `benchmarks/harness/hooks`) carries the `site-adapted` tag in its description, so a run against another site's file fails only on tagged rows; tag every new row that names a site value, whether or not its verdict depends on it. (Older rows that only mention `/daaf` in passing, such as `mv a.sh /daaf/.claude/hooks/a.sh`, which blocks under any site file, are untagged. So are the site-file fixture rows below that bring their own crafted site file, even when its text names `/daaf`: they never read the site file under test, so no site's values can change their verdict; only a fixture row that uses the sibling site file is tagged when its verdict depends on it.) Both suites also carry fixture rows for the site-file failure paths, which a plain row cannot reach: each runs a copy of the hook under test in a fixture directory under the repo's tool scratch (`scripts/scratch/bash_safety_site.*`) beside a crafted site file (missing, unreadable, a syntax error or failing command, an empty or malformed `SITE_ROOT`, a malformed `SITE_EXTRA_PROTECTED_DIRS` entry, a valid root or entry with a dot in a name, site guards that block, fail, return non-zero or return 0) and removes the directory when it finishes (the battery's fixture rows use `run_case_site` and a suite-level EXIT trap; the bats rows use `_run_site_case` and `teardown`).
+
+**`tests/bash/enforce_single_command.bats`.** The companion suite for the chaining hook, draft-testable the same way: `ENFORCE_SINGLE_COMMAND_SH=/path/to/draft/enforce-single-command.sh bats tests/bash/enforce_single_command.bats`. It covers quote-awareness, `$( )` / `[[ ]]` / `(( ))` nesting, heredoc bodies, `#` comments, backslash escapes, and carrier decomposition, and it pins the four documented residuals as ALLOW-today cases tagged with their IDs: R1 closed-compound chains and R2 bare subshells (both deferred); R6, `ssh host 'a && b'`, whose remote body is not decomposed by design (the remote body runs on the remote host, not in this Bash call); and R7, a single stdin object whose `tool_name` is not a string, which reads as "not Bash" (the one-object gate checks the object count, not the field type). `scripts/test_enforce_single_command.sh` pins R6 and R7 too. So a future change that deliberately flips one surfaces as a failing test to update rather than passing silently. Both suites also carry the one-object stdin-gate cases, named "stdin gate" (concatenated objects, malformed text, whitespace only, a bare string or array), fed as raw stdin (see the key-technique note below). Like `bash_safety.bats` it defaults to the live hook; set the override to test a draft before it is installed.
+
+**`tests/bash/output_scanner.bats`.** The suite for the `output-scanner.sh` **PostToolUse** hook (secret detection in tool output; advisory, always exits 0). Because the hook never blocks, every case asserts exit 0, and the verdict is the stdout: a warning naming the credential family, or silence on clean output. The cases cover every credential family the hook names and the `tool_response` shapes it must handle: a plain string (scanned exactly as before, with the 10 kB window measured on the raw text), and an object or array (e.g. Read/Grep/Glob output), which the hook renders as compact JSON text before scanning. Draft-testable via an `OUTPUT_SCANNER_SH` override: `OUTPUT_SCANNER_SH=/path/to/draft/output-scanner.sh bats tests/bash/output_scanner.bats`. Credential-shaped fixtures are assembled from split string fragments (`"AKIA""IOSF…"`, `"-----BEGIN RSA ""PRIVATE KEY-----"`). Private-key headers in particular must stay split: a whole header literal makes the pre-commit `detect-private-key` hook reject the commit. The suite also covers the value-based warning (a credential-named environment variable's value appearing in the output).
+
+**Other hook and wrapper suites.** Each is a single `bats` file with a per-suite draft override, following the same stage-then-test pattern:
+
+| Suite | Covers | Draft override |
+|-------|--------|----------------|
+| `tests/bash/audit_log.bats` | `audit-log.sh`: pattern and value-based redaction, the pattern cap and regex-failure guard on every target, NUL safety, fallback record, xtrace guard, and the pin that the `SECRET-NAME-VOCAB v1` block is identical in its three carriers. Its `(_d)` cases add the inline-literal shapes (API-key headers, credential-named long flags, curl `--user`/`-u`, URL userinfo passwords, segment-bounded PASS/PASSPHRASE keys, quoted values), the kept token counter, non-match pins and residual pins; they load `helpers/fake_shapes.bash` (see below) | `AUDIT_LOG_SH` (plus `OUTPUT_SCANNER_SH` for the cross-carrier pin) |
+| `tests/bash/deny_claude_code_guide.bats` | `deny-claude-code-guide.sh`: the banned `subagent_type`, jq-free fallback, concatenated-stream deny | `DENY_CLAUDE_CODE_GUIDE_SH` |
+| `tests/bash/enforce_explore_model.bats` | `enforce-explore-model.sh`: the same shape for `Explore` | `ENFORCE_EXPLORE_MODEL_SH` |
+| `tests/bash/enforce_file_first.bats` | `enforce-file-first.sh`: direct interpreter blocks and the one-object stdin gate | `ENFORCE_FILE_FIRST_SH` |
+| `tests/bash/block_nested_dispatch.bats` | `block-nested-dispatch.sh` | `BLOCK_NESTED_DISPATCH_SH` |
+| `tests/bash/adjudicator_read_scope.bats` | `adjudicator-read-scope.sh`: citation-adjudicator's read boundary (a Read of a canonical bundle path only; every other tool call denied; fail-closed input, `jq` and `realpath` gates) | `ADJUDICATOR_READ_SCOPE_SH` |
+| `tests/bash/run_with_capture.bats` | `scripts/run_with_capture.sh`: the package-install, environment-secret print and researcher-decision scans (exit 3), evidence verification (exit 74), and the vocabulary pin | `RUN_WITH_CAPTURE_SH` (defaults to the repository copy) |
+| `tests/bash/settings_permissions.bats` | static contract for `.claude/settings.json` deny rules, including the environment-disclosure `Bash(...)` entries; does not prove matcher semantics | none |
+
+To check a hook change, run every suite of the hooks it touches, pointed at the draft through the override, and confirm all cases pass. The environment-value cases in `audit_log.bats` and `output_scanner.bats` set their own fake `DAAFTEST_*` variables and assert only on those; the stderr-silence and xtrace cases also run the hook under `env -i`, so only the fake variables exist. `run_with_capture.bats` checks script text and needs no environment values. Never write a test that reads or prints the real environment.
+
+**`tests/bash/helpers/fake_shapes.bash`: credential-shaped fixtures without literals.** Redaction and detection tests need inputs shaped like credentials. A whole credential-shaped literal in a file, diff, tool call or message has repeatedly triggered automated safety stops (inferred cause: realistic secrets passing through the model's context), which made such tests impossible to write or run. This shared helper avoids that. It was first used by the `(_d)` cases in `audit_log.bats`, and a suite loads it with `load 'helpers/fake_shapes'` (a non-bats script sources the file). Its rules bind every caller:
+
+- **No literal.** Never write a whole credential-shaped string in a test, helper, diff, commit or message; describe shapes in prose. The builders (`fake_api_key_header`, `fake_password_flag`, `fake_url_userinfo`, `fake_pass_assignment`, `fake_curl_user`, `fake_token_counter`, `fake_token_assignment`) join names from split fragments and generate every value at run time from `sha256sum` of a fixed seed word. Each sets the `FS_TEXT` / `FS_VALUE` / `FS_NEEDLE` / `FS_MARKER` / `FS_NAME` globals and prints nothing. Two further builders, `fake_env10_name` and `fake_env10_cmd`, serve the `bash-safety.sh` §9 rows (FC241-FC280): they assemble a credential-*named* identifier or a whole command line in one of the §9 shapes, carry no value (the `FS_VALUE`/`FS_NEEDLE`/`FS_MARKER` globals are cleared), and their `FS_TEXT` goes to a verdict check, not to the redaction checks. Both suites source the helper by a `BASH_SOURCE`-relative path, so a checkout that lacks `tests/bash/helpers/fake_shapes.bash` fails loudly at the `source` line rather than skipping rows.
+- **Masked checks.** Assert outcomes with `fake_expect_redacted CASE TEXT [MARKER]` (marker present, value absent) or `fake_expect_kept CASE TEXT` (needle present and unchanged). Both are silent on success. On failure they print only the case name, lengths, counts and a masked line (`fake_mask`). Both fail closed when no builder has run, because a check with nothing to look for proves nothing.
+- **Never `assert_output` / `refute_output` on a generated value.** The bats fallbacks print the raw `$output` on failure. For the same reason, never echo `FS_TEXT` / `FS_VALUE` or `cat` a log that holds them. To debug, print lengths, marker counts or the masked line, and when running suites show only TAP pass/fail lines and totals.
+- **Helper and fixture file names avoid the substring "secret".** `settings.json` denies `Read(**/*secret*)`, so a file named that way could not be read by any agent, reviewers included.
+- **Not a test file.** It is a `.bash` file with no `@test` cases, so the `bats tests/bash/` run under "Running Tests" does not run it on its own; it takes effect only through `load`. Mode 644 is intentional: it is sourced, never executed. New builders for other secret-handling suites set the same `FS_*` globals and reuse the checks.
+
+**Key technique — case strings live inside the battery, never on the command line.** Each battery feeds its test-case command strings to the hook from *inside* the battery file. Passing a case string as a command-line argument to the invocation would route it through the live PreToolUse hooks, which would vet (and potentially block) the case string itself before the battery ever ran. So the batteries are always invoked **bare** (the single optional argument to either battery is a hook *path*, not a case string). When adding coverage, add the case to the battery file — do not try to exercise it from the invoking command line.
+
+**Raw-stdin exception.** Normally a helper wraps each case string in a one-object `jq` envelope (`{tool_name:"Bash",tool_input:{command:…}}`). The one-object stdin-gate cases cannot use that helper, because their subject *is* the envelope: concatenated objects, malformed text, whitespace only, empty stdin, a bare string or array. Those cases pipe their text to the hook verbatim through a separate raw helper: `run_case_raw` in `scripts/test_safety_hooks.sh` and `_run_hook_raw` in `tests/bash/bash_safety.bats` (FC227-FC238, plus the FC240 pin for the non-string `tool_name` residual), `test_raw_stdin` in `scripts/test_enforce_single_command.sh` and `_run_hook_raw` in `tests/bash/enforce_single_command.bats` (the "stdin gate" cases and the R7 pin). The raw payloads still live inside the suite files, so the key technique above holds. Use the raw helper only for cases about the envelope itself; every command-content case goes through the normal helper, so a case never depends on a hand-built envelope being valid JSON.
 
 ---
 

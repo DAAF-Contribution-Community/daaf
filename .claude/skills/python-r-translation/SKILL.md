@@ -113,7 +113,8 @@ Which Python package?
 |   +-- ./references/regression-modeling.md
 |-- statsmodels (OLS, GLM) --> base R stats (lm, glm) + lmtest + sandwich
 |   +-- ./references/regression-modeling.md
-|-- linearmodels (panel, IV) --> plm + estimatr
+|-- linearmodels (panel) --> plm + estimatr
+|   |   (2SLS: fixest; LIML, non-panel GMM-IV, SUR, 3SLS: no installed R package)
 |   +-- ./references/regression-modeling.md
 |-- statsmodels MixedLM --> lme4 (lmer)
 |   +-- ./references/regression-modeling.md
@@ -160,7 +161,7 @@ What went wrong?
 | ggplot2 | plotnine | High | Same grammar of graphics; bare names vs string quoting for aes |
 | plotly (R) | plotly (Python) | High | `plot_ly()` vs `px.scatter()`; similar output |
 | base R stats + lmtest + sandwich | statsmodels | Medium | Single formula syntax vs three Python dialects |
-| plm + estimatr | linearmodels | Medium | pdata.frame vs pandas MultiIndex for panel structure |
+| plm + estimatr | linearmodels | Medium | pdata.frame vs pandas MultiIndex for panel structure; linearmodels' LIML, non-panel GMM-IV, SUR and 3SLS have no installed R equivalent |
 | lme4 | statsmodels MixedLM | Medium | `(1 \| group)` in formula vs separate `groups=`/`re_formula=` arguments |
 | tidymodels / caret | scikit-learn | Medium | Declarative recipe pipeline vs imperative fit/predict |
 | sf + terra | geopandas | Medium | st_*() functions vs GeoDataFrame methods; different CRS handling |
@@ -190,7 +191,7 @@ reference files note the change.
 | survey | survey 4.5 | svy | 0.19.0 |
 | marginaleffects (R) | 0.32.0 | marginaleffects | 0.5.0 |
 | rdrobust (R) | 3.0.0 | rdrobust | 1.3.0 |
-| Quarto / RMarkdown | Quarto 1.7.29 | marimo | 0.19.11 |
+| Quarto / RMarkdown | Quarto 1.10.18 | marimo | 0.25.0 |
 
 **Pinning note:** linearmodels, marginaleffects, and rdrobust are version-pinned in
 DAAF's Dockerfile (`linearmodels==7.0`, `marginaleffects==0.5.0`, `rdrobust==1.3.0`)
@@ -266,7 +267,7 @@ fit <- feols(y ~ x1 + x2 | state + year, data = df, vcov = ~state)
 | `ggplot2` | R-side static visualization -- detailed API for the plotnine equivalent |
 | `plotly-r` | R-side interactive visualization -- detailed API for plotly Python equivalent |
 | `r-stats` | R-side general modeling -- covers base R stats, lmtest, sandwich equivalents |
-| `plm` | R-side panel/IV models -- covers linearmodels equivalents |
+| `plm` | R-side panel models -- covers linearmodels' panel estimators (FE, RE, between, FD, Fama-MacBeth); plm also has dynamic-panel GMM (`pgmm`), which linearmodels lacks. Panel IV in R goes to `fixest`; linearmodels' LIML, non-panel GMM-IV, SUR and 3SLS have no installed R equivalent |
 | `survey-r` | R-side survey analysis -- covers svy (Python) equivalents |
 | `sf-terra` | R-side spatial data -- covers geopandas equivalents |
 | `tidymodels` | R-side ML -- covers scikit-learn equivalents |

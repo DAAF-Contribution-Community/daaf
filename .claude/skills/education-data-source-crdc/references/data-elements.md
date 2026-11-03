@@ -108,9 +108,9 @@ School discipline data is the most extensive CRDC category, covering multiple di
 | Race × Disability | Yes |
 | Sex × Disability | Yes |
 
-### Duration Information (2020-21+)
+### Duration Information (2015-16+)
 
-Starting 2020-21, CRDC also collects:
+These items were optional in 2013-14 and required from 2015-16 (Portal: 2015+, in the `discipline-instances` and `suspensions-days` families):
 - **Instances of suspension** - Total suspensions (students can have multiple)
 - **School days missed** - Total days of instruction missed due to OSS
 
@@ -181,7 +181,7 @@ black_oss_rate <- if (total_enrolled > 0) {
 1. **Definition of "suspension" varies** - Length thresholds differ by district
 2. **Informal discipline not captured** - Hallway talks, unofficial removals not counted
 3. **Policy changes affect data** - Zero-tolerance policies inflate counts
-4. **COVID impact** - 2020-21 shows artificially low discipline due to remote learning
+4. **COVID impact** - 2020-21 (Portal year 2020) shows artificially low discipline due to remote learning
 5. **Underreporting likely** - Schools may underreport sensitive discipline data
 
 ---
@@ -286,7 +286,7 @@ For each category, CRDC collects:
 
 ## Chronic Absenteeism
 
-### What's Collected (2015-16+)
+### What's Collected (2013-14+)
 
 Students chronically absent from school, defined as **missing 15 or more school days** during the school year.
 
@@ -305,10 +305,10 @@ Students chronically absent from school, defined as **missing 15 or more school 
 
 ### Key Considerations
 
-1. **Definition is 15+ days** - Some states use different thresholds
+1. **Definition** - The CRDC form used 15+ school days (2013-14, 2015-16). From 2017-18 the data come from EDFacts (state-reported); a uniform 15-day definition across states after 2016 was not verified.
 2. **Any absence counts** - Excused and unexcused absences
-3. **COVID impact** - 2020-21 definition challenged by remote learning
-4. **Not in early years** - First collected 2015-16
+3. **COVID impact** - 2020-21 values come from EDFacts (state-reported) and reflect pandemic attendance disruption; compare with caution
+4. **Source change** - First collected in the 2013-14 CRDC and collected again in 2015-16. From 2017-18 on, OCR takes chronic-absenteeism data from EDFacts (state-reported) rather than the CRDC form; treat the 2015 to 2017 change as a source change
 
 ### Chronic Absenteeism vs. Truancy
 
@@ -597,9 +597,7 @@ Enrollment and discipline data for preschool (ages 3-5, pre-kindergarten).
 
 ### Research Finding
 
-The 2013-14 CRDC revealed that Black children represent:
-- 18% of preschool enrollment
-- 48% of preschool children receiving multiple out-of-school suspensions
+The 2011-12 CRDC (Data Snapshot: School Discipline, March 2014) found Black children were 18% of preschool enrollment but 48% of preschoolers receiving more than one OSS; in 2013-14 they were 19% of enrollment and 47% of preschoolers receiving one or more OSS.
 
 ---
 
@@ -753,12 +751,12 @@ School characteristics should be linked from **CCD** (Common Core of Data) for:
 |--------------|-----------------|-------|
 | Basic discipline | 2011 (modern) | |
 | Restraint/seclusion | 2011 | |
-| Chronic absenteeism | 2015 | |
+| Chronic absenteeism | 2013 | Collected again 2015; from EDFacts 2017+ (source change) |
 | Preschool discipline | 2011 | Expanded 2015 |
 | Sexual harassment | 2011 | |
 | Computer science | 2017 | |
-| Instances of suspension | 2020 | |
-| School days missed | 2020 | |
+| Instances of suspension | 2013 | Optional in 2013-14; required from 2015-16 (Portal: 2015+) |
+| School days missed | 2013 | Optional in 2013-14; required from 2015-16 (Portal: 2015+) |
 | COVID-related items | 2020 | Temporary |
 
 See `./historical-changes.md` for detailed year-by-year changes.

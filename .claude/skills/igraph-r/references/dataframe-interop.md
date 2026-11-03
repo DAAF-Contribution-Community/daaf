@@ -65,9 +65,12 @@ stopifnot(all(c("degree", "betweenness") %in% names(model_data)))
 
 The tidygraph wrappers (`centrality_degree()`, `centrality_betweenness()`,
 `centrality_closeness()`, `centrality_eigen()`, `centrality_pagerank()`) call the
-same igraph routines and inherit the same weight/seed behavior — pass `weights =
-NA` for unweighted graphs exactly as with the raw igraph functions. See
-`centrality.md`.
+same igraph routines, but their weight default differs: with `weights` left out
+they ignore a `weight` attribute (observed 2026-11-01, tidygraph
+1.3.1). Pass `weights = NA` anyway, as above, so the unweighted intent is
+explicit. The exceptions among the wrappers are `group_leiden()` and
+`group_optimal()`, which use a `weight` attribute even with `NA` (see
+`gotchas.md` § 8). See `centrality.md`.
 
 ---
 

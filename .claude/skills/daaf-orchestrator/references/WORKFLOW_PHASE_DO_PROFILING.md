@@ -75,7 +75,7 @@ Script 11 (Documentation Reconciliation):
         NO  → Skip; document "no documentation provided for reconciliation" in STATE.md
 ```
 
-Document all skip decisions in STATE.md with the reasoning. Conditional scripts that are skipped do not affect gate passage — gates evaluate only the scripts that executed.
+Document all skip decisions in STATE.md with the reasoning, **and declare each skip in the affected checkpoint's `not_applicable` mapping with that same reason** — a skip only counts as a skip when it is declared. A *declared* skip records `[SKIPPED]` and does not affect gate passage: gates evaluate the checks that ran, plus the written reasons the rest were waived. An *undeclared* absence is not equivalent — the check records `[NOT VERIFIED]`, which forces at least `WARNING` on a `QAP{N} RESULT` line and `FAILED` on a `CPP{N} VALIDATION` verdict (see § QAP Outcome Vocabulary below and `agent_reference/VALIDATION_CHECKPOINTS.md`). Silently omitting a conditional script therefore does not leave the gate clean; it leaves it unverified.
 
 ## Column Batching Strategy
 
@@ -85,9 +85,10 @@ For datasets with more than 100 columns, profiling scripts that inspect individu
 - **Batching method:** Partition the column list into groups of ~50; dispatch one subagent invocation per batch
 - **Priority columns first:** If the user specified priority columns at intake, include them in the first batch
 - **Merge outputs:** After all batches complete, merge per-batch outputs into a single consolidated result before proceeding to the next part
-- **STATE.md tracking:** Record batch boundaries and completion status for each batch
+- **STATE.md tracking:** Record batch boundaries and each batch's completion status in the Notes cell of the script's Profiling Progress row
+- **Concurrency:** Concurrent batch invocations follow the orchestrator's parallel dispatch guideline (orchestrator `SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline"): by default at most 5 data-ingest invocations in flight at once, more only with the user's explicit approval. When there are more batches, dispatch them in sub-batches one after another; the merge still happens once, over every batch
 
-> **Wave barrier discipline (async dispatch).** Column batching is this mode's parallel-dispatch surface: multiple data-ingest invocations for the same profiling script may run concurrently. Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as **status-only**: do not merge per-batch outputs, advance to the next part, or update STATE.md conclusions until EVERY batch invocation in the wave has returned. The merge happens once, over the complete set of batch returns — never incrementally per return. An early return under context pressure, or a failed batch, still counts as that batch's completion — handle re-dispatch as part of the whole-wave merge, not as an immediate mid-wave reaction. The sequential Part A → B → C → D dispatches are governed by the same principle at their gates (see below): each part's completion notification must arrive and its preliminary notes must be persisted before the next part is dispatched.
+> **Wave barrier discipline (async dispatch).** Column batching is this mode's parallel-dispatch surface: multiple data-ingest invocations for the same profiling script may run concurrently. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. The barrier applies however they arrive. Treat mid-wave notifications as **status-only**: do not merge per-batch outputs, advance to the next part, or update STATE.md conclusions until EVERY batch invocation in the wave has returned. The merge happens once, over the complete set of batch returns — never incrementally per return. An early return under context pressure, or a failed batch, still counts as that batch's completion — handle re-dispatch as part of the whole-wave merge, not as an immediate mid-wave reaction. The sequential Part A → B → C → D dispatches are governed by the same principle at their gates (see below): each part's agent must return and its preliminary notes must be persisted before the next part is dispatched.
 
 ## Multi-File Profiling
 
@@ -124,7 +125,7 @@ For files at different aggregation levels (e.g., schools, districts, states):
 3. **Part B scripts are suffixed per file** where applicable: `04a_distribution-analysis.py`, `04b_distribution-analysis.py`, etc. Conditional scripts (05, 06) run per-file based on per-file characteristics.
 4. **Part C runs per-file AND cross-file:**
    - Scripts 07, 09 run per-file (suffixed) for within-file key integrity and quality
-   - **Script 07b: cross-level-linkage.py** (new, conditional on HIERARCHICAL) runs once across all files to test cross-file relationships: key cardinality, coverage completeness, orphan detection, temporal alignment, and join loss simulation
+   - **Script 07b: cross-level-linkage.py** (conditional on HIERARCHICAL) runs once across all files to test cross-file relationships: key cardinality, coverage completeness, orphan detection, temporal alignment, and join loss simulation
    - Script 08 runs per-file if applicable (suffixed)
 5. **Part D runs per-file AND produces cross-file output:**
    - Script 10 runs per-file (suffixed) for per-file semantic interpretations
@@ -203,52 +204,39 @@ Scripts 01-03 establish foundational understanding. Always fully executed.
 
 #### CPP1: Post-Load Validation
 
-Embedded in script 01.
+Embedded in script 01, in its `# --- Validate ---` section.
 
-**Python:**
-```python
-# --- CPP1: Post-Load Validation ---
-assert df.shape[0] > 0, "STOP: Zero rows loaded"
-assert df.shape[1] > 0, "STOP: Zero columns detected"
-total_cells = df.shape[0] * df.shape[1]
-total_nulls = sum(df[col].null_count() for col in df.columns)
-null_rate = total_nulls / total_cells
-assert null_rate < 0.5, f"STOP: Overall null rate {null_rate:.1%} exceeds 50%"
-# INTENT: Warn about entirely null columns but don't stop
-for col in df.columns:
-    if df[col].null_count() == df.shape[0]:
-        print(f"WARNING: Column '{col}' is entirely null")
-if df.shape[0] < 100:
-    print("WARNING: Dataset has < 100 rows — possible partial file")
-print(f"CPP1 PASSED: {df.shape[0]} rows, {df.shape[1]} columns, {null_rate:.1%} null rate")
-```
+> **The code lives in one place.** Copy the CPP1 block (Python and R) verbatim from
+> `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP1: Post-Load Validation.
+> That section is canonical, including the Python config stanza shown above each block;
+> this file supplies the R config stanzas and the part-specific guidance. Do not paraphrase the block and do not
+> re-derive it from memory — the checkpoint's whole value is that its outcome tokens and
+> count line are identical across every onboarding project.
 
-**R:**
+**Config:** assign the CPP1 config stanza in script 01's `# --- Config ---` region: `df` is
+the frame the canonical load produced. The Python stanza is shown above the block in
+VALIDATION_CHECKPOINTS.md; the R stanza is:
 ```r
-# --- CPP1: Post-Load Validation ---
-stopifnot("STOP: Zero rows loaded" = nrow(df) > 0)
-stopifnot("STOP: Zero columns detected" = ncol(df) > 0)
-total_cells <- nrow(df) * ncol(df)
-total_nulls <- sum(sapply(df, function(x) sum(is.na(x))))
-null_rate <- total_nulls / total_cells
-stopifnot("STOP: Overall null rate exceeds 50%" = null_rate < 0.5)
-# INTENT: Warn about entirely null columns but don't stop
-for (col_name in names(df)) {
-  if (all(is.na(df[[col_name]]))) cat("WARNING: Column", col_name, "is entirely null\n")
-}
-if (nrow(df) < 100) cat("WARNING: Dataset has < 100 rows -- possible partial file\n")
-cat(sprintf("CPP1 PASSED: %d rows, %d columns, %.1f%% null rate\n", nrow(df), ncol(df), null_rate * 100))
+df <- NULL
+not_applicable <- list()
 ```
+
+**What CPP1 reports:** one outcome line each for shape, overall null rate, entirely-null
+columns, row volume, and encoding damage (U+FFFD scan), then the count line and
+`CPP1 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. Entirely-null columns and a
+sub-100-row frame are `[WARNING]` (the checkpoint still passes, with warnings); an empty
+frame, a >=50% null rate, or replacement characters are `[FAIL]`.
 
 #### QAP1: Post-Structural QA
 
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Re-load verification | Load with alternative params produces same result | Row/column counts differ |
-| Sample row spot-check | Random rows match raw file inspection | Values corrupted |
-| Encoding verification | No mojibake or replacement characters | Non-ASCII corrupted |
-| Schema stability | Re-running type inference produces same types | Types change between runs |
-| Column coverage | Every column appears in profile output | Column missing from profile |
+> **The checklist lives in one place.** The QAP1 default checks — each with its
+> `not_applicable` key, its BLOCKER condition, and the per-check statement of what is
+> *not applicable* versus *not verifiable* — are canonical in
+> `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4) > QAP1: Post-Structural (Part A).
+> Read them there and use those keys verbatim; do not paraphrase them here or re-derive
+> them from memory.
+
+QAP1 asks whether Part A's structural claims survive independent re-testing: the file loads to the same shape under an alternative parameterization, sample rows match the raw file, text is undamaged, type inference is stable, and every column in the schema appears in the column profile.
 
 **QA Script Path:** `scripts/cr/profile_structural_cr1.py`
 
@@ -264,67 +252,46 @@ Scripts 04-06 analyze distributions, temporal patterns, and entity coverage. Ind
 
 #### CPP2: Post-Statistical Validation
 
-Embedded in the last executed script of Part B.
+Embedded in the last executed script of Part B, in its `# --- Validate ---` section.
 
-**Python:**
-```python
-# --- CPP2: Post-Statistical Validation ---
-# INTENT: Verify numeric summary statistics are internally consistent
-for col in numeric_columns:
-    col_min = df[col].min()
-    col_max = df[col].max()
-    col_mean = df[col].mean()
-    # REASONING: Mean must fall within [min, max] for any valid distribution
-    assert col_min <= col_mean <= col_max, (
-        f"STOP: Mean for '{col}' ({col_mean}) outside [{col_min}, {col_max}]"
-    )
-    # REASONING: Percentiles must be monotonically non-decreasing
-    p25 = df[col].quantile(0.25)
-    p50 = df[col].quantile(0.50)
-    p75 = df[col].quantile(0.75)
-    assert p25 <= p50 <= p75, (
-        f"STOP: Percentile monotonicity violated for '{col}': p25={p25}, p50={p50}, p75={p75}"
-    )
-# INTENT: Verify temporal script found time columns if dataset is temporal
-# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
-if temporal_expected and not time_columns_found:
-    print("WARNING: Dataset expected to have temporal columns but none identified")
-print("CPP2 PASSED: Statistical summaries internally consistent")
-```
+> **The code lives in one place.** Copy the CPP2 block (Python and R) verbatim from
+> `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP2: Post-Statistical Validation,
+> **including the reload NOTE** that precedes it.
 
-**R:**
+> **Reload NOTE.** Each profiling script runs as its own process. Script 05 saves its
+> result to `{project_dir}/output/profiling/05_temporal-determination.parquet` (an absolute
+> path: `run_with_capture.sh` runs the script from the caller's directory, so a relative
+> path lands outside the project); when CPP2 sits in script 06, that script loads the file
+> and assigns `time_columns_found` from it (the NOTE gives the exact load).
+
+**Config:** assign the CPP2 config stanza in the script's `# --- Config ---` region:
+`numeric_columns` from Part A's findings, `temporal_expected` from the orchestrator's Part A
+determination, `time_columns_found` per the reload NOTE. The Python stanza is shown above
+the block in VALIDATION_CHECKPOINTS.md; the R stanza is:
 ```r
-# --- CPP2: Post-Statistical Validation ---
-# INTENT: Verify numeric summary statistics are internally consistent
-for (col_name in numeric_columns) {
-  col_min <- min(df[[col_name]], na.rm = TRUE)
-  col_max <- max(df[[col_name]], na.rm = TRUE)
-  col_mean <- mean(df[[col_name]], na.rm = TRUE)
-  # REASONING: Mean must fall within [min, max] for any valid distribution
-  stopifnot(col_min <= col_mean && col_mean <= col_max)
-  # REASONING: Percentiles must be monotonically non-decreasing
-  p25 <- quantile(df[[col_name]], 0.25, na.rm = TRUE)
-  p50 <- quantile(df[[col_name]], 0.50, na.rm = TRUE)
-  p75 <- quantile(df[[col_name]], 0.75, na.rm = TRUE)
-  stopifnot(p25 <= p50 && p50 <= p75)
-}
-# INTENT: Verify temporal script found time columns if dataset is temporal
-# ASSUMES: Orchestrator marked dataset as temporal based on Part A findings
-if (temporal_expected && !time_columns_found) {
-  cat("WARNING: Dataset expected to have temporal columns but none identified\n")
-}
-cat("CPP2 PASSED: Statistical summaries internally consistent\n")
+df <- NULL
+numeric_columns <- character(0)
+temporal_expected <- NULL
+time_columns_found <- NULL
+not_applicable <- list()
 ```
+
+**What CPP2 reports:** one outcome line per numeric column for mean-within-[min,max] and
+for percentile monotonicity, plus one line for the temporal determination, then the count
+line and verdict. An **empty `numeric_columns`** is `[NOT VERIFIED]` (⇒ `FAILED`), not a
+silent pass — if the dataset genuinely has no numeric columns, declare
+`not_applicable["numeric_summaries"]` and `not_applicable["percentile_monotonicity"]` with
+that reason. An all-null column is `[NOT VERIFIED]` for that column rather than a crash.
 
 #### QAP2: Post-Statistical QA
 
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Independent stat verification | Recompute mean/median for random columns | Independently computed stat differs |
-| Distribution label accuracy | Distribution claims pass appropriate tests | "Normal" claim fails normality test at p < 0.01 |
-| Outlier boundary reasonableness | IQR fences are sensible | Fences exclude >20% of data without explanation |
-| Temporal break detection | Obvious structural breaks are flagged | Dramatic year-to-year changes missed |
-| Coverage completeness | Entity/geographic coverage is assessed | Known universe not checked when identifiers present |
+> **The checklist lives in one place.** The QAP2 default checks — each with its
+> `not_applicable` key, its BLOCKER condition, and the per-check statement of what is
+> *not applicable* versus *not verifiable* — are canonical in
+> `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4) > QAP2: Post-Statistical (Part B).
+> Read them there and use those keys verbatim.
+
+QAP2 asks whether Part B's statistical characterization holds up: recomputed summary statistics match the profiled ones, distribution labels survive the appropriate test, outlier fences are defensible, and the temporal and entity-coverage findings are complete. Scripts 05 and 06 are conditional, so the orchestrator must tell the reviewer which of them ran and why — a conditional script whose skip was decided and recorded becomes a declared `[SKIPPED]`, while an unstated absence is `[NOT VERIFIED]`.
 
 **QA Script Path:** `scripts/cr/profile_statistical_cr1.py`
 
@@ -340,59 +307,45 @@ Scripts 07-09 examine inter-column relationships. Independent within part. Scrip
 
 #### CPP3: Post-Relational Validation
 
-Embedded in the last executed script of Part C.
+Embedded in script 09 (the last executed script of Part C), in its `# --- Validate ---` section.
 
-**Python:**
-```python
-# --- CPP3: Post-Relational Validation ---
-# INTENT: Verify correlation matrix is symmetric (basic sanity)
-if correlation_matrix is not None:
-    import numpy as np
-    assert np.allclose(correlation_matrix, correlation_matrix.T, atol=1e-10), (
-        "STOP: Correlation matrix is not symmetric"
-    )
-# INTENT: Verify uniqueness counts agree with n_unique
-for col in key_candidates:
-    reported_unique = uniqueness_results[col]
-    actual_unique = df[col].n_unique()
-    assert reported_unique == actual_unique, (
-        f"STOP: Uniqueness count mismatch for '{col}': reported {reported_unique}, actual {actual_unique}"
-    )
-# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
-assert len(anomaly_catalog) > 0, (
-    "STOP: Anomaly catalog is empty — quality analysis must produce at least one observation"
-)
-print(f"CPP3 PASSED: Relational checks consistent, {len(anomaly_catalog)} anomalies cataloged")
-```
+> **The code lives in one place.** Copy the CPP3 block (Python and R) verbatim from
+> `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP3: Post-Relational Validation,
+> **including the re-computation NOTE** that precedes it.
 
-**R:**
+> **Re-computation NOTE.** Each profiling script runs as its own process; there is no
+> shared in-memory state. `uniqueness_results` (script 07) and `correlation_matrix`
+> (script 08) must be recomputed or loaded inside script 09 before the block runs.
+
+**Config:** assign the CPP3 config stanza in script 09's `# --- Config ---` region:
+`anomaly_catalog` from script 09 itself, `key_candidates` from script 07's nominations, and
+`correlation_matrix` / `uniqueness_results` recomputed or loaded per the NOTE. The Python
+stanza is shown above the block in VALIDATION_CHECKPOINTS.md; the R stanza is:
 ```r
-# --- CPP3: Post-Relational Validation ---
-# INTENT: Verify correlation matrix is symmetric (basic sanity)
-if (!is.null(correlation_matrix)) {
-  stopifnot("STOP: Correlation matrix is not symmetric" = all(abs(correlation_matrix - t(correlation_matrix)) < 1e-10))
-}
-# INTENT: Verify uniqueness counts agree with n_unique
-for (col_name in key_candidates) {
-  reported_unique <- uniqueness_results[[col_name]]
-  actual_unique <- length(unique(df[[col_name]]))
-  stopifnot(reported_unique == actual_unique)
-}
-# INTENT: Anomaly catalog must be non-empty (at minimum INFO-level observations)
-stopifnot("STOP: Anomaly catalog is empty" = length(anomaly_catalog) > 0)
-cat(sprintf("CPP3 PASSED: Relational checks consistent, %d anomalies cataloged\n", length(anomaly_catalog)))
+df <- NULL
+anomaly_catalog <- NULL
+correlation_matrix <- NULL
+key_candidates <- character(0)
+uniqueness_results <- list()
+not_applicable <- list()
 ```
+
+**What CPP3 reports:** one line for the anomaly catalog, one for correlation symmetry, and
+one per key candidate for uniqueness agreement, then the count line and verdict. When
+script 08 was skipped, a bare `correlation_matrix = None` is `[NOT VERIFIED]` (⇒ `FAILED`) —
+carry the orchestrator's documented skip reason into
+`not_applicable["correlation_symmetry"]` so it becomes a counted `[SKIPPED]`. An all-NA
+correlation matrix is `[NOT VERIFIED]`, never a vacuous symmetry pass.
 
 #### QAP3: Post-Relational QA
 
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| Key uniqueness counter-check | Claimed keys tested independently | Claimed unique key has duplicates |
-| Dependency verification | Functional dependencies are real | Counter-examples exist for claimed A->B dependency |
-| Anomaly catalog completeness | All major anomalies found | Known pattern (duplicates, coded values) present but uncatalogued |
-| Cross-column consistency | Consistency rules are complete | Obvious logical constraint violated but not flagged |
-| Coded value scan completeness | Standard sentinels checked | Numeric columns not scanned for -1, -2, -3, -9, -99, -999 |
-| Cross-file linkage verification (HIERARCHICAL only) | Key cardinality, coverage, orphan counts, join simulation | Cardinality claimed 1:M but data shows M:M; key type mismatch across files not detected; join simulation not performed |
+> **The checklist lives in one place.** The QAP3 default checks — each with its
+> `not_applicable` key, its BLOCKER condition, and the per-check statement of what is
+> *not applicable* versus *not verifiable* — are canonical in
+> `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4) > QAP3: Post-Relational (Part C).
+> Read them there and use those keys verbatim.
+
+QAP3 asks whether Part C's relationship claims are real: nominated keys are unique when tested independently, claimed functional dependencies have no counter-examples, the anomaly catalog is complete, cross-column consistency rules cover what the schema allows, and the sentinel scan reached every numeric column. For HIERARCHICAL sources it also covers script 07b's cross-file linkage results (cardinality, coverage, orphans, join simulation); for SINGLE or HORIZONTAL sources that check is declared not applicable with the recorded reason.
 
 **QA Script Path:** `scripts/cr/profile_relational_cr1.py`
 
@@ -406,50 +359,67 @@ Scripts 10-11 produce interpretations and reconciliation. Sequential: 10 before 
 
 #### CPP4: Post-Interpretation Validation
 
-Embedded in the last executed Part D script (script 11 if docs provided, otherwise script 10).
+Embedded in the last executed Part D script (script 11 if docs provided, otherwise script 10), in its `# --- Validate ---` section.
 
-**Python:**
-```python
-# --- CPP4: Post-Interpretation Validation ---
-# INTENT: All semantic interpretations must contain [PRELIMINARY] marker
-for entry in data_dictionary_draft:
-    assert "[PRELIMINARY]" in entry["interpretation"], (
-        f"STOP: Interpretation for '{entry['column']}' missing [PRELIMINARY] marker"
-    )
-# INTENT: If docs were provided, reconciliation must have run
-if documentation_provided:
-    assert reconciliation_ran, (
-        "STOP: Documentation was provided but reconciliation script did not execute"
-    )
-print(f"CPP4 PASSED: {len(data_dictionary_draft)} columns interpreted, "
-      f"documentation reconciliation: {'completed' if documentation_provided else 'N/A (no docs)'}")
-```
+> **The code lives in one place.** Copy the CPP4 block (Python and R) verbatim from
+> `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP4: Post-Interpretation Validation,
+> **including the reload NOTE** that precedes it.
 
-**R:**
+**CPP4 checks the structured draft, not printed text.** Script 10 must build
+`data_dictionary_draft` as an enumerable set of records — one per interpreted column,
+each with a `column` name and an `interpretation` string (Python: a list of dicts;
+R: a data.frame with `column` and `interpretation` character columns). This is the same
+draft data dictionary Part D already owes; CPP4 requires it as an object rather than as
+console output, because an empty list of records is detectable, while zero regex matches
+over printed text is not.
+
+> **Reload NOTE.** Each profiling script runs as its own process. Script 10 saves the
+> draft to `{project_dir}/output/profiling/10_data-dictionary-draft.parquet` (an absolute
+> path, as for CPP2); when CPP4 sits in script 11, that script loads the file and assigns
+> `data_dictionary_draft` from it (the NOTE gives the exact load).
+
+**Config:** assign the CPP4 config stanza in the script's `# --- Config ---` region:
+`data_dictionary_draft` per the reload NOTE, `documentation_provided` from intake,
+`reconciliation_ran` from script 11. The Python stanza is shown above the block in
+VALIDATION_CHECKPOINTS.md; the R stanza is:
 ```r
-# --- CPP4: Post-Interpretation Validation ---
-# INTENT: All semantic interpretations must contain [PRELIMINARY] marker
-for (i in seq_len(nrow(data_dictionary_draft))) {
-  stopifnot(grepl("\\[PRELIMINARY\\]", data_dictionary_draft$interpretation[i]))
-}
-# INTENT: If docs were provided, reconciliation must have run
-if (documentation_provided) {
-  stopifnot("STOP: Documentation was provided but reconciliation script did not execute" = reconciliation_ran)
-}
-cat(sprintf("CPP4 PASSED: %d columns interpreted, documentation reconciliation: %s\n",
-    nrow(data_dictionary_draft), ifelse(documentation_provided, "completed", "N/A (no docs)")))
+data_dictionary_draft <- NULL   # data.frame(column = character(), interpretation = character())
+documentation_provided <- NULL
+reconciliation_ran <- NULL
+not_applicable <- list()
 ```
+
+**What CPP4 reports:** one line per interpretation record (every non-empty line of the
+record's text must carry `[PRELIMINARY]`, or be exactly `[NO INTERPRETATION]` and
+nothing else, per VALIDATION_CHECKPOINTS.md § CPP4, Marker semantics — a hedge on the first
+line does not cover the rest) plus one line for documentation reconciliation, then the
+count line and verdict. `documentation_provided = False` is a `[PASS]` with evidence, not
+a skip; a missing or empty draft is `[NOT VERIFIED]` (⇒ `FAILED`).
 
 #### QAP4: Post-Interpretation QA
 
-| Check | Validates | BLOCKER If |
-|-------|-----------|------------|
-| PRELIMINARY marking | All interpretations hedged | Any interpretation stated as fact without [PRELIMINARY] marker |
-| Documentation coverage | All documented claims checked against data | Documented column present but not reconciled |
-| Discrepancy evidence | Every discrepancy has actual-vs-documented values | Discrepancy noted without showing evidence |
-| Interpretation completeness | All columns with non-trivial semantics have an interpretation entry | Column with identifiable meaning has no interpretation |
+> **The checklist lives in one place.** The QAP4 default checks — each with its
+> `not_applicable` key, its BLOCKER condition, and the per-check statement of what is
+> *not applicable* versus *not verifiable* — are canonical in
+> `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4) > QAP4: Post-Interpretation (Part D).
+> Read them there and use those keys verbatim.
+
+QAP4 asks whether Part D's semantic claims are honestly hedged and completely reconciled: every interpretation line carries `[PRELIMINARY]` or is exactly `[NO INTERPRETATION]`, every documented claim was checked against the data when documentation existed, every discrepancy shows its actual-versus-documented values, and every column with identifiable meaning has an entry. Script 11 runs only when documentation was provided, so the documentation-bound checks are declared not applicable with that reason rather than passing silently.
 
 **QA Script Path:** `scripts/cr/profile_interpretation_cr1.py`
+
+#### QAP Outcome Vocabulary (all four parts)
+
+QAP reviews use the review-severity family. The canonical wording — the six tokens, the
+count line, the derived verdict, the applicability declarations, and the escalation rule —
+is `agent_reference/QA_CHECKPOINTS.md` § QAP Severity Classification, § QAP Applicability
+Declarations, and § QAP Count Line and Verdict. What follows is an orientation summary; where
+it and QA_CHECKPOINTS.md differ, QA_CHECKPOINTS.md governs.
+
+- Per-check lines start with `[PASS]`, `[WARNING]`, `[BLOCKER]`, `[NOT VERIFIED]`, `[SKIPPED]`, or `[INFO]`, carrying the observed numbers, followed by a count line and `QAP{N} RESULT: PASSED | WARNING | BLOCKER`.
+- `BLOCKER` if any blocker; else `WARNING` if any warning **or any NOT VERIFIED**; else `PASSED`. A run with no passed check (`passed == 0`) is `WARNING`.
+- **`[NOT VERIFIED]` forces at least `WARNING`** — a review check that could not run has not reviewed anything, so it cannot be absorbed into a clean pass. Each checkpoint's canonical table states, per check, which absences are expected and should instead be declared not applicable with the orchestrator's documented reason (making them counted `[SKIPPED]`).
+- Escalation: if the profiling part *promised* the input a check needs (e.g. Part C reported a correlation matrix but the QA script cannot find it), the reviewer escalates that NOT VERIFIED to `BLOCKER` under the "validation inadequate" criterion and says so.
 
 ---
 
@@ -469,6 +439,11 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part A work (scripts 01-03).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
+Read `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP1 and copy
+that block verbatim into script 01's `# --- Validate ---` section; assign the config stanza shown
+above it there in `# --- Config ---` (for an R script, the R stanza in
+`.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` § CPP1: Post-Load Validation).
+It is the only maintained copy — do not write CPP code from memory.
 
 **CONTEXT:**
 - Profiling part: A
@@ -526,7 +501,7 @@ After the Part A data-ingest agent returns, the orchestrator persists the full r
 |-------------|----------|
 | data-ingest (Part A) | `{project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md` |
 
-**Gate condition:** Part A preliminary notes must exist on disk before dispatching Part B data-ingest agent. The orchestrator confirms the file was written in Subagent Return Processing step 1 (see orchestrator SKILL.md).
+**Gate condition:** Part A preliminary notes must exist on disk before dispatching Part B data-ingest agent. The orchestrator confirms the file was written in Subagent Return Processing step 2c (see orchestrator SKILL.md).
 
 ### Part B: Statistical Deep Dive
 
@@ -540,6 +515,15 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part B work (scripts 04-06).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
+Read `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP2 and copy
+that block — including its reload NOTE — verbatim into the last executed Part B script; assign the
+config stanza shown above it there in `# --- Config ---` (for an R script, the R stanza in
+`.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` § CPP2: Post-Statistical Validation).
+It is the only maintained copy — do not write CPP code from memory. If script 05 runs, it saves its
+result to `{project_dir}/output/profiling/05_temporal-determination.parquet` as the reload NOTE
+specifies, and a later script that embeds CPP2 loads `time_columns_found` from that file. Write
+the absolute path: `run_with_capture.sh` runs a script from the caller's directory, so a relative
+path lands outside the project.
 
 **CONTEXT:**
 - Profiling part: B
@@ -606,6 +590,11 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part C work (scripts 07-09, + 07b if HIERARCHICAL).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
+Read `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP3 and copy
+that block — including its re-computation NOTE — verbatim into script 09; assign the config stanza
+shown above it there in `# --- Config ---` (for an R script, the R stanza in
+`.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` § CPP3: Post-Relational Validation).
+It is the only maintained copy — do not write CPP code from memory.
 
 **CONTEXT:**
 - Profiling part: C
@@ -675,6 +664,16 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **AGENT PROTOCOL:** Read `.claude/agents/data-ingest.md`. Execute ONLY Part D work (scripts 10-11).
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the file-first protocol.
+Read `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP4 and copy
+that block — including its reload NOTE — verbatim into the last executed Part D script; assign the
+config stanza shown above it there in `# --- Config ---` (for an R script, the R stanza in
+`.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` § CPP4: Post-Interpretation Validation).
+Script 10 must build `data_dictionary_draft` as structured records (one per interpreted column, each
+with `column` and `interpretation`) — CPP4 checks that object, not printed text — and save it to
+`{project_dir}/output/profiling/10_data-dictionary-draft.parquet` as the reload NOTE specifies;
+script 11, when it runs, loads the draft from that file. Write the absolute path:
+`run_with_capture.sh` runs a script from the caller's directory, so a relative path lands outside
+the project.
 
 **CONTEXT:**
 - Profiling part: D
@@ -715,6 +714,15 @@ Scripts go to: scripts/profile_interpretation/
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {project_script_dir}/profile_interpretation/{script}.py (or {script}.R for R)
 
 **ADDITIONAL PART D REQUIREMENTS:**
+
+**Structured interpretation records (in script 10):** Build `data_dictionary_draft` as an
+enumerable object — Python: a list of `{"column": ..., "interpretation": ...}` dicts; R: a
+data.frame with `column` and `interpretation` character columns — one record per interpreted
+column, every claim line carrying `[PRELIMINARY]` or being exactly `[NO INTERPRETATION]` and
+nothing else. Print it as well, but CPP4 validates the object, because an empty list of records
+is detectable, while zero regex matches over printed text is not. Save it to
+`{project_dir}/output/profiling/10_data-dictionary-draft.parquet` (the CPP4 reload NOTE in
+VALIDATION_CHECKPOINTS.md gives the layout) so script 11 can load it.
 
 **Domain Decomposition (in script 10):** After semantic classification, group columns into
 analytical domains (e.g., "outcome variables," "geographic identifiers," "temporal indicators,"
@@ -779,10 +787,13 @@ Data characteristics: {row_count} rows, {col_count} columns, {file_size}
 Prior QA findings: {prior_qap_summary_or_none}
 IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 
-**Note:** In Data Onboarding mode, profiling scripts produce embedded output (appended to script files via run_with_capture.sh), not separate data files. QA scripts should verify the appended execution log, not look for separate output files.
+**Note:** In Data Onboarding mode, profiling scripts produce embedded output (appended to script files via run_with_capture.sh), not separate data files. The only exceptions are the two files the CPP2 and CPP4 checks reload: `{project_dir}/output/profiling/05_temporal-determination.parquet` (script 05) and `{project_dir}/output/profiling/10_data-dictionary-draft.parquet` (script 10). QA scripts should verify the appended execution log, reading those two files only where a check needs them.
 
 **QAP FOCUS AREAS (Part {A/B/C/D}):**
-{qap_focus_table_from_relevant_part_section}
+Read `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4) > QAP{N} for the
+default checks, their `not_applicable` keys, and the per-check not-applicable versus
+not-verifiable conditions. That table is canonical — use its keys verbatim.
+Conditional-script outcomes for this part: {which_of_05_06_07b_08_11_ran_and_why}
 
 **TASK:**
 1. Review all executed scripts in Part {X} for correctness and completeness
@@ -793,12 +804,17 @@ IAT compliance: Required per agent_reference/INLINE_AUDIT_TRAIL.md
 
 **OUTPUT FORMAT (3500-word hard cap):**
 ### QA Review: Part {X}
-**QAP{N} Status:** [PASSED | ISSUES_FOUND]
+**Status:** [COMPLETED | ISSUES_FOUND]   <- agent status: did the review itself run to completion
 **Severity:** [BLOCKER | WARNING | INFO | None]
+**QAP{N} RESULT:** [PASSED | WARNING | BLOCKER]   <- the checkpoint verdict, transcribed from the QA script's `QAP{N} RESULT:` line
+**Checks:** {passed} passed, {warnings} warnings, {blockers} blockers, {not_verified} not verified, {skipped} skipped, {info} info
 **Scripts Reviewed / QA Scripts Created**
 **Checks Performed:** [table]
 **Issues Found:** BLOCKER / WARNING / INFO lists
-**Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]""",
+**NOT VERIFIED escalation decisions:** one line per NOT VERIFIED check — the check key, the input that was missing, and whether it stays WARNING or is escalated to BLOCKER (with the reason)
+**Recommendation:** [PROCEED | REVISION_REQUIRED | ESCALATE]
+
+The `QAP{N} RESULT:` line and its `Checks:` count line are transcribed verbatim from the QA script's execution log, never asserted independently; the orchestrator copies both into STATE.md (`agent_reference/STATE_TEMPLATE_ONBOARDING.md` § Secondary Validation (QAP1-QAP4)). `Status` and `QAP{N} RESULT` are different fields: the first says whether the reviewer finished its job, the second is the checkpoint verdict.""",
     subagent_type: "code-reviewer"
 })
 ```
@@ -834,7 +850,13 @@ Read your agent protocol at `.claude/agents/data-ingest.md`.
 **REVISION INSTRUCTIONS:**
 1. Read the failing script and its appended execution log
 2. Read the code-reviewer's QA script and its findings
-3. Create a NEW versioned script with suffix _a (or _b if _a exists): `{failing_script_name_without_ext}_a.py` (or `_a.R` for R)
+3. Create the NEW versioned script with
+   `bash {BASE_DIR}/scripts/create_script_revision.sh {failing_script_path} {next_version_path}`,
+   where `{next_version_path}` is the original script's base name plus the next free letter, in the
+   same folder: `05_temporal-coverage_a.py` for a first revision, `05_temporal-coverage_b.py` when
+   `_a` exists (revising `_a` gives `_b`, never `_a_a`); `.R` for R. Then apply the fixes to the new
+   copy. It copies the code without the appended execution log; a plain copy keeps the log marker,
+   and run_with_capture.sh refuses to run it
 4. Fix ONLY the issues identified in the BLOCKER findings
 5. Preserve all IAT documentation from the original script
 6. Execute via run_with_capture.sh
@@ -908,9 +930,6 @@ print("=" * 60)
 print(f"PART {part} PROFILING COMPLETE: {script_name}")
 print("=" * 60)
 {structured_summary_output}
-
-# === EXECUTION LOG ===
-# (Appended by run_with_capture.sh — do not edit below this line)
 ```
 
 **R:**
@@ -951,12 +970,9 @@ cat(strrep("=", 60), "\n")
 cat(sprintf("PART %s PROFILING COMPLETE: %s\n", part, script_name))
 cat(strrep("=", 60), "\n")
 {structured_summary_output}
-
-# === EXECUTION LOG ===
-# (Appended by run_with_capture.sh — do not edit below this line)
 ```
 
-**Conventions:** Python: Polars only (never pandas). R: dplyr + arrow (tidyverse ecosystem). IAT comments (INTENT:, REASONING:, ASSUMES:) on every non-trivial operation. Section separators: Config, Load, Profile, Validate, Summary. No function definitions. Canonical load pattern from script 01 reused verbatim.
+**Conventions:** Python: Polars only (never pandas). R: dplyr + arrow (tidyverse ecosystem). IAT comments (INTENT:, REASONING:, ASSUMES:) on every non-trivial operation. Section separators: Config, Load, Profile, Validate, Summary. No function definitions. Canonical load pattern from script 01 reused verbatim. The script ends with its last line of code: `run_with_capture.sh` appends the execution log with its own `# EXECUTION LOG` banner, so the template carries no log header.
 
 ---
 
@@ -965,7 +981,7 @@ cat(strrep("=", 60), "\n")
 #### Part A (Structural Discovery)
 
 - [ ] Script 01 established canonical load pattern (format, encoding, params documented)
-- [ ] CPP1 PASSED with row count, column count, and null rate reported
+- [ ] CPP1 count line printed; verdict `PASSED` or `PASSED WITH WARNINGS`; 0 not verified (row count, column count, and null rate all carry their numbers on the check lines)
 - [ ] Script 02 produced row/column counts, memory footprint, and complete type listing
 - [ ] Script 03 produced per-column stats for every column (none missing)
 - [ ] Conditional script decisions documented with Part A evidence
@@ -975,9 +991,9 @@ cat(strrep("=", 60), "\n")
 #### Part B (Statistical Deep Dive)
 
 - [ ] Script 04 produced distribution classification for all numeric columns
-- [ ] Script 05 executed or skipped with documented rationale
+- [ ] Script 05 executed (result saved to `{project_dir}/output/profiling/05_temporal-determination.parquet`) or skipped with documented rationale
 - [ ] Script 06 executed or skipped with documented rationale
-- [ ] CPP2 PASSED (mean within [min,max], percentile monotonicity)
+- [ ] CPP2 count line printed; verdict `PASSED` or `PASSED WITH WARNINGS`; 0 not verified (mean-within-[min,max] and percentile monotonicity reported per numeric column; an empty `numeric_columns` is a NOT VERIFIED failure, not a pass)
 - [ ] Outlier counts and thresholds documented per column
 - [ ] All scripts saved to `scripts/profile_statistical/` with execution logs
 - [ ] QAP2 completed
@@ -987,7 +1003,7 @@ cat(strrep("=", 60), "\n")
 - [ ] Script 07 tested single-column uniqueness for all columns
 - [ ] Script 08 executed or skipped with documented rationale
 - [ ] Script 09 produced anomaly catalog with severity classifications
-- [ ] CPP3 PASSED (correlation symmetry, uniqueness agreement, non-empty catalog)
+- [ ] CPP3 count line printed; verdict `PASSED` or `PASSED WITH WARNINGS`; 0 not verified (correlation symmetry, per-key uniqueness agreement, non-empty catalog — a skipped script 08 declared in `not_applicable` with its reason, not left as a bare `None`)
 - [ ] Coded missing value scan covered all standard sentinels
 - [ ] Recommended primary key documented with uniqueness ratio
 - [ ] All scripts saved to `scripts/profile_relational/` with execution logs
@@ -1000,6 +1016,7 @@ cat(strrep("=", 60), "\n")
 - [ ] Script 10 noted apparent population boundaries / exclusion observations
 - [ ] Script 11 executed or skipped with documented rationale
 - [ ] Script 11 extracted exclusion statements from documentation (if docs provided)
-- [ ] CPP4 PASSED (PRELIMINARY markers verified, reconciliation confirmed if docs provided)
+- [ ] Script 10 produced `data_dictionary_draft` as structured records (one per interpreted column), not printed text only, and saved it to `{project_dir}/output/profiling/10_data-dictionary-draft.parquet`
+- [ ] CPP4 count line printed; verdict `PASSED` or `PASSED WITH WARNINGS`; 0 not verified (every claim line of every record hedged; reconciliation confirmed if docs provided)
 - [ ] All scripts saved to `scripts/profile_interpretation/` with execution logs
 - [ ] QAP4 completed

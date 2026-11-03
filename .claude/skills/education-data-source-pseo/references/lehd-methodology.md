@@ -15,7 +15,7 @@ How the Longitudinal Employer-Household Dynamics (LEHD) program produces PSEO ta
 
 The Longitudinal Employer-Household Dynamics (LEHD) program is part of the U.S. Census Bureau's Center for Economic Studies. LEHD creates public-use information by combining multiple administrative data sources:
 
-- **Local Employment Dynamics (LED) partnership** (established 1999): State unemployment insurance wage records
+- **Local Employment Dynamics (LED) partnership**: State unemployment insurance wage records
 - **Federal employment data**: Office of Personnel Management records
 - **Census Bureau surveys**: Demographic and business data
 - **Partner institution data**: University transcript records
@@ -33,16 +33,16 @@ PSEO is one of several LEHD data products:
 
 ### Transcript Data (Education Input)
 
-Institutions and state agencies submit graduation files containing:
+Higher education systems and individual colleges and universities submit graduation files containing:
 
 | Field | Description |
 |-------|-------------|
-| Social Security Number | Primary identifier for matching |
-| Date of birth | Secondary identifier |
+| Social Security Number | Submitted with the graduation record (PSEO Coalition methodology page); the PSEO Technical Documentation names only a "personal identifier"; graduates whose identifier is of poor quality (less than one percent) are omitted from the published statistics |
+| Date of birth | Submitted with the graduation record |
 | Graduation year | When credential was awarded |
 | Degree/credential type | Certificate, Associate's, Bachelor's, Master's, Doctoral |
 | Major/discipline | CIP code (Classification of Instructional Programs) |
-| Institution | OPEID (Office of Postsecondary Education ID) |
+| Institution | Institution of award (Census tabulates by 6-digit OPEID) |
 
 ### Employment Data (LEHD Input)
 
@@ -70,7 +70,7 @@ State unemployment insurance (UI) wage records include:
               ┌─────────────────┐
               │  Person Record  │
               │    Linkage      │
-              │  (SSN/DOB)      │
+              │  (personal ID)  │
               └────────┬────────┘
                        │
                        ▼
@@ -101,7 +101,7 @@ State unemployment insurance (UI) wage records include:
 
 ### Key Matching Steps
 
-1. **Standardize identifiers**: Clean and format SSNs, dates of birth
+1. **Standardize identifiers**: Clean and format the personal identifiers submitted with each graduation record (the PSEO Technical Documentation names only a "personal identifier"; exact matching keys are not published here)
 2. **Link to Person Universe Infrastructure (PUI)**: Census's master person file
 3. **Attach employment histories**: All jobs in LEHD system for matched graduates
 4. **Calculate post-graduation outcomes**: Earnings and employment 1, 5, 10 years out
@@ -113,7 +113,7 @@ State unemployment insurance (UI) wage records include:
 
 ### What's Covered
 
-LEHD covers approximately **96% of U.S. employment**:
+LEHD covers **over 96%** of U.S. employment (PSEO Technical Documentation):
 
 **Private sector** (covered by state UI):
 - All wage and salary workers
@@ -127,7 +127,7 @@ LEHD covers approximately **96% of U.S. employment**:
 
 **Federal government** (from OPM data):
 - Most civilian federal workers
-- Coverage: 2000-2022
+- Coverage: 2000-2020 per the PSEO Technical Documentation (updated June 12, 2023); later releases may extend this
 
 ### What's NOT Covered
 
@@ -145,11 +145,11 @@ LEHD covers approximately **96% of U.S. employment**:
 
 ### UI Coverage by State
 
-States have discretion in UI coverage rules. LEHD has varying historical coverage:
+States have discretion in UI coverage rules. LEHD's state coverage grew over time (PSEO Technical Documentation, updated June 12, 2023):
 
-- **Early 1990s**: ~10 states
-- **Late 1990s**: ~40 states
-- **2010**: All 50 states + D.C. (Massachusetts was last)
+- **Early 1990s**: about 10 states
+- **Late 1990s**: about 40 states
+- **2010**: Massachusetts, the last state, entered the LEHD system
 
 ## Differential Privacy Protection
 
@@ -178,7 +178,7 @@ Differential privacy provides **mathematically provable** privacy guarantees reg
 
 ### Suppression Rules
 
-Cells with protected count < 30 are suppressed due to low quality:
+Earnings cells with protected count < 30 are suppressed due to low quality (flows counts are instead noise-infused and post-processed):
 - Status flag = 5 indicates suppression
 - Suppression is for data quality, not privacy (differential privacy already protects)
 
@@ -194,31 +194,20 @@ Cells with protected count < 30 are suppressed due to low quality:
 
 | Year | Milestone |
 |------|-----------|
-| 1999 | LED partnership established |
-| 2002 | LEHD program launched |
-| ~2014 | University of Texas System pilot partnership |
 | 2018 | First PSEO data released (March) |
-| 2019 | Employment flows tabulations added |
-| 2020 | First public release (September 30) |
-| 2022 | Expanded to 29 states |
-| 2024 | State-level aggregations added |
+| R2022Q4 | Partners in 24 states (Census pseo_all_partners.txt for that release) |
 | V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+| V4.14.1 (2026Q2) | 1,117 institution rows; partners in 37 states plus D.C. |
 
-PSEO coverage changes by release. The V4.13.0 count was verified on 2026-07-21 from the Census latest-release institution, partner, and version files; those files should be rechecked before reporting current coverage. No national graduate-coverage percentage is asserted here.
+PSEO coverage changes by release. The V4.14.1 count was verified on 2026-10-19 from the Census latest-release institution, partner, and version files (V4.13.0, now the prior release, was first counted on 2026-07-21); those files should be rechecked before reporting current coverage. No national graduate-coverage percentage is asserted here.
 
 ### PSEO Coalition
 
-The **PSEO Coalition** facilitates partnerships between institutions and Census Bureau:
-- Coordinates data sharing agreements
-- Develops best practices
-- Advocates for program expansion
-- Provides member support
-
-Members include state higher education agencies, university systems, and individual institutions.
+The **PSEO Coalition** "collaborates with LEHD at the U.S. Census to link postsecondary education data with national unemployment insurance wage data" (PSEO Coalition methodology page). Its members are state and institutional representatives who are, or plan to be, LEHD partners; they meet monthly, agree on priorities and requests for LEHD, share data-literacy practices, and meet Census staff quarterly (PSEO Coalition Toolkit, Chapter 1, January 2024). Data-sharing agreements are made with the Census Bureau (PSEO Technical Documentation).
 
 ## Technical References
 
 - [PSEO Technical Documentation (PDF)](https://lehd.ces.census.gov/doc/PSEOTechnicalDocumentation.pdf)
 - [PSEO Protection System Appendix (PDF)](https://lehd.ces.census.gov/doc/pseo_appendix_tech_doc.pdf)
 - [LEHD Public Use Schema](https://lehd.ces.census.gov/data/schema/latest/lehd_public_use_schema.html)
-- Abowd et al. (2009). "The LEHD Infrastructure Files and the Creation of the Quarterly Workforce Indicators." NBER.
+- Abowd, J. M., Stephens, B. E., Vilhuber, L., Andersson, F., McKinney, K. L., Roemer, M., & Woodcock, S. (2009). The LEHD Infrastructure Files and the Creation of the Quarterly Workforce Indicators. In *Producer Dynamics: New Evidence from Micro Data* (NBER Chapters, pp. 149–230). National Bureau of Economic Research.

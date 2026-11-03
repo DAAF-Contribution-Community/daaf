@@ -121,8 +121,8 @@ Example: 0100001
 | 69 | Northern Mariana Islands |
 | 72 | Puerto Rico |
 | 78 | Virgin Islands |
-| 58 | Bureau of Indian Education |
-| 59 | DoD Education Activity |
+| 58 | Department of Defense Dependent Schools (overseas) |
+| 59 | Bureau of Indian Education |
 
 ---
 
@@ -278,17 +278,17 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 
 > **Note:** NCES raw files use string codes (WH, BL, HI, AS, AM, HP, TR). The Portal converts these to integers for consistency.
 >
-> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1-7`, `9`, and `99`. Codes `8` (Nonresident alien) and `20` (Other) appear in postsecondary datasets (IPEDS) but are NOT present in CCD K-12 data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
+> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1-7`, `9`, and `99` (pinned mirror, all 78 school and district enrollment files, probe 2026-10-31: 1986 holds only `99`, 1987-2007 `1-5` and `99`, `6` and `7` rows from 2008 (positive counts only in adopting states until 2010; see Key Points), `9` from 2016). Codes `8` (Nonresident alien) and `20` (Other) appear in postsecondary datasets (IPEDS) but are NOT present in CCD K-12 data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
 
 **Key Points**:
 - Hispanic is treated as ethnicity, asked first
 - Non-Hispanic students then select one or more races
-- "Two or More Races" category added in 2010
-- HP (Pacific Islander) separated from AS (Asian) in 2010
+- "Two or More Races" (`7`) and a separate Native Hawaiian/Pacific Islander code (`6`, split from Asian) came with the 7-category scheme: optional for states in 2008-09 and 2009-10, requested of every state from 2010-11 (NCES, CCD 2010-11 First Look, Appendix A, https://nces.ed.gov/pubs2012/snf201011/methodology.asp, fetched 2026-10-31)
+- On the pinned mirror, `6` and `7` rows exist wherever codes `1`-`5` do from file year 2008, but positive counts come only from adopting states: in 2008 AK, CA, MA, NJ and VT (plus MS for `6`), in 2009 14 states, and in 2010 every state for `7` and every state but New York for `6`. Elsewhere the 2008-2009 rows hold `0` (district files) or `0` or a negative missing code (school files), so read 2008-2009 values outside adopting states as "not reported", not as zero students (pinned-mirror probe 2026-10-31)
 
-### Historical Context (Pre-2010)
+### Historical Context (2008-09 to 2010-11 Transition)
 
-States transitioned to 7-category system at different times. Data from 2007-2010 may have reporting inconsistencies.
+States transitioned to 7-category system at different times. School and district files alike carry no `6` or `7` rows through file year 2007; file years 2008 and 2009 (2008-09 and 2009-10) mix states reporting 7 categories with states reporting 5; and 2010 files hold no positive `6` count for New York (see Key Points; pinned-mirror probe 2026-10-31).
 
 **Caution**: Time series analysis across this period requires careful handling.
 
@@ -305,7 +305,7 @@ States transitioned to 7-category system at different times. Data from 2007-2010
 | `9` | Unknown |
 | `99` | Total |
 
-> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1`, `2`, `9`, and `99`. Code `3` (Another gender) may appear in other Portal datasets but is NOT present in CCD K-12 enrollment data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
+> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1`, `2`, `9`, and `99`. Code `3` (declared as "Gender Not-Identified" in every Portal dictionary, CCD's included) is populated in some IPEDS and CRDC files but is NOT present in CCD K-12 enrollment data; `9` appears from 2016, and files before 1998 hold only `99`, with no male/female breakdown (pinned mirror, all 78 enrollment files, probes 2026-10-30 and 2026-10-31). Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
 
 ---
 
@@ -467,7 +467,7 @@ Similar to school status, indicating changes to LEA boundaries or jurisdiction.
 | `5` | Yes, under Provision 3 |
 | `-1` | Missing/not reported |
 
-> **CEP Note:** Schools using CEP (code 2) report 100% free lunch, making FRPL unreliable as a poverty measure. Use MEPS or SAIPE instead.
+> **CEP Note:** Schools using CEP (code 2) may report all students as free-lunch eligible; since SY 2016-17 states may report direct certification instead. This makes FRPL unreliable as a poverty measure. Use MEPS or SAIPE instead.
 
 ### Virtual School Status (Portal Integer Encoding)
 
@@ -548,7 +548,7 @@ Multiple per-pupil measures exist:
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
 
-### Virtual School (`virtual`, 2014-15+)
+### Virtual School (`virtual`; NCES yes/no flag from 2013-14; categorical codes below, start year not verified)
 
 | Code | Status |
 |------|--------|

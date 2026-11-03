@@ -103,7 +103,7 @@ prof_services = df.filter(
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -261,8 +261,9 @@ Some programs have clear industry matches; others are more diffuse:
 
 ### Missing Data
 
-Industry data suppressed when:
-- Fewer than 30 graduates in industry-program cell
+Flows counts are noise-infused (geometric mechanism) and post-processed rather than suppressed by a fixed <30 rule; Census documents the <30 suppression rule for earnings cells, and division-level flows may be suppressed when too much of the flow comes from states with missing data.
+
+Industry data can also be missing when:
 - Program or institution has insufficient coverage
 
 ### Example: Complete Industry Profile

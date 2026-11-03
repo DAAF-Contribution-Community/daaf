@@ -7,12 +7,12 @@
 #   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
 #   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
 #   3. hygiene-checks      - Executable bits, LF endings, script pair parity
-#   4. validate-ps-windows - PSScriptAnalyzer on Windows PowerShell 5.1
+#   4. validate-ps-windows - PSScriptAnalyzer + native-stderr probe on Windows PowerShell 5.1
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
-#   7b. deploy-smoke-unit   - Harness self-tests (provider-free, stdlib only)
-#   7c. provider-shim-tests - Provider-shim unit suite (offline loopback harness)
+#   7b. deploy-smoke-unit   - tests/python unit suite, deploy-smoke harness self-tests included (provider-free; small pinned venv)
+#   7c. provider-shim-tests - Provider-shim unit suite (offline loopback harness) + context-ceiling probe self-test
 #   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
 #   9. bats-bash32         - Host-script BATS suite under real Bash 3.2 (ubuntu container)
 #
@@ -187,6 +187,116 @@ jobs:
           $failCount = (Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1).Count
           if ($failCount -gt 0) { exit 1 }
 
+      # Native-stderr probe under Windows PowerShell 5.1 (shell: powershell).
+      # Pester runs under pwsh 7 only, and pwsh 7.2+ keeps redirected native
+      # stderr under any $ErrorActionPreference, so 5.1's drop under
+      # 'SilentlyContinue' (shell-scripting skill > gotchas.md) is invisible to
+      # every test suite. This step turns it into evidence on each run:
+      #   - `2>&1` into a variable: ASSERTED -- 'SilentlyContinue' drops the stderr
+      #     line and 'Continue' keeps it (field-observed 2026-10-05 on 5.1.26100;
+      #     observed here too, CI - Scripts run 38316686493, 5.1.26100.33438,
+      #     2026-10-12). If 5.1 behaves otherwise, the step fails, and its
+      #     ::error:: names the direction: SilentlyContinue KEPT the line (the
+      #     fixes still hold; the docs and guard rationale need correcting) or
+      #     Continue DROPPED it (the G1/G2 fixes do not work on 5.1; escalate).
+      #   - `2>> file` under 'SilentlyContinue': ASSERTED -- the file gets no
+      #     lines (observed in run 38316686493: file_lines=0). The stdout line
+      #     is checked first, so a probe that never ran cannot pass. If the file
+      #     gets lines, the step fails with a KEPT message: nothing is broken
+      #     (the readiness loops keep stderr in memory since dispatch #63), but
+      #     the docs need correcting.
+      #   - `2>> file` under 'Continue', and whether the merged `2>&1` line is
+      #     an ErrorRecord: REPORTED. Run 38316686493 saw error_records=1, and a
+      #     7-line FORMATTED error record in the file (`cmd.exe : PROBE_ERR`,
+      #     `+ CategoryInfo ...`), not the raw line. Not asserted, because no
+      #     host script sends stderr to a file any more, so a change here breaks
+      #     nothing; a ::warning:: says when the file no longer holds a
+      #     formatted record naming PROBE_ERR, so the docs can be corrected.
+      # Plain PowerShell, no Pester: whether Pester 5 imports under 5.1 on this
+      # runner is unverified. `if: !cancelled()` so a PSScriptAnalyzer failure
+      # above does not hide the probe's result.
+      # The probe's shape is not the field probe's. Here cmd.exe writes the
+      # lines and the capture is a direct `@(... 2>&1)` assignment; the
+      # 2026-10-05 field probe used `docker ... 2>&1 | ForEach-Object`. The
+      # first run (38316686493) gave the field result anyway. If the step goes
+      # red, read which direction failed before acting on it.
+      - name: Probe native stderr capture (Windows PS 5.1)
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: |
+          Write-Host "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          if ($PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "::error::This probe must run under Windows PowerShell 5.1 (shell: powershell)."
+            exit 1
+          }
+          $failed = 0
+          # One stdout line (proves the capture works) and one stderr line.
+          $native = 'echo PROBE_OUT& echo PROBE_ERR 1>&2'
+          $expectErr = @{ 'SilentlyContinue' = 0; 'Continue' = 1 }
+
+          Write-Host "--- 2>&1 into a variable (asserted) ---"
+          foreach ($pref in @('SilentlyContinue', 'Continue')) {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = $pref
+            $items = @(cmd.exe /c $native 2>&1)
+            $ErrorActionPreference = $savedEAP
+            $text = @($items | ForEach-Object { "$_".Trim() })
+            $outLines = @($text | Where-Object { $_ -eq 'PROBE_OUT' }).Count
+            $errLines = @($text | Where-Object { $_ -match 'PROBE_ERR' }).Count
+            $records = @($items | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }).Count
+            Write-Host "2>&1 under ${pref}: items=$($items.Count) stdout_lines=$outLines stderr_lines=$errLines error_records=$records"
+            if ($outLines -ne 1) {
+              Write-Host "::error::2>&1 under ${pref}: the stdout line is missing (stdout_lines=$outLines), so the probe itself is broken."
+              $failed = 1
+            } elseif ($errLines -ne $expectErr[$pref]) {
+              # The two directions mean different things, so each says what to do.
+              if ($pref -eq 'SilentlyContinue') {
+                Write-Host "::error::2>&1 under SilentlyContinue KEPT the line (expected stderr_lines=0, got $errLines): the host fixes are still correct and harmless; correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry), this probe, and the guard rationale in tests/powershell/native_stderr_capture.Tests.ps1."
+              } else {
+                Write-Host "::error::2>&1 under Continue DROPPED the line (expected stderr_lines=1, got $errLines): the G1/G2 fixes do not work on Windows PowerShell 5.1; escalate (see .claude/skills/shell-scripting/references/gotchas.md and tests/powershell/native_stderr_capture.Tests.ps1)."
+              }
+              $failed = 1
+            }
+            if ($pref -eq 'Continue' -and $errLines -eq 1 -and $records -ne 1) {
+              Write-Host "::warning::2>&1 under Continue: the stderr line is not an ErrorRecord (error_records=$records). The readiness loops in install.ps1, rebuild_daaf.ps1 and update_daaf.ps1 sort stderr by that type."
+            }
+          }
+
+          Write-Host "--- 2>> file (SilentlyContinue asserted; Continue reported) ---"
+          foreach ($pref in @('SilentlyContinue', 'Continue')) {
+            $log = Join-Path $env:RUNNER_TEMP "daaf-stderr-probe-$pref.log"
+            if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = $pref
+            $items = @(cmd.exe /c $native 2>> $log)
+            $ErrorActionPreference = $savedEAP
+            $fileLines = @()
+            if (Test-Path -LiteralPath $log) { $fileLines = @(Get-Content -LiteralPath $log) }
+            $errLines = @($fileLines | Where-Object { $_ -match 'PROBE_ERR' }).Count
+            Write-Host "2>> file under ${pref}: captured_stdout_items=$($items.Count) file_exists=$(Test-Path -LiteralPath $log) file_lines=$($fileLines.Count) lines_naming_PROBE_ERR=$errLines"
+            foreach ($line in $fileLines) { Write-Host "    | $line" }
+            Write-Host "::notice::Windows PowerShell 5.1, 2>> file under ${pref}: file_lines=$($fileLines.Count), lines_naming_PROBE_ERR=$errLines"
+            if ($pref -eq 'SilentlyContinue') {
+              # Asserted: an empty file only means "dropped" if the command ran.
+              $outLines = @($items | ForEach-Object { "$_".Trim() } | Where-Object { $_ -eq 'PROBE_OUT' }).Count
+              if ($outLines -ne 1) {
+                Write-Host "::error::2>> file under SilentlyContinue: the stdout line is missing (stdout_lines=$outLines), so the probe itself is broken."
+                $failed = 1
+              } elseif ($fileLines.Count -ne 0) {
+                Write-Host "::error::2>> file under SilentlyContinue KEPT stderr (expected file_lines=0, got $($fileLines.Count)): Windows PowerShell 5.1 now keeps file-redirected stderr under SilentlyContinue. Nothing is broken (the readiness loops keep stderr in memory); correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry), CHANGELOG.md, this probe, and the header of tests/powershell/native_stderr_capture.Tests.ps1."
+                $failed = 1
+              }
+            } elseif ($errLines -lt 1 -or @($fileLines | Where-Object { $_ -match 'CategoryInfo' }).Count -lt 1) {
+              # Reported: run 38316686493 saw a formatted ErrorRecord here.
+              Write-Host "::warning::2>> file under Continue no longer holds a formatted error record naming PROBE_ERR (run 38316686493 had file_lines=7, lines_naming_PROBE_ERR=2): correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry)."
+            }
+          }
+
+          if ($failed) {
+            Write-Host "Native stderr probe FAILED (see the errors above)."
+            exit 1
+          }
+          Write-Host "Native stderr probe: Windows PowerShell 5.1 behaved as previously observed."
+          exit 0
+
   # ---------------------------------------------------------------------------
   # Job 5: Run BATS tests for Bash scripts
   # ---------------------------------------------------------------------------
@@ -205,7 +315,7 @@ jobs:
       - name: Set up Quarto
         run: |
           curl -fsSL -o /tmp/quarto.deb \
-            https://github.com/quarto-dev/quarto-cli/releases/download/v1.7.29/quarto-1.7.29-linux-amd64.deb
+            https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-amd64.deb
           sudo dpkg -i /tmp/quarto.deb
 
       - name: Install BATS, R, and helpers
@@ -271,7 +381,8 @@ jobs:
         run: bash tests/lint/check-daaf-conventions.sh
 
   # ---------------------------------------------------------------------------
-  # Job 7b: Deployment-smoke harness self-tests (provider-free, stdlib only)
+  # Job 7b: tests/python unit suite, deploy-smoke harness self-tests included
+  # (provider-free; the venv holds only the pinned packages installed below)
   # ---------------------------------------------------------------------------
   deploy-smoke-unit:
     name: Deploy-Smoke Harness Unit Tests
@@ -280,9 +391,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Run deploy-smoke unit tests
-        run: python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py' -v
+      # scholar_search needs httpx; the lit_verify / lit_corpus tests need polars,
+      # pyarrow, rapidfuzz and PyYAML. Same pins as the DAAF image's Dockerfile.
+      - name: Install Python test dependencies (venv)
+        run: |
+          python3 -m venv .py-venv
+          .py-venv/bin/python -m pip install httpx==0.28.1 polars==1.39.3 pyarrow==23.0.0 rapidfuzz==3.14.6 pyyaml==6.0.3
 
+      - name: Run deploy-smoke unit tests
+        run: .py-venv/bin/python -m unittest discover -s tests/python -p 'test_*.py' -v
 
   # ---------------------------------------------------------------------------
   # Job 7c: Provider-shim unit suite (offline: loopback harness + fake-codex
@@ -312,6 +429,11 @@ jobs:
 
       - name: Run provider-shim unit tests
         run: .shim-venv/bin/python -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py' -v
+
+      # Stdlib-only and network-free: drives the probe's real measurement loop
+      # against an in-process fake backend; exits nonzero unless SELF_TEST=PASS.
+      - name: Run context-ceiling probe self-test
+        run: .shim-venv/bin/python scripts/provider_shim/probe_context_ceiling.py --self-test
 
 
   # ---------------------------------------------------------------------------
@@ -469,10 +591,13 @@ jobs:
           mkdir -p ./2026-06-18_daaf_backup
 
           echo "=== Smoke testing: scripts/host/daaf.sh (Control Panel) ==="
-          # Feed 'q' to quit the menu loop after the first draw. gather_status
-          # (which contains the historically fatal negative-subscript line) runs
-          # before the menu is displayed, so a single iteration exercises it.
-          out=$(printf 'q\n' | DAAF_DRY_RUN=1 /bin/bash scripts/host/daaf.sh 2>&1) || {
+          # gather_status (which contains the historically fatal negative-
+          # subscript line) runs before every menu draw. The input then drives
+          # option 11 (Restart Container) twice under 3.2 -- declined with
+          # ' No ' (the answer trim/lowercase path), then confirmed with ' YES '
+          # (a full dry-run restart: settings snapshot/restore arrays, reload,
+          # set_panel_ports, readiness poll) -- and quits with 'q'.
+          out=$(printf '11\n No \n11\n YES \nq\n' | DAAF_DRY_RUN=1 /bin/bash scripts/host/daaf.sh 2>&1) || {
             echo "FAILED: daaf.sh (exit code $?)"
             echo "$out"
             rm -rf ./2026-06-18_daaf_backup
@@ -492,6 +617,32 @@ jobs:
             echo "  PASS: output contains 'Goodbye!' (clean menu exit)"
           else
             echo "  FAIL: expected output to contain 'Goodbye!'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "Restart cancelled"; then
+            echo "  PASS: declined restart cancelled"
+          else
+            echo "  FAIL: expected 'Restart cancelled' for the ' No ' answer"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "[DRY-RUN] docker compose down"; then
+            echo "  PASS: confirmed restart issued compose down"
+          else
+            echo "  FAIL: expected '[DRY-RUN] docker compose down'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "Container restarted"; then
+            echo "  PASS: confirmed restart completed"
+          else
+            echo "  FAIL: expected 'Container restarted' for the ' YES ' answer"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "compose down -v"; then
+            echo "  FAIL: restart must never run 'docker compose down -v'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "unexpected failure"; then
+            echo "  FAIL: the panel's ERR trap fired"
             failed=1
           fi
 
@@ -830,14 +981,16 @@ jobs:
           echo "All lifecycle scripts ran under Bash 3.2."
 
       # daaf.sh Control Panel under 3.2: seed a backup dir to force the
-      # gather_status last-backup path (the historically fatal one), drive the
-      # menu loop with `q`, and require docker-compose.yml (present at repo root
-      # after checkout) for the preflight.
+      # gather_status last-backup path (the historically fatal one), drive
+      # option 11 (Restart Container) declined (' No ') and then confirmed
+      # (' YES ', a full dry-run restart incl. the settings snapshot/restore
+      # arrays and readiness poll), quit with `q`, and require docker-compose.yml
+      # (present at repo root after checkout) for the preflight.
       - name: Smoke test daaf.sh Control Panel (Bash 3.2)
         run: |
           mkdir -p ./2026-06-18_daaf_backup
           echo "=== Bash 3.2 smoke: scripts/host/daaf.sh (Control Panel) ==="
-          out=$(printf 'q\n' | DAAF_DRY_RUN=1 bash scripts/host/daaf.sh 2>&1) || {
+          out=$(printf '11\n No \n11\n YES \nq\n' | DAAF_DRY_RUN=1 bash scripts/host/daaf.sh 2>&1) || {
             echo "FAILED: daaf.sh (exit code $?) under Bash 3.2"
             echo "$out"
             rm -rf ./2026-06-18_daaf_backup
@@ -847,9 +1000,14 @@ jobs:
           failed=0
           echo "$out" | grep -qF "DAAF Control Panel" || { echo "  FAIL: missing 'DAAF Control Panel'"; failed=1; }
           echo "$out" | grep -qF "Goodbye!" || { echo "  FAIL: missing 'Goodbye!'"; failed=1; }
+          echo "$out" | grep -qF "Restart cancelled" || { echo "  FAIL: missing 'Restart cancelled' (declined restart)"; failed=1; }
+          echo "$out" | grep -qF "[DRY-RUN] docker compose down" || { echo "  FAIL: missing '[DRY-RUN] docker compose down'"; failed=1; }
+          echo "$out" | grep -qF "Container restarted" || { echo "  FAIL: missing 'Container restarted' (confirmed restart)"; failed=1; }
+          if echo "$out" | grep -qF "compose down -v"; then echo "  FAIL: restart ran 'docker compose down -v'"; failed=1; fi
+          if echo "$out" | grep -qF "unexpected failure"; then echo "  FAIL: the panel's ERR trap fired"; failed=1; fi
           if [ "$failed" -ne 0 ]; then
             echo "--- captured output ---"
             echo "$out"
             exit 1
           fi
-          echo "daaf.sh Control Panel ran under Bash 3.2."
+          echo "daaf.sh Control Panel (incl. Restart Container) ran under Bash 3.2."

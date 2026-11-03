@@ -17,7 +17,8 @@
 # The v4 guard keys on KEY PRESENCE, not truthiness: the isolation KEY is
 # stripped whenever present regardless of value (string, "", null, false,
 # object, array), matching the provider shim sanitizer
-# (anthropic_openai_shim.py:996 -- pop "isolation" whenever present). This
+# (scripts/provider_shim/anthropic_openai_shim.py pops "isolation" whenever
+# present). This
 # CHANGES the empty-string case relative to the truthiness draft: isolation:""
 # now STRIPS (it previously passed through silently). isolation:false and
 # isolation:null -- which jq's `//` operator would have leaked through

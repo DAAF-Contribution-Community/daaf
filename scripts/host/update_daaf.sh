@@ -7,7 +7,7 @@
 #   bash update_daaf.sh
 #
 #   To update from a specific branch (default: auto-detects main/master):
-#   DAAF_BRANCH=dev bash update_daaf.sh
+#   DAAF_BRANCH=<branch-name> bash update_daaf.sh
 #
 # What this script does:
 #   1. Optionally backs up your DAAF installation (via backup_daaf.sh)
@@ -62,7 +62,7 @@ TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge the seven whitelisted DAAF_* keys of environment_settings.txt into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
 # load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
@@ -98,6 +98,37 @@ _daaf_load_settings() {
 DAAF_BRANCH_FROM_ENV=0
 if [ -n "${DAAF_BRANCH:-}" ]; then DAAF_BRANCH_FROM_ENV=1; fi
 _daaf_load_settings
+
+# --- Compose project name (INLINE COPY of daaf_lib.sh resolve_project_name) ---
+# This standalone script does not source daaf_lib.sh, so the helper is carried
+# inline, BYTE-IDENTICAL to the library function and to the copies in
+# backup_daaf.sh and restore_from_backup.sh (tests/bash/daaf_lib.bats pins all of
+# them, and install.sh's inline lines, to the same results). It echoes
+# DAAF_PROJECT_NAME (default "daaf") normalized the way Docker Compose normalizes the
+# project name -- lowercased, only [a-z0-9_-] kept, leading '_'/'-' trimmed -- so the
+# printed `docker cp <project>-daaf-docker-1:` hints name the container Compose
+# created (`Work` -> "work-daaf-docker-1"). It is called at each hint, not once,
+# so a hint follows the current DAAF_PROJECT_NAME. An empty result means no usable
+# name; the run refuses it below. See daaf_lib.sh for the full notes.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
+}
+
+# Printed hand-run `docker compose ... exec` hints carry `-p <project>` for any
+# project other than the default "daaf", as install.sh's COMPOSE_P_FLAG does: a
+# user's fresh shell does not have this run's DAAF_PROJECT_NAME, so a bare
+# `docker compose` there would act on the default installation. Empty for the
+# default project, so default-install hints read as plain `docker compose exec`.
+COMPOSE_P_FLAG=""
+if [ "$(resolve_project_name)" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p $(resolve_project_name) "
+fi
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -155,7 +186,7 @@ cleanup_on_error() {
     if [ "${STASHED:-false}" = true ]; then
         echo "Your uncommitted changes are safely saved in a stash." >&2
         echo "To restore them after fixing the issue:" >&2
-        echo "  docker compose exec daaf-docker git -C /daaf stash pop" >&2
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop" >&2
         echo "" >&2
     fi
     if docker compose exec -T daaf-docker \
@@ -163,7 +194,7 @@ cleanup_on_error() {
         </dev/null >/dev/null 2>&1; then
         echo "A restore point was saved before the update started. To undo" >&2
         echo "any partial changes:" >&2
-        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}" >&2
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}" >&2
         echo "" >&2
     fi
 }
@@ -206,6 +237,113 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         echo "${first_choice}"
     }
 fi
+
+# Name the git operation still in progress in the container's repository:
+# "merge", "rebase" or "cherry-pick", nothing when none is, or "unknown" when the
+# probe itself fails (container stopped, Docker error), so callers fail closed
+# instead of reporting a success they could not check. Uses git's own state
+# files, as the resume detection below does: .git/MERGE_HEAD, .git/rebase-merge/
+# or .git/rebase-apply/, .git/CHERRY_PICK_HEAD. The sh -c probe carries no double
+# quotes, matching the PowerShell twin (PS 5.1 mangles them in native argv).
+# Prints nothing under dry run, where no repository exists.
+_git_operation_in_progress() {
+    [ "${DAAF_DRY_RUN:-}" = "1" ] && return 0
+    local state
+    if state=$(docker compose exec -T daaf-docker sh -c \
+        'if [ -f /daaf/.git/MERGE_HEAD ]; then echo merge; elif [ -d /daaf/.git/rebase-merge ] || [ -d /daaf/.git/rebase-apply ]; then echo rebase; elif [ -f /daaf/.git/CHERRY_PICK_HEAD ]; then echo cherry-pick; fi' \
+        </dev/null 2>/dev/null); then
+        printf '%s\n' "${state}" | tr -d '\r'
+    else
+        echo "unknown"
+    fi
+}
+
+# After an updater-launched Claude Code session, decide whether the conflict work
+# is finished: no unmerged files AND no merge, rebase or cherry-pick still in
+# progress. Unmerged files alone are not enough: a merge whose files are staged
+# but not committed, or a rebase not yet continued, has none, and the run must
+# not report success or go on to restore stashed edits while git is mid-merge.
+# $1 is the conflict kind (merge, rebase or stash); $2 is the abort command for
+# a merge or rebase. Prints the outcome and the next step; returns 0 when
+# finished, 1 otherwise.
+conflict_state_is_clear() {
+    local kind="$1"
+    local abort_cmd="${2:-}"
+    local remaining in_progress
+    remaining=$(docker compose exec -T daaf-docker \
+        git -C /daaf diff --name-only --diff-filter=U </dev/null 2>/dev/null \
+        | tr -d '\r' || true)
+    in_progress=$(_git_operation_in_progress)
+
+    if [ -z "${remaining}" ] && [ -z "${in_progress}" ]; then
+        echo "Conflicts resolved!"
+        echo ""
+        return 0
+    fi
+
+    # Undo with the operation git reports, falling back to the caller's.
+    case "${in_progress}" in
+        merge) abort_cmd="merge --abort" ;;
+        rebase) abort_cmd="rebase --abort" ;;
+        cherry-pick) abort_cmd="cherry-pick --abort" ;;
+    esac
+
+    if [ -n "${remaining}" ]; then
+        echo "Some conflicts still remain in these files:"
+        echo "${remaining}" | sed 's/^/  /'
+        echo ""
+        if [ "${kind}" = "stash" ]; then
+            echo "You can keep working on them -- launch Claude Code:"
+        else
+            echo "You can keep working on them -- launch Claude Code and pick up"
+            echo "where you left off:"
+        fi
+        echo "  bash run_daaf.sh"
+    elif [ "${in_progress}" = "unknown" ]; then
+        echo "The updater could not check git's state in the container, so it cannot"
+        echo "confirm the conflicts are resolved. Check it yourself (inside the container):"
+        echo "  bash run_daaf.sh bash"
+        echo "  git status"
+        echo "  exit"
+        echo "If git status reports a merge or rebase in progress, or unmerged paths,"
+        echo "finish those first. A DAAF session can help: run  bash run_daaf.sh  and"
+        echo "ask for help with \"update conflicts\"."
+    else
+        echo "The conflicts are fixed, but the ${in_progress} is not finished yet, so the"
+        echo "update is not complete. To finish it (inside the container):"
+        echo "  bash run_daaf.sh bash"
+        echo "  git add -u"
+        if [ "${in_progress}" = "merge" ]; then
+            echo "  git commit -m \"Resolved merge conflicts from DAAF update\""
+        else
+            echo "  git ${in_progress} --continue"
+        fi
+        echo "  exit"
+        echo "(git add -u stages only files git already tracks; new files such as your"
+        echo "research projects stay out.)"
+    fi
+    if [ "${kind}" != "stash" ] && [ -z "${remaining}" ]; then
+        echo ""
+        echo "Then re-run the updater from your host terminal:"
+        echo "  bash update_daaf.sh"
+        echo "It picks up where it left off."
+    fi
+    echo ""
+    if [ "${kind}" = "stash" ]; then
+        echo "Or to undo the update:"
+        case "${in_progress}" in
+            merge|rebase|cherry-pick)
+                echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf ${abort_cmd}" ;;
+        esac
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
+    else
+        echo "Or to undo the update entirely (your research files are not affected):"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf ${abort_cmd}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+    fi
+    return 1
+}
 
 handle_conflict() {
     local conflict_type="$1"
@@ -266,8 +404,10 @@ handle_conflict() {
         echo "     conflict markers (<<<<<<< vs >>>>>>>)"
         echo "  2. Help me decide which version to keep or how to combine them"
         echo "  3. Edit the file to remove all conflict markers"
-        echo "  After all files are resolved, commit the result:"
-        echo "    git add ."
+        echo "  After all files are resolved, stage them with git add -u and finish"
+        echo "  (never git add . -- my untracked research files must stay out of"
+        echo "  git):"
+        echo "    git add -u"
         if [ "${conflict_type}" = "merge" ]; then
             echo "    git commit -m \"Resolved merge conflicts from DAAF update\""
         else
@@ -290,28 +430,10 @@ handle_conflict() {
         fi
         echo ""
 
-        local remaining
-        remaining=$(docker compose exec -T daaf-docker \
-            git -C /daaf diff --name-only --diff-filter=U </dev/null 2>/dev/null \
-            | tr -d '\r' || true)
-
-        if [ -z "${remaining}" ]; then
-            echo "Conflicts resolved!"
-            echo ""
+        if conflict_state_is_clear "${conflict_type}" "${abort_cmd}"; then
             return 0
-        else
-            echo "Some conflicts still remain in these files:"
-            echo "${remaining}" | sed 's/^/  /'
-            echo ""
-            echo "You can keep working on them -- launch Claude Code and pick up"
-            echo "where you left off:"
-            echo "  bash run_daaf.sh"
-            echo ""
-            echo "Or to undo the update entirely (your research files are not affected):"
-            echo "  docker compose exec daaf-docker git -C /daaf ${abort_cmd}"
-            echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
-            return 1
         fi
+        return 1
     else
         echo ""
         echo "To resolve the conflicts manually, enter the container:"
@@ -327,15 +449,17 @@ handle_conflict() {
         echo ""
         if [ "${conflict_type}" = "merge" ]; then
             echo "After resolving all files (inside the container):"
-            echo "  git add ."
+            echo "  git add -u"
             echo "  git commit -m \"Resolved merge conflicts\""
             echo "  exit"
         else
             echo "After resolving all files (inside the container):"
-            echo "  git add ."
+            echo "  git add -u"
             echo "  git rebase --continue"
             echo "  exit"
         fi
+        echo "(git add -u stages only files git already tracks; new files such as your"
+        echo "research projects stay out.)"
         echo ""
         echo "Then re-run the updater from your host terminal:"
         echo "  bash update_daaf.sh"
@@ -344,8 +468,8 @@ handle_conflict() {
         echo "automatically."
         echo ""
         echo "To undo the update instead (run from your host terminal):"
-        echo "  docker compose exec daaf-docker git -C /daaf ${abort_cmd}"
-        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf ${abort_cmd}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
         return 1
     fi
 }
@@ -389,9 +513,11 @@ handle_stash_conflict() {
         echo "  1. Run git status to find the conflicting files"
         echo "  2. Read each one and explain both sides of the conflict"
         echo "  3. Help me choose what to keep and edit the file to resolve it"
-        echo "  4. After all conflicts are resolved, run: git add ."
+        echo "  4. After all conflicts are resolved, run: git add -u"
+        echo "     (never git add . -- my untracked research files must stay out of git)"
         echo "     Then: git stash drop"
-        echo "     Then: git commit -m 'Resolved stash conflicts from DAAF update'"
+        echo "     Do not commit: these were my uncommitted edits, and they"
+        echo "     stay uncommitted."
         echo "  When done, remind me to type /exit so the updater can"
         echo "  finish its remaining steps."
         echo ""
@@ -405,26 +531,10 @@ handle_stash_conflict() {
         fi
         echo ""
 
-        local remaining
-        remaining=$(docker compose exec -T daaf-docker \
-            git -C /daaf diff --name-only --diff-filter=U </dev/null 2>/dev/null \
-            | tr -d '\r' || true)
-
-        if [ -z "${remaining}" ]; then
-            echo "Conflicts resolved!"
+        if conflict_state_is_clear "stash"; then
             return 0
-        else
-            echo "Some conflicts still remain in these files:"
-            echo "${remaining}" | sed 's/^/  /'
-            echo ""
-            echo "You can keep working on them -- launch Claude Code:"
-            echo "  bash run_daaf.sh"
-            echo ""
-            echo "Or to undo the update:"
-            echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
-            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
-            return 1
         fi
+        return 1
     else
         echo ""
         echo "Recommended: start a DAAF session and ask for help with \"update"
@@ -434,9 +544,11 @@ handle_stash_conflict() {
         echo "Or resolve manually -- enter the container:"
         echo "  bash run_daaf.sh bash"
         echo "  (edit the conflicting files to remove the <<<<<<< markers)"
-        echo "  git add ."
+        echo "  git add -u"
         echo "  git stash drop"
         echo "  exit"
+        echo "(git add -u stages only files git already tracks; new files such as your"
+        echo "research projects stay out.)"
         echo ""
         echo "Either way, your changes are safe in the git stash until you"
         echo "resolve them -- nothing has been lost."
@@ -449,8 +561,8 @@ handle_stash_conflict() {
         echo "  exit"
         echo ""
         echo "To undo the entire update:"
-        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
-        echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
         return 1
     fi
 }
@@ -465,7 +577,8 @@ handle_stash_conflict() {
 # ASSUMES: CONTAINER_ID points at the running container; docker cp is
 #   ID/name-sensitive (docker compose exec is not, but cp is). The manual-recovery
 #   hint prints the project-resolved `docker cp <project>-daaf-docker-1:...` form
-#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported.
+#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported;
+#   <project> is resolve_project_name (normalized as Compose does).
 _sync_copy_one() {
     local repo_path="$1"
     local script
@@ -479,9 +592,9 @@ _sync_copy_one() {
     # the final rename same-filesystem), and when an existing host copy
     # differs, save it to the rolling "<name>.pre-update" BEFORE overwriting.
     # If the backup cannot be created, do NOT overwrite -- never destroy the
-    # only copy -- same rule as the tier C drift heal. (Field finding
-    # 2026-07-17: the v2.0.1 vector's class E drift fixture was healed via
-    # tier B and clobbered with no backup.)
+    # only copy -- same rule as the tier C drift heal. (Without the backup, a
+    # drifted host copy that also changed in the update range would be
+    # overwritten with nothing to restore.)
     if [ -f "./${script}" ]; then
         # The staged-existence leg mirrors the ps1 twin's Test-Path guard: an
         # abnormal "docker cp exits 0 but produced no file" would otherwise
@@ -491,7 +604,7 @@ _sync_copy_one() {
             || [ ! -f "./${script}.sync-staged" ]; then
             rm -f "./${script}.sync-staged" 2>/dev/null || true
             echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
             SYNC_COPY_FAILED=true
             return 1
         fi
@@ -503,7 +616,7 @@ _sync_copy_one() {
                 rm -f "./${script}.sync-staged" 2>/dev/null || true
                 echo "  Warning: could not back up ${script} before overwriting -- left unchanged."
                 echo "    To adopt the repository version manually, run:"
-                echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                 SYNC_COPY_FAILED=true
                 return 1
             fi
@@ -511,7 +624,7 @@ _sync_copy_one() {
         if ! mv -f "./${script}.sync-staged" "./${script}" 2>/dev/null; then
             rm -f "./${script}.sync-staged" 2>/dev/null || true
             echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
             SYNC_COPY_FAILED=true
             return 1
         fi
@@ -537,7 +650,7 @@ _sync_copy_one() {
         return 0
     else
         echo "  Warning: could not copy ${script}. You can copy it manually:"
-        echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+        echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
         SYNC_COPY_FAILED=true
         return 1
     fi
@@ -545,12 +658,10 @@ _sync_copy_one() {
 
 # Sync host-side utility scripts out of the container to the daaf-docker folder.
 #
-# The old design diffed a HARDCODED pathspec inside the running (old) script.
-# Files added upstream that the old script did not know about were silently
-# skipped forever -- a chicken-and-egg defect (a v2.1.0 updater could never
-# deliver daaf.sh/daaf_lib.sh even though they were in the update). This
-# rewrite derives the file list from the POST-UPDATE repo state and adds an
-# existence-heal pass so past misses self-correct on the next run.
+# The file list comes from `git ls-files` at the post-update HEAD, not from this
+# script, so files added in a release reach the host even when the running
+# updater predates them; the existence-heal pass (tier A) delivers anything an
+# earlier run missed.
 #
 # INTENT: guarantee every host-appropriate script that exists in the new HEAD
 #   reaches the host, regardless of what the running (old) script knew.
@@ -578,15 +689,13 @@ sync_host_scripts() {
     fi
 
     # Platform filter (macOS/Linux hosts): keep *.sh files, the macOS double-click
-    # launcher DAAF.command (Darwin-gated below), the daaf.ico icon (future,
-    # user-supplied -- absent from the repo until then, so it simply never appears
-    # in the git ls-files list), and shared plain-text files
+    # launcher DAAF.command (Darwin-gated below), daaf.ico (the Windows shortcut
+    # icon), and shared plain-text files
     # (environment_settings_example.txt, README.txt); drop all *.ps1 and daaf.bat
     # (Windows-only -- delivered by update_daaf.ps1 instead).
     # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
     # excluded -- they are fetched via curl on demand and are not needed in the
-    # daaf-docker folder post-install. This preserves the pre-existing exclusion
-    # intent from the old hardcoded list. The dev-only test harness
+    # daaf-docker folder post-install. The dev-only test harness
     # (test_migration.sh) is likewise excluded -- it is a contributor tool
     # tracked in git for CI, never needed in the user's daaf-docker folder.
     # Without this exclusion it would match the *.sh case and be synced to hosts.
@@ -704,16 +813,12 @@ ${repo_path}
     # "<name>.pre-update" (rolling: any previous .pre-update is overwritten, so
     # backups never accumulate).
     #
-    # DESIGN DECISION (2026-07-09): the files this updater syncs -- host utility
-    # scripts (*.sh) and the example template (environment_settings_example.txt,
-    # README.txt) -- have NO supported local-edit use-case. All user-serviceable
-    # configuration lives exclusively in environment_settings.txt, which this
-    # updater never syncs or touches. Therefore drift here means STALENESS, not
-    # a deliberate customization worth preserving, and silently keeping a stale
-    # copy is the worst outcome. Overwrite + rolling backup is the deliberate
-    # design: the host always ends up with the current repo version, and the
-    # user's prior bytes are recoverable from the .pre-update file if ever needed.
-    # This supersedes the earlier warn-never-overwrite behavior.
+    # The files this updater syncs (host scripts, environment_settings_example.txt,
+    # README.txt) are not meant to be edited locally: user settings live in
+    # environment_settings.txt, which the updater never touches. So a difference
+    # means the host copy is stale. Overwrite it with the repository version
+    # after saving the old copy as "<name>.pre-update" (one rolling backup per
+    # file), so the prior bytes stay recoverable.
     #
     # INTENT: bring stale-but-present host files up to date, preserving one
     #   recoverable backup per file.
@@ -776,8 +881,8 @@ ${repo_path}
                 # Drift detected. Back up the existing host copy to a rolling
                 # "<name>.pre-update" (overwrite any prior backup), THEN overwrite
                 # the host copy with the repo version. If the backup step fails we
-                # do NOT overwrite -- never destroy the only copy -- and fall back
-                # to the old warning for that file.
+                # do NOT overwrite -- never destroy the only copy -- and print a
+                # warning for that file instead.
                 if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
                     if cp -f "${repo_copy}" "./${script}" 2>/dev/null; then
                         # Text and icon (.txt/.ico) files do not need the executable bit; scripts do.
@@ -792,15 +897,15 @@ ${repo_path}
                         echo "  WARNING: ${script} is stale but could not be updated"
                         echo "    (write failed). Your file is unchanged. To adopt the"
                         echo "    repository version manually, run:"
-                        echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                        echo "      docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                     fi
                 else
                     # Could not create the backup -- do NOT overwrite (never
-                    # destroy the only copy). Fall back to the old warning.
+                    # destroy the only copy). Print a warning instead.
                     echo "  WARNING: ${script} is stale but could not be updated"
                     echo "    (backup step failed). Your file was left unchanged to"
                     echo "    avoid losing it. To adopt the repository version, run:"
-                    echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                    echo "      docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                 fi
             fi
         done <<< "${sync_list}"
@@ -834,8 +939,7 @@ ${repo_path}
     # --- Self-update notice --------------------------------------------------
     # If the updater itself was refreshed as a CHANGED file, its new logic is on
     # disk but was not executed this run. Prompt a re-run so the new updater's
-    # existence-heal pass can deliver anything the old logic could not. This is
-    # the explicit mechanism for the v2.1.0 -> daaf_dev two-run recovery (no
+    # existence-heal pass can deliver files the old logic did not know about (no
     # auto re-exec -- that would collide with the mkdir lock and EXIT traps).
     if [ "${self_updated}" = true ]; then
         echo "-------------------------------------------"
@@ -894,7 +998,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker cp $(resolve_project_name)-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
@@ -922,7 +1026,7 @@ finish_update() {
         echo ""
     fi
     echo "If you need to undo this update later:"
-    echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+    echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
     echo ""
     echo "  (This reverts DAAF's framework files to how they were before the"
     echo "   update. Your research projects and data are not affected.)"
@@ -1080,9 +1184,8 @@ upsert_settings_key() {
 # Writes PERSIST_BRANCH back to environment_settings.txt so future runs track it
 # without re-exporting DAAF_BRANCH. Called from finish_update AND from the no-op
 # "already up to date" success exits, which return before finish_update runs (the
-# most common re-run case: `DAAF_BRANCH=x update` while already current). Every
-# property of the original inline block is preserved: fires only when
-# PERSIST_BRANCH is non-empty (env-origin *branch* only, never a tag or a file-
+# most common re-run case: `DAAF_BRANCH=x update` while already current). It
+# fires only when PERSIST_BRANCH is non-empty (env-origin *branch* only, never a tag or a file-
 # origin value, so "never persist a tag" holds by construction), replace mode,
 # .pre-update backup, skip-with-note when the settings file is absent.
 # upsert_settings_key is itself DAAF_DRY_RUN gated (writes nothing in dry run);
@@ -1108,11 +1211,11 @@ persist_branch_choice() {
 # --- Interrupted-update resume marker helpers ---
 # A genuine merge/rebase conflict cannot be auto-resolved non-interactively, so
 # the updater exits 1 mid-merge and asks the user to resolve, commit, and re-run.
-# The re-run lands on an "already up to date" early exit (HEAD now == remote),
-# which historically did tier-A-only sync and skipped rebuild detection, tier-B
-# host-script sync, and the stash pop -- stranding the user on a stale image with
-# the "DAAF update backup" stash still set aside. These helpers persist the
-# pre-update HEAD across the interruption so the re-run can finish the journey.
+# The re-run lands on an "already up to date" early exit (HEAD now == remote).
+# Without a marker, that exit syncs only missing host files and skips the
+# rebuild check, the changed-file sync and the stash pop, leaving the user on a
+# stale image with the "DAAF update backup" stash still set aside. These helpers
+# persist the pre-update HEAD across the interruption so the re-run can finish.
 #
 # Marker path is inside the repo's own .git dir: invisible to `git status`,
 # survives the merge, and is wiped by a reclone. Written via docker exec (the
@@ -1197,6 +1300,22 @@ if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# --- Preflight: project name ---
+# A DAAF_PROJECT_NAME that normalizes to nothing (e.g. "___" or "@@") is not a name
+# Compose can be relied on to use, and the printed `docker cp` hints would name no
+# container. Refuse first, before the run lock and any Docker call, with the
+# installer's wording (install.sh refuses the same values). Same text in
+# backup_daaf.{sh,ps1}, restore_from_backup.{sh,ps1} and the .ps1 twin (script name
+# varied).
+if [ -z "$(resolve_project_name)" ]; then
+    echo "ERROR: DAAF_PROJECT_NAME='${DAAF_PROJECT_NAME:-}' cannot be used as a Docker Compose" >&2
+    echo "       project name. A project name may use lowercase letters, digits, '-'" >&2
+    echo "       and '_', and must start with a letter or digit. Fix it in" >&2
+    echo "       environment_settings.txt (or your shell), then run the update again." >&2
+    echo "       Nothing was changed." >&2
+    exit 1
+fi
+
 # =====================================================================
 # Portable concurrent-run lock (mkdir)
 # =====================================================================
@@ -1232,7 +1351,7 @@ if [ ! -f "docker-compose.yml" ]; then
     echo "ERROR: docker-compose.yml not found in the current directory."
     echo ""
     echo "This script must be run from your daaf-docker folder. Try:"
-    echo "  cd ~/daaf-docker"
+    echo "  cd \"\$HOME/daaf-docker\""
     echo "  bash update_daaf.sh"
     echo ""
     echo "If you installed DAAF somewhere else, cd to that folder first."
@@ -1402,23 +1521,25 @@ if [ "${DAAF_DRY_RUN:-}" != "1" ]; then
         echo "To finish resolving (inside the container):"
         echo "  bash run_daaf.sh bash"
         echo "  (edit the conflicting files to remove the <<<<<<< markers)"
-        echo "  git add ."
+        echo "  git add -u"
         if [ -n "${MERGE_IN_PROGRESS}" ]; then
             echo "  git commit"
         else
             echo "  git rebase --continue"
         fi
         echo "  exit"
+        echo "(git add -u stages only files git already tracks; new files such as your"
+        echo "research projects stay out.)"
         echo ""
         echo "Then re-run:  bash update_daaf.sh"
         echo ""
         echo "Or to abort the update entirely (your research files are not affected):"
         if [ -n "${MERGE_IN_PROGRESS}" ]; then
-            echo "  docker compose exec daaf-docker git -C /daaf merge --abort"
+            echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf merge --abort"
         else
-            echo "  docker compose exec daaf-docker git -C /daaf rebase --abort"
+            echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf rebase --abort"
         fi
-        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
         echo ""
         exit 1
     fi
@@ -1461,16 +1582,27 @@ if [ -z "${ORIGIN_URL}" ]; then
     echo ""
     echo "Your DAAF installation is not connected to the update server."
     echo ""
-    echo "This usually means DAAF was installed from a downloaded zip file"
-    echo "instead of using the installer script. To connect it for updates,"
-    echo "run these commands one at a time:"
-    echo ""
-    echo "  bash run_daaf.sh bash"
-    echo "  git remote add origin https://github.com/${UPSTREAM_REPO}.git"
-    echo "  git fetch origin"
-    echo "  exit"
-    echo ""
-    echo "Then re-run:  bash update_daaf.sh"
+    # migrate_daaf.sh works only on the default project's volume (daaf_daaf-data).
+    # A non-default project comes from the installer, which clones DAAF, so its
+    # history is DAAF's and only the remote is missing: re-adding it is the fix.
+    if [ -z "${COMPOSE_P_FLAG}" ]; then
+        echo "This usually means DAAF was installed from a downloaded ZIP file. Run"
+        echo "the one-time migration from this folder: it links your installation's"
+        echo "git history to DAAF's, backs up your Docker volume first, and then"
+        echo "offers to run this update:"
+        echo "  curl -fsSL https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/scripts/host/migrate_daaf.sh | bash"
+    else
+        echo "Do not run the one-time migration for ZIP installs here: it works only"
+        echo "on the default installation (daaf), so it would change that one, not"
+        echo "'$(resolve_project_name)'. An installation with its own project name is set up by"
+        echo "the installer, which copies DAAF's history, so most likely only its link"
+        echo "to the update server is missing. Restore the link from this folder, then"
+        echo "run the updater again:"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf remote add origin https://github.com/${UPSTREAM_REPO}.git"
+        echo "  bash update_daaf.sh"
+        echo "If the update still fails, ask for help on the DAAF issues page:"
+        echo "  https://github.com/${UPSTREAM_REPO}/issues"
+    fi
     exit 0
 fi
 
@@ -1586,7 +1718,8 @@ if [ -n "${REMOTE_BRANCH}" ]; then
             # comparison machinery cannot advance (it silently no-ops as "already
             # up to date"). A tag is never persisted, so ongoing updates would
             # track the auto-detected default branch. Point the user at the one
-            # supported way to move onto a release: re-install pinned to the tag.
+            # supported way to move onto a release (v3.0.0 or later): re-install
+            # pinned to the tag.
             echo ""
             echo "'${REMOTE_BRANCH}' is a version tag, not a branch."
             echo "(You set it via DAAF_BRANCH in your environment.)"
@@ -1595,11 +1728,47 @@ if [ -n "${REMOTE_BRANCH}" ]; then
             echo "fixed snapshot, so it cannot be followed for updates -- and a tag is"
             echo "never saved as your update branch."
             echo ""
-            echo "To move this installation onto the '${REMOTE_BRANCH}' release, re-run the"
-            echo "installer pinned to that tag (the supported path for this container-based"
-            echo "layout):"
-            echo "  DAAF_BRANCH=${REMOTE_BRANCH} bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/scripts/host/install.sh)\""
-            echo ""
+            # The printed command runs main's install.sh, which downloads the host
+            # scripts from the tag. Releases before v3.0.0 lack some of them (daaf.sh,
+            # daaf_lib.sh, view_quarto.sh, README.txt), so a forced re-install onto
+            # one would overwrite the Dockerfile and docker-compose.yml and then stop.
+            # For those tags, print no command.
+            case "${REMOTE_BRANCH}" in
+                v0.*|v1.*|v2.*)
+                    echo "Moving an installation onto a release older than v3.0.0 is not"
+                    echo "supported in place, and installing one in a new folder can re-install"
+                    echo "over your default installation (daaf) if you have one. Back up first:"
+                    echo "choose 7) Create Backup in the DAAF Control Panel (bash daaf.sh), or run"
+                    echo "bash backup_daaf.sh. Then ask for the steps on the DAAF issues page:"
+                    echo "  https://github.com/${UPSTREAM_REPO}/issues"
+                    echo ""
+                    ;;
+                *)
+                    # The installer refuses an existing installation unless
+                    # DAAF_FORCE_REINSTALL=1, and it works in the daaf-docker subfolder
+                    # of the folder it runs from, so the command runs from this folder's
+                    # parent, printed as an absolute path. A project other than the
+                    # default is named on the line, as install.sh's own
+                    # DAAF_FORCE_REINSTALL hints do.
+                    _tag_project_prefix=""
+                    if [ "$(resolve_project_name)" != "daaf" ]; then
+                        _tag_project_prefix="DAAF_PROJECT_NAME=$(resolve_project_name) "
+                    fi
+                    _tag_parent_dir="$(cd .. && pwd)"
+                    echo "To move this installation onto the '${REMOTE_BRANCH}' release, re-install DAAF"
+                    echo "pinned to that tag. WARNING: a re-install overwrites DAAF's framework files"
+                    echo "(CLAUDE.md, skills, agents, templates) and this installation's local git"
+                    echo "history. Your research data is not deleted. Back up first: choose"
+                    echo "7) Create Backup in the DAAF Control Panel (bash daaf.sh), or run"
+                    echo "bash backup_daaf.sh."
+                    echo ""
+                    echo "Then run these two commands (the first moves to the folder that"
+                    echo "contains this daaf-docker folder):"
+                    echo "  cd \"${_tag_parent_dir}\""
+                    echo "  ${_tag_project_prefix}DAAF_FORCE_REINSTALL=1 DAAF_BRANCH=${REMOTE_BRANCH} bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/scripts/host/install.sh)\""
+                    echo ""
+                    ;;
+            esac
             echo "To keep receiving ongoing updates instead, unset DAAF_BRANCH (or set it"
             echo "to a branch). Updates then track the default branch (auto-detected"
             echo "main/master)."
@@ -1658,11 +1827,11 @@ if [ -z "${REMOTE_BRANCH}" ]; then
     echo ""
     echo "To troubleshoot:"
     echo "  1. Check what branches exist on the remote:"
-    echo "       docker compose exec daaf-docker git -C /daaf ls-remote --heads ${UPSTREAM_REMOTE}"
+    echo "       docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf ls-remote --heads ${UPSTREAM_REMOTE}"
     echo "  2. If you see a branch listed, specify it explicitly:"
     echo "       DAAF_BRANCH=branch-name bash update_daaf.sh"
     echo "  3. Verify your remote URL is correct:"
-    echo "       docker compose exec daaf-docker git -C /daaf remote -v"
+    echo "       docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf remote -v"
     echo ""
     echo "If this persists, check:"
     echo "  https://github.com/${UPSTREAM_REPO}/issues"
@@ -1823,13 +1992,15 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
             echo ""
             echo "No changes were made -- your files are exactly as they were."
             echo ""
-            echo "This can happen if there are new files that need to be committed first."
-            echo "You can commit your changes, then re-run the updater:"
+            echo "Git may have printed the reason above. One way forward is to commit"
+            echo "your changes to DAAF's files, then run the updater again:"
             echo "  bash run_daaf.sh bash"
-            echo "  git add -A"
+            echo "  git add -u"
             echo "  git commit -m \"Save my changes before update\""
             echo "  exit"
             echo "  bash update_daaf.sh"
+            echo "(git add -u stages only files git already tracks; new files such as your"
+            echo "research projects stay out.)"
             exit 1
         fi
         STASHED=true
@@ -1844,7 +2015,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
         echo "This is unusual. Your files are unchanged."
         if [ "${STASHED}" = true ]; then
             echo "Your uncommitted changes are safely saved."
-            echo "To restore them: docker compose exec daaf-docker git -C /daaf stash pop"
+            echo "To restore them: docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
         fi
         echo ""
         echo "Your research files are not affected."
@@ -1862,9 +2033,9 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
         echo "  - GitHub may be down (check https://www.githubstatus.com)"
         echo ""
         echo "To get back to where you were:"
-        echo "  docker compose exec daaf-docker git -C /daaf checkout ${CURRENT_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf checkout ${CURRENT_BRANCH}"
         if [ "${STASHED}" = true ]; then
-            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+            echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
         fi
         echo ""
         echo "Your research files are not affected."
@@ -1886,11 +2057,11 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
         echo "  exit"
         echo ""
         echo "If that also fails, you can restore to before the update:"
-        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
         if [ "${STASHED}" = true ]; then
             echo ""
             echo "Your uncommitted changes are still saved. After switching back:"
-            echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+            echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
         fi
         exit 1
     fi
@@ -1908,7 +2079,7 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
                 echo "the conflicts and commit, re-run the updater and it will restore"
                 echo "them and finish the remaining steps automatically:"
                 echo "  bash update_daaf.sh"
-                echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
+                echo "(Or restore manually: docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop)"
             fi
             exit 1
         fi
@@ -2001,13 +2172,15 @@ if [ "${AHEAD}" -gt 0 ]; then
             echo ""
             echo "No changes were made -- your files are exactly as they were."
             echo ""
-            echo "This can happen if there are new files that need to be committed first."
-            echo "You can commit your changes, then re-run the updater:"
+            echo "Git may have printed the reason above. One way forward is to commit"
+            echo "your changes to DAAF's files, then run the updater again:"
             echo "  bash run_daaf.sh bash"
-            echo "  git add -A"
+            echo "  git add -u"
             echo "  git commit -m \"Save my changes before update\""
             echo "  exit"
             echo "  bash update_daaf.sh"
+            echo "(git add -u stages only files git already tracks; new files such as your"
+            echo "research projects stay out.)"
             exit 1
         fi
         STASHED=true
@@ -2029,7 +2202,7 @@ if [ "${AHEAD}" -gt 0 ]; then
                     echo "the conflicts and commit, re-run the updater and it will restore"
                     echo "them and finish the remaining steps automatically:"
                     echo "  bash update_daaf.sh"
-                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
+                    echo "(Or restore manually: docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi
@@ -2079,7 +2252,7 @@ if [ "${AHEAD}" -gt 0 ]; then
                     echo "the conflicts and commit, re-run the updater and it will restore"
                     echo "them and finish the remaining steps automatically:"
                     echo "  bash update_daaf.sh"
-                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
+                    echo "(Or restore manually: docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi
@@ -2170,13 +2343,15 @@ if [ -n "${DIRTY_FILES}" ]; then
         echo ""
         echo "No changes were made -- your files are exactly as they were."
         echo ""
-        echo "This can happen if there are new files that need to be committed first."
-        echo "You can commit your changes, then re-run the updater:"
+        echo "Git may have printed the reason above. One way forward is to commit"
+        echo "your changes to DAAF's files, then run the updater again:"
         echo "  bash run_daaf.sh bash"
-        echo "  git add -A"
+        echo "  git add -u"
         echo "  git commit -m \"Save my changes before update\""
         echo "  exit"
         echo "  bash update_daaf.sh"
+        echo "(git add -u stages only files git already tracks; new files such as your"
+        echo "research projects stay out.)"
         exit 1
     fi
 
@@ -2193,7 +2368,7 @@ if [ -n "${DIRTY_FILES}" ]; then
         echo "  - GitHub may be down (check https://www.githubstatus.com)"
         echo ""
         echo "To restore your changes:"
-        echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+        echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker git -C /daaf stash pop"
         echo ""
         echo "Your research files are not affected."
         exit 1

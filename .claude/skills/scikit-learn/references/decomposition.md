@@ -1,6 +1,6 @@
 # Decomposition
 
-PCA, KernelPCA, TruncatedSVD, NMF, and IncrementalPCA for dimension reduction. For methodology guidance (when to use PCA, how many components to retain, interpreting loadings), see `exploratory-unsupervised.md` in the `data-scientist` skill. For PCA as an index construction tool, see `descriptive-analysis.md`.
+PCA, KernelPCA, TruncatedSVD, NMF, and IncrementalPCA for dimension reduction. For methodology guidance (when to use PCA, how many components to retain, interpreting loadings), see `exploratory-unsupervised.md` in the `data-scientist` skill; its References section gives full citations for works cited here. For PCA as an index construction tool, see `descriptive-analysis.md`.
 
 ## Method Comparison
 
@@ -74,11 +74,11 @@ for i in range(pca.n_components_):
 
 ### Parallel Analysis (Component Retention)
 
-scikit-learn does not include parallel analysis, but it can be implemented using PCA on random data. This is the gold-standard method for determining how many PCA components to retain.
+scikit-learn does not include parallel analysis, but it can be implemented using PCA on random data. Parallel analysis is the most accurate of the traditional retention rules in simulation studies (Glorfeld, 1995; Golino et al., 2020; both on factor retention; see `exploratory-unsupervised.md`).
 
 ```python
 # --- Parallel Analysis for Component Retention ---
-# INTENT: Determine how many PCA components to retain using the gold-standard method
+# INTENT: Determine how many PCA components to retain using parallel analysis
 # REASONING: Compare observed eigenvalues to eigenvalues from random data of the same dimensions
 # ASSUMES: Data is standardized (parallel analysis should operate on correlation matrix)
 
@@ -107,7 +107,7 @@ for i in range(n_iterations):
     pca_random.fit(random_data)
     simulated_eigenvalues[i] = pca_random.explained_variance_
 
-# 95th percentile threshold (more conservative than mean)
+# 95th percentile threshold (more conservative than mean; Glorfeld, 1995)
 threshold = np.percentile(simulated_eigenvalues, 95, axis=0)
 
 # Retain components where observed > 95th percentile of random

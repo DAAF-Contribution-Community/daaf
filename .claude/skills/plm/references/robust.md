@@ -20,7 +20,11 @@ and iv_robust, and integration with lmtest::coeftest().
 plm provides its own variance-covariance estimators that are aware of panel
 structure. These are used with `lmtest::coeftest()` for robust inference.
 
-### vcovHC -- Heteroskedasticity-Consistent
+### vcovHC -- Heteroskedasticity- and Cluster-Robust
+
+plm's `vcovHC()` defaults to `method = "arellano", cluster = "group"`, so every
+call below is **entity-clustered** (Arellano). For heteroskedasticity-only
+(White) SEs pass `method = "white1"`.
 
 ```r
 library(plm)
@@ -30,7 +34,7 @@ data("Grunfeld", package = "plm")
 pdf <- pdata.frame(Grunfeld, index = c("firm", "year"))
 fit <- plm(inv ~ value + capital, data = pdf, model = "within")
 
-# HC0 (White)
+# HC0, entity-clustered (Arellano; the default method)
 coeftest(fit, vcov = vcovHC(fit, type = "HC0"))
 
 # HC1 (with df correction -- most common)
@@ -93,8 +97,7 @@ coeftest(fit, vcov = vcovSCC(fit, maxlag = 4))
 ### vcovBK -- Beck-Katz (Panel-Corrected)
 
 Panel-corrected standard errors (Beck & Katz 1995). Accounts for
-panel heteroskedasticity and contemporaneous correlation. Requires
-balanced panels.
+panel heteroskedasticity and contemporaneous correlation.
 
 ```r
 # Panel-corrected SEs
@@ -148,8 +151,10 @@ modelsummary(
 ## estimatr: lm_robust and iv_robust
 
 The `estimatr` package provides one-step robust estimation for cross-sectional
-models. It is faster than the sandwich+lmtest approach and produces the same
-results.
+models. It is faster than the sandwich+lmtest approach; results match only
+when the types match (estimatr defaults to HC2/CR2; `sandwich::vcovHC()`
+defaults to HC3). CR2 SEs equal `vcovCL(fit, cluster = ~g, type = "HC2")`,
+but `lm_robust()` takes p-values from an estimated df, not G - 1.
 
 ### lm_robust -- OLS with Built-in Robust SEs
 
@@ -240,7 +245,7 @@ iv_robust(y ~ x_endog + x1 + x2 | z1 + z2 + x1 + x2, data = df)
 | Panel, balanced, contemp. correlation | Beck-Katz | `vcovBK(fit)` |
 | Cross-section, heteroskedasticity | HC1 or HC2 | `lm_robust(se_type = "HC1")` |
 | Cross-section, group structure | Clustered | `lm_robust(clusters = g, se_type = "CR2")` |
-| Any, small clusters (< 50) | CR2 or bootstrap | `lm_robust(se_type = "CR2")` |
+| Any, small clusters (< 50) | CR2 or bootstrap | `lm_robust(clusters = g, se_type = "CR2")` |
 
 Default for panel data: **entity-clustered SEs** (`vcovHC(cluster = "group")`).
 
@@ -250,11 +255,11 @@ Default for panel data: **entity-clustered SEs** (`vcovHC(cluster = "group")`).
 
 | SE Type | plm | fixest | linearmodels |
 |---------|-----|--------|-------------|
-| HC robust | `vcovHC(type = "HC1")` | `vcov = "hetero"` | `cov_type="robust"` |
+| HC robust | `vcovHC(method = "white1", type = "HC1")` | `vcov = "hetero"` | `cov_type="robust"` |
 | Entity-clustered | `vcovHC(cluster = "group")` | `vcov = ~entity` | `cluster_entity=True` |
 | Time-clustered | `vcovHC(cluster = "time")` | `vcov = ~time` | `cluster_time=True` |
 | Two-way cluster | `vcovDC()` (double clustering) | `vcov = ~e + t` | `cluster_entity + cluster_time` |
-| Newey-West | `vcovNW()` | `vcov = "NW"` | `cov_type="kernel"` |
+| Newey-West | `vcovNW()` | `vcov = "NW"` | `cov_type="ac"` (`kernel` is Driscoll-Kraay for panels) |
 | Driscoll-Kraay | `vcovSCC()` | `vcov = "DK"` | `cov_type="kernel"` |
 | Post-estimation switch | Yes (coeftest) | Yes (summary vcov=) | No (must re-fit) |
 | CRV3 / wild bootstrap | No | No | No |
@@ -286,5 +291,5 @@ coeftest(fit, vcov = vcovNW(fit))
 - Beck, N. & Katz, J.N. (1995). "What to Do (and Not to Do) with
   Time-Series Cross-Section Data." American Political Science Review, 89(3),
   634-647.
-- Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2022).
+- Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2025).
   estimatr: Fast Estimators for Design-Based Inference. R package.

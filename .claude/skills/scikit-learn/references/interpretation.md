@@ -78,6 +78,8 @@ print(f"SHAP values shape: {shap_values.shape}")
 > **API difference:** TreeExplainer uses the callable pattern `explainer(X)` returning
 > an `Explanation` object (access values via `.values`). KernelExplainer uses
 > `.shap_values(X)` returning a numpy array directly. Do not mix these patterns.
+> KernelExplainer is also callable (`explainer(X)` returns an `Explanation`); use
+> that form when passing results to `shap.plots.*`.
 
 **Performance note:** Exact Shapley values require O(2^F) evaluations; KernelExplainer uses sampling approximation (default nsamples = 2*M + 2048), but remains slow for many features. Use `shap.sample()` or `shap.kmeans()` to summarize the background data and limit the number of test samples explained.
 
@@ -296,7 +298,7 @@ shap_values = explainer(X_test)
 | XGBoost (native) | Fastest | Native optimized path |
 | RandomForestClassifier/Regressor | Fast | scikit-learn tree format |
 | GradientBoostingClassifier/Regressor | Fast | scikit-learn tree format |
-| HistGradientBoostingClassifier/Regressor | Moderate | In shap 0.51.0, TreeExplainer falls back to a model-agnostic approximation for scikit-learn's HistGradientBoosting estimators, which is significantly slower than the native path used for LightGBM and XGBoost. If SHAP computation speed matters for your workflow, use LightGBM (available in the DAAF Dockerfile) instead. |
+| HistGradientBoostingClassifier/Regressor | Fast | scikit-learn tree format (shap 0.51.0 reads the fitted trees directly; for classifiers the values are on the log-odds scale) |
 
 ## Quick Reference
 

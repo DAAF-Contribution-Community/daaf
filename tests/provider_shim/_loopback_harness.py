@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -194,6 +195,9 @@ class Scenario:
     # just before the terminal event (WITHOUT disconnecting the client) to create a
     # silent upstream gap the downstream heartbeat must bridge with ping frames.
     heartbeat_gap_s: float = 0.0
+    # v1.4.8: optional per-attempt streamed event lists (whitespace-guard retry tests).
+    # The final entry repeats; None keeps every attempt on ``stream_events``.
+    attempt_stream_events: Optional[list[list[dict[str, Any]]]] = None
 
 
 @dataclass(frozen=True)
@@ -254,6 +258,7 @@ class ASGIProbeReport:
     terminal_tie_wait_used_first_completed: list[bool]
     terminal_tie_children_done: bool
     pending_task_count: int
+    outbound_headers: list[dict[str, str]] = field(default_factory=list)
 
 
 class _EventBuilder:
@@ -1536,7 +1541,8 @@ _DEFAULT_OPENAI_SUCCESS_HEADERS = {
 # x-oai-request-id (NOT x-request-id), and a 2xx carries the x-codex-* quota surface with
 # NO x-ratelimit-*. These are REPRESENTATIVE members of an evolving prefix FAMILY, not a
 # stable/exhaustive enumeration (map R8; notes/07:48-52 flags the live set drifting from
-# the survey) — the shim's allowlist is prefix-based (x-codex-*) precisely for this. The
+# the survey). (The shim's error-line allowlist was prefix-based (x-codex-*) until v1.4.9;
+# it is now exact names only, and the 2xx quota_snapshot reads fixed names.) The
 # secondary-window members are deliberately OMITTED: they were empty/absent on the live
 # capture (notes/07:44), and omitting them keeps the "absent header -> snapshot field
 # renders as '-'" contract that the quota tests pin (test_v131_quota_state.py,
@@ -1612,11 +1618,17 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                 extra_headers: Optional[dict[str, str]] = None,
             ) -> None:
                 self.send_response(status)
-                self.send_header("Content-Type", content_type)
+                # Native-search MIME fallback fixtures: an explicit Content-Type in
+                # extra_headers REPLACES (never duplicates) the default, so the shim
+                # sees exactly one, genuinely non-SSE MIME. No existing fixture sets one.
+                mime = next((v for k, v in (extra_headers or {}).items()
+                             if k.lower() == "content-type"), content_type)
+                self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(payload)))
                 self.send_header("Connection", "close")
                 for name, value in (extra_headers or {}).items():
-                    self.send_header(name, value)
+                    if name.lower() != "content-type":
+                        self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(payload)
                 self.wfile.flush()
@@ -1895,7 +1907,12 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             frames = list(owner.scenario.raw_stream_frames)
                         else:
                             frames = []
-                            for event in owner.scenario.stream_events:
+                            attempt_events = owner.scenario.stream_events
+                            if owner.scenario.attempt_stream_events:
+                                attempt_events = owner.scenario.attempt_stream_events[
+                                    min(attempt_index, len(owner.scenario.attempt_stream_events) - 1)
+                                ]
+                            for event in attempt_events:
                                 event_name = event.get("type", "message")
                                 frames.append(
                                     (
@@ -2165,6 +2182,8 @@ _LIFECYCLE_ORDER = {
             "upstream_headers",
             "quota_snapshot",
             "upstream_first_event",
+            "hosted_action",
+            "hosted_projection",
             "downstream_first_content",
             "backend_error",
             "request_shape",
@@ -2285,6 +2304,44 @@ def assert_lifecycle_log_contract(lines: Iterable[LifecycleLogLine]) -> None:
                 )
     if events.count("disconnect") > 1:
         raise AssertionError(f"disconnect was logged more than once: {events!r}")
+    # Native search (v1.4.2+): hosted diagnostics carry fixed buckets and integer
+    # counts only — never provider queries, URLs, patterns, titles or item ids.
+    for line in ordered:
+        if line.event == "hosted_action":
+            expected = {"req_id", "phase", "event", "elapsed_ms", "action_type",
+                        "action_status", "outcome", "evidence", "source_count"}
+            if set(line.fields) != expected:
+                raise AssertionError("hosted action diagnostic field set changed")
+            vocabularies = {
+                "action_type": {"search", "open_page", "find_in_page", "unknown"},
+                "action_status": {"completed", "failed", "incomplete", "in_progress",
+                                  "searching", "unknown"},
+                "outcome": {"valid", "zero_results", "url_not_supplied", "malformed",
+                            "unsupported", "missing_evidence", "not_completed"},
+                "evidence": {"sources", "url", "absent"},
+            }
+            if any(line.fields[key] not in values for key, values in vocabularies.items()):
+                raise AssertionError("hosted action diagnostic escaped fixed vocabulary")
+            if not line.fields["source_count"].isdigit():
+                raise AssertionError("hosted action source_count is not an integer")
+        elif line.event == "hosted_projection":
+            expected = {"req_id", "phase", "event", "elapsed_ms", "outcome"}
+            outcome = line.fields.get("outcome")
+            if outcome in {"valid", "no_hosted_actions"}:
+                counters = {"action_count", "search_count", "open_page_count",
+                            "find_in_page_count"}
+                expected |= counters
+                if any(not line.fields.get(key, "").isdigit() for key in counters):
+                    raise AssertionError("hosted projection counter is not an integer")
+                # v1.4.8: a skipped unknown-type action counts toward action_count
+                # but toward none of the three known-type counters.
+                if int(line.fields["action_count"]) < sum(
+                        int(line.fields[key]) for key in counters - {"action_count"}):
+                    raise AssertionError("hosted projection action counts do not reconcile")
+            elif outcome not in {"protocol_error", "malformed"}:
+                raise AssertionError("hosted projection diagnostic escaped fixed vocabulary")
+            if set(line.fields) != expected:
+                raise AssertionError("hosted projection diagnostic field set changed")
 
 
 def lifecycle_for_response(
@@ -2374,9 +2431,13 @@ class RealShim(AbstractContextManager["RealShim"]):
         *,
         port_selector: Optional[Callable[[], int]] = None,
         env_overrides: Optional[dict[str, str]] = None,
+        backend_base_url_template: str = "{base}",
     ) -> None:
         if mode not in {"openai", "chatgpt"}:
             raise ValueError(f"unsupported shim mode: {mode}")
+        if "{base}" not in backend_base_url_template:
+            raise ValueError("backend_base_url_template must contain {base}")
+        self._backend_base_url_template = backend_base_url_template
         overrides = dict(env_overrides or {})
         rejected = set(overrides) - self._TEST_ENV_OVERRIDE_NAMES
         if rejected:
@@ -2501,6 +2562,14 @@ class RealShim(AbstractContextManager["RealShim"]):
             # Apply only the narrow, constructor-validated behavior knobs. Backend,
             # credential, proxy, port, and auth-store defaults remain fixed by the rig.
             env.update(self._env_overrides)
+            # v1.4.7: base-URL normalization tests hand the shim a "pasted" form of
+            # the loopback URL (whitespace, trailing "/" or "/responses"). The
+            # template only decorates the rig's own loopback URL and is re-checked.
+            pasted_base_url = self._backend_base_url_template.format(
+                base=self.backend_base_url
+            )
+            _assert_loopback_url(pasted_base_url.strip())
+            env["SHIM_BACKEND_BASE_URL"] = pasted_base_url
 
             # The reserve/release/start sequence has an unavoidable test-only bind
             # race. Retry at most twice, and only when uvicorn's captured startup
@@ -2999,6 +3068,10 @@ def controlled_asgi_probe(
     global_policy_backend: Optional[str] = None,
     toggle_policy_on_first_receive: Optional[bool] = None,
     inject_stale_restored_reasoning: bool = False,
+    configure_module: Optional[Callable[[Any], None]] = None,
+    error_body_chunks: Optional[list[bytes]] = None,
+    disconnect_error_read: bool = False,
+    resource_observations: Optional[dict[str, Any]] = None,
 ) -> ASGIProbeReport:
     """Drive the production app with controlled receive/send and upstream seams.
 
@@ -3185,6 +3258,7 @@ def controlled_asgi_probe(
         ]
         upstream_calls = 0
         outbound_payloads: list[dict[str, Any]] = []
+        outbound_headers: list[dict[str, str]] = []
         stream_close_calls = 0
         stream_close_attempts: list[int] = []
         close_after_cleanup: list[bool] = []
@@ -3192,6 +3266,28 @@ def controlled_asgi_probe(
         upstream_hold = asyncio.Event()
         selected_outcomes = list(attempt_outcomes or [response_status])
         selected_close_failures = set(close_fail_attempts or set())
+
+        # Native-search resource seams (opt-in; inert unless a test passes them).
+        # `resource_observations` is a caller-owned dict the probe fills with error-
+        # reader counters and held-send/cleanup facts; it never alters app behavior.
+        observations = resource_observations if resource_observations is not None else {}
+        observations.update(error_chunks_read=0, error_bytes_read=0,
+                            error_reader_cancelled=False, closed_at_held_send=None)
+
+        class CountedErrorStream(module.httpx.AsyncByteStream):
+            # Chunked >=400 body that counts exactly what the production reader pulls.
+            async def __aiter__(self):
+                for chunk in error_body_chunks:
+                    observations["error_chunks_read"] += 1
+                    observations["error_bytes_read"] += len(chunk)
+                    yield chunk
+                    if disconnect_error_read:
+                        receive_queue.put_nowait({"type": "http.disconnect"})
+                        try:
+                            await upstream_hold.wait()
+                        except asyncio.CancelledError:
+                            observations["error_reader_cancelled"] = True
+                            raise
 
         class MidbodyReadTimeoutStream(module.httpx.AsyncByteStream):
             async def __aiter__(self):
@@ -3202,7 +3298,7 @@ def controlled_asgi_probe(
                 )
                 raise module.httpx.ReadTimeout("injected mid-body read timeout")
 
-        def response_for_attempt(attempt_number: int):
+        def response_for_attempt(attempt_number: int, upstream_stream: bool):
             outcome = selected_outcomes[min(attempt_number - 1, len(selected_outcomes) - 1)]
             injected_transport_errors = {
                 "transport": module.httpx.ConnectError,
@@ -3225,9 +3321,18 @@ def controlled_asgi_probe(
                     extensions={"http_version": http_version.encode("ascii", "replace")},
                 )
             status = int(outcome)
+            if status >= 400 and error_body_chunks is not None:
+                return module.httpx.Response(
+                    status,
+                    headers=headers,
+                    stream=CountedErrorStream(),
+                    request=module.httpx.Request(
+                        "POST", "http://127.0.0.1:1/v1/responses"
+                    ),
+                )
             content = (
                 stream_payload
-                if status < 400 and stream
+                if status < 400 and upstream_stream
                 else (
                     json.dumps(
                         active_scenario.nonstream_response,
@@ -3259,7 +3364,9 @@ def controlled_asgi_probe(
                     await upstream_hold.wait()
                 elif pure_disconnect:
                     await upstream_hold.wait()
-                return response_for_attempt(self.attempt_number)
+                return response_for_attempt(
+                    self.attempt_number, self.payload.get("stream") is True
+                )
 
             async def __aexit__(self, exc_type, exc, traceback):
                 nonlocal stream_close_calls
@@ -3281,21 +3388,26 @@ def controlled_asgi_probe(
             def stream(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
+                outbound_headers.append(dict(kwargs.get("headers") or {}))
                 return ProbeStreamContext(upstream_calls, kwargs.get("json"))
 
             async def post(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
                 outbound_payloads.append(copy.deepcopy(kwargs.get("json")))
-                return response_for_attempt(upstream_calls)
+                outbound_headers.append(dict(kwargs.get("headers") or {}))
+                return response_for_attempt(
+                    upstream_calls, (kwargs.get("json") or {}).get("stream") is True
+                )
 
         original_client = module._client
-        module._client = ProbeClient()
         original_settle_owned_task = module._settle_owned_task
 
         async def observed_settle_owned_task(task, cancel=False):
             result = await original_settle_owned_task(task, cancel=cancel)
-            if task.get_coro().__qualname__.endswith("_watch_disconnect"):
+            # getattr: an owned task may wrap an async-generator __anext__ awaitable
+            # (e.g. the native-search error-body reader), which has no __qualname__.
+            if getattr(task.get_coro(), "__qualname__", "").endswith("_watch_disconnect"):
                 state = module._request_state()
                 watcher_settle_after_cleanup.append(bool(state and state.cleanup_logged))
             return result
@@ -3418,6 +3530,14 @@ def controlled_asgi_probe(
             if send_action == "cancel_body_close" and body_close:
                 send_gate.set()
                 await never_release.wait()
+            if send_action == "hold_error" and (
+                terminal or (body_close and b'"error"' in body)
+            ):
+                # Record how many upstream closes happened BEFORE the downstream error
+                # send is held: a search failure must release upstream first.
+                observations["closed_at_held_send"] = stream_close_calls
+                send_gate.set()
+                await never_release.wait()
             messages.append(dict(message))
 
         original_asyncio_wait = asyncio.wait
@@ -3456,18 +3576,30 @@ def controlled_asgi_probe(
         }
         if send_action == "same_turn_terminal_disconnect":
             asyncio.wait = observed_asyncio_wait
-        task = asyncio.create_task(module.app(scope, receive, send))
         try:
-            if send_action in {
-                "cancel_response_start", "cancel_terminal", "cancel_body_close",
-            }:
-                await asyncio.wait_for(send_gate.wait(), timeout=3.0)
-                task.cancel("controlled ASGI send cancellation")
-            await asyncio.wait_for(task, timeout=5.0)
-        except asyncio.CancelledError:
-            cancelled = True
-        except Exception as error:
-            raised = type(error).__name__
+            # Configuration errors propagate, but still release the real client and
+            # restore observation seams. Do not normalize them as app outcomes.
+            if configure_module is not None:
+                configure_module(module)
+            module._client = ProbeClient()
+            task = asyncio.create_task(module.app(scope, receive, send))
+            try:
+                if send_action in {
+                    "cancel_response_start", "cancel_terminal", "cancel_body_close",
+                    "hold_error",
+                }:
+                    await asyncio.wait_for(send_gate.wait(), timeout=3.0)
+                    task.cancel("controlled ASGI send cancellation")
+                await asyncio.wait_for(task, timeout=5.0)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception as error:
+                raised = type(error).__name__
+                # Diagnostic only: where an unexpected app exception originated.
+                observations["exception_frames"] = [
+                    (frame.filename, frame.lineno, frame.name)
+                    for frame in traceback.extract_tb(error.__traceback__)
+                ]
         finally:
             if send_action == "same_turn_terminal_disconnect":
                 asyncio.wait = original_asyncio_wait
@@ -3485,6 +3617,11 @@ def controlled_asgi_probe(
                 if child is not asyncio.current_task() and not child.done()
             ]
         )
+        observations["pending_coroutines"] = [
+            getattr(child.get_coro(), "__qualname__", type(child.get_coro()).__name__)
+            for child in asyncio.all_tasks()
+            if child is not asyncio.current_task() and not child.done()
+        ]
         logs = log_buffer.getvalue()
         lifecycle = parse_lifecycle_logs(logs)
         if lifecycle:
@@ -3498,6 +3635,7 @@ def controlled_asgi_probe(
             upstream_calls=upstream_calls,
             auth_calls=auth_calls,
             outbound_payloads=outbound_payloads,
+            outbound_headers=outbound_headers,
             gpt_service_tier_health=module._gpt_service_tier_health_block(),
             stream_close_calls=stream_close_calls,
             stream_close_attempts=stream_close_attempts,

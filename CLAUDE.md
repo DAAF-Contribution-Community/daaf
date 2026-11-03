@@ -44,6 +44,10 @@ These principles apply to all agents writing code in the DAAF system:
      (or `{script_name}.R` for R scripts — `run_with_capture.sh` detects language
      from the file extension)
   3. **CAPTURE** — `run_with_capture.sh` appends stdout/stderr to the script file
+     and verifies the record landed. Read its exit code: the script's own exit
+     code on a verified run, **74** when the audit record is incomplete (capture
+     or append failed — never report such a run as done; see
+     `ERROR_RECOVERY.md`).
 
   Interactive execution bypasses the audit trail and produces no permanent record
   that can be reviewed by code-reviewer. Never run `python script.py` or
@@ -178,15 +182,15 @@ Session context utilization must always be monitored to ensure high performance 
 
 ### Context Quality Curve
 
-These thresholds apply to **all agents** — orchestrator and subagents alike. Trigger points are **threshold-profile-conditional**: the three profiles below cross each severity level at different points, but the four severity **levels and their required actions are identical** regardless of profile. Each agent is evaluated against the profile selected from its **own** model ID — a Sonnet subagent dispatched under a Fable session still uses the conservative-default thresholds, consistent with the per-subagent window mapping the hook already applies.
+These thresholds apply to **all agents** — orchestrator and subagents alike. Trigger points are **threshold-profile-conditional**: the three profiles below cross each severity level at different points, but the four severity **levels and their required actions are identical** regardless of profile.
 
 **Trigger points by threshold profile** (percentage OR absolute tokens, whichever fires first):
 
 | Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
 |-------------------|------------|-------------|---------|-------------|
-| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **Exact GPT 5.6 Sol validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
-| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+| **Claude Fable/Mythos extended-horizon** | Registered Claude Fable/Mythos models, plus `claude-opus-5-5` (bare and `[1m]`) — admitted 2026-09-23 by user policy decision, not by DAAF quality validation. Fable/Mythos were validated at 30%/40%/50% or 300k/400k/500k; the 2026-10-23 raise of the whole profile to the values shown is a user policy decision, not DAAF quality validation | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens | ≥ 60% or ≥ 600k tokens |
+| **GPT Sol/Astra extended-horizon** | Exact terminal model slugs, bare or provider-prefixed, each optionally followed by `[1m]`: `gpt-5.6-sol` and `gpt-6-astra` (validated), plus `gpt-6-sol` and the `-pro` form of all three (e.g. `gpt-6-sol-pro[1m]`) — admitted 2026-09-29 by user policy decision, not by DAAF quality validation — and `gpt-6.1-sol` (with its `-pro` form) — admitted 2026-10-12 by user policy decision, not by DAAF quality validation | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
+| **Conservative-default** | all Opus models except `claude-opus-5-5` (above), Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
 **Status levels and required actions** (identical across profiles; NOMINAL is any utilization below the ELEVATED trigger):
 
@@ -199,7 +203,7 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 ### Subagent Context Monitoring
 
-Subagents receive their own `context-reporter` utilization injections, measured from each subagent's own transcript — never the orchestrator's numbers. If the hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
+**Every subagent must act on the utilization reports it receives.** If the `context-reporter` hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
 
 **Subagent-specific actions by threshold:**
 
@@ -207,7 +211,7 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 |--------|-----------------|
 | **NOMINAL** | Continue executing the assigned task normally |
 | **ELEVATED** | Assess remaining work honestly. If completion is uncertain, begin structuring your return output — summarize key findings so far, note what remains. Continue working but prioritize completing the most valuable deliverables first |
-| **HIGH** | **Return early.** Complete only the current atomic unit (the script, review, or analysis step you are in the middle of). Format your return output with: (1) completed work and findings, (2) a clear list of incomplete items so the orchestrator can redelegate them, (3) any file paths created or modified. Do not start new work items |
+| **HIGH** | **Return early.** Complete only the current atomic unit (the script, review, or analysis step you are in the middle of). Format your return per the early-return protocol below. Do not start new work items |
 | **CRITICAL** | **Stop immediately and return.** Report whatever has been completed, clearly mark the output as incomplete, and list all remaining work items. An incomplete but well-documented return is far more valuable than a context-exhausted agent that produces degraded output |
 
 **Early return protocol:** When returning early due to context pressure, subagents should structure their response to maximize the orchestrator's ability to continue the work — either by redelegating to a fresh subagent or by handling it directly. Include:
@@ -217,7 +221,7 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 - Any decisions made or assumptions applied that the next agent needs to know
 - Confidence assessment of completed work
 
-**Async completion note:** Subagents dispatched via the Agent tool run in the background by default; their completion — including an early return under context pressure — arrives at the orchestrator as an async task notification rather than a synchronous tool return, and when several subagents were dispatched together these notifications may arrive one at a time. A subagent's early-return output must therefore be self-contained per the protocol above, because the orchestrator will not act on it until the whole dispatched wave has returned (see `.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)").
+**Async completion note:** An early-return output must be self-contained, because the orchestrator acts on it only once the whole dispatched wave has returned (orchestrator `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)" holds the delivery details).
 
 **STATE.md updates:** Subagents do not write STATE.md directly — that is the orchestrator's responsibility. However, subagents returning early under context pressure should include enough structured information in their return output for the orchestrator to update STATE.md accurately. The orchestrator must update STATE.md whenever a subagent returns early due to ELEVATED or higher utilization.
 
@@ -236,11 +240,9 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 
 ### Quality Primacy Rule
 
-Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome.
+Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome. At ELEVATED, delegate more execution to subagents, with prompts as thorough as at NOMINAL.
 
 ### Behavioral Guardrails
-
-**What thresholds control:** Utilization determines WHEN to restart, never WHETHER to maintain fidelity. At ELEVATED, delegate more execution to subagents but construct prompts with the same thoroughness as at NOMINAL.
 
 **STATE.md fidelity is critical:** When updating STATE.md under context pressure, resist the urge to abbreviate. STATE.md is what the next session reads to resume — every shortcut taken here becomes a gap in the recovery context.
 
@@ -261,6 +263,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 - You MUST NEVER read, display, or commit files matching: `.env`, `.env.*`, `*.pem`, `*.key`, `credentials*`, or `secrets/`
 - You MUST NEVER output API keys, tokens, or private key material that appears in tool output — if detected, acknowledge the leak and stop
 - You MUST NEVER create `.env` files or write credentials to any file
+- Scripts MUST NEVER print environment variables or credential values: `run_with_capture.sh`'s pre-execution scan refuses the obvious dump shapes (exit 3, no log appended, script editable in place), because everything a script prints is appended permanently to its execution log. Read credentials into a variable and pass them to the API; to confirm one is configured, print its presence (`"X_API_KEY" in os.environ`), never its value. The same rule holds at the command line: `bash-safety.sh` §9 blocks interactive shell commands that would dump the environment to a terminal or file, echo a credential-named variable, read `/proc/<pid>/environ`, or print a whole environment object from an interpreter one-liner, and the `settings.json` deny rules back it up — check presence with `[ -n "${X_API_KEY:+set}" ]` instead.
 - Note: Users set data source API keys via an `environment_settings.txt` file on the **host** machine (in the `daaf-docker/` folder), which Docker Compose injects into the container as environment variables at startup. This file is outside the container filesystem and invisible to Claude. Scripts access these keys via `os.environ[]` as usual. If a user asks about setting API keys, direct them to the `environment_settings_example.txt` template in their `daaf-docker/` folder.
 
 ### Destructive Command Prevention
@@ -276,22 +279,24 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 - You MUST NEVER write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, archive extraction, or `git clone` targeting `/tmp`). `/tmp` is outside the Docker-volume backup boundary and the audit trail, and the session log viewer marks `/tmp` paths as ephemeral, unarchived references — files written there are lost silently. Temporary and intermediate files belong inside the project (see § Project Conventions > Scratch Files).
 - **Exception — reads are fine:** DAAF's own hooks and statuslines legitimately cache coordination state in `/tmp` (e.g. `/tmp/claude-ctx-window-*`, `/tmp/claude-model-*`). *Reading* those caches via Bash is permitted; only *writes* to `/tmp` are blocked. Reading a `/tmp` cache and redirecting the output into the project is the sanctioned rescue pattern.
+- **Claude Code's own scratchpad:** Claude Code tells every session and subagent to "always use" a per-session scratchpad, by default under `/tmp/claude-<uid>/`. DAAF's `docker-compose.yml` sets `CLAUDE_CODE_TMPDIR`, moving that temp root, scratchpad included, to the top-level `/daaf/claude-code-tmp/` (see § Project Conventions > Scratch Files).
+- **What the guards cannot see:** `bash-safety.sh` sees literal `/tmp` paths only, not one held in a shell variable (`S=/tmp/x; mkdir -p $S`) or passed to a program (`python x.py /tmp/out/`). `CLAUDE_CODE_TMPDIR` does not change `TMPDIR`, so Python `tempfile`, R `tempdir()` and a bare `mktemp` inside a script still default to `/tmp`. Scripts pass an explicit project directory instead: `tempfile.mkdtemp(dir=...)`, `mktemp -d -p "$PROJECT_DIR/scripts/scratch"`.
 - **Read-only external data via bind mount (`/host_data`):** when a user has configured a bind mount, `/host_data` is a **read-only** external data source that sits outside the backup and audit boundary. Read from it freely, but never write to it, and copy any inputs you actually use into the project's own data directory (with the usual raw-data conventions) so provenance is preserved and the analysis stays reproducible from the archived working copy.
 
 ### Safety-System Integrity
 
-- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit`/`Write` deny rules (which only bind those tools), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
+- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit(...)` deny rules (which bind only the file-editing tools), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
 - **Exception — reads and git index ops are fine:** Reading these files (`cat`, `grep`, `ls`, `bash <hook>` for testing) and git index operations (`git add`, `git update-index --chmod=+x`) stay open. Supported settings edits via the `Edit`/`Write` **tools** also remain usable, because those produce diff-visible changes; only opaque shell writes are blocked.
 
 ### Runtime Package Installation
 
-- You MUST NEVER install or remove packages at runtime. This covers both languages. **Python:** `pip`/`pip3`/`pipx install`/`uninstall`, `python -m pip install`, `uv pip install`/`uv add`/`uv sync`/`uv tool install`, `uvx`, `easy_install`, or `conda install`/`remove`/`update`. **R:** `R CMD INSTALL`, and R-eval installs such as `Rscript -e 'install.packages(...)'` (plus the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs) — whether typed at the command line **or written inside a `.R` (or `.py`) script** executed via `run_with_capture.sh`. The container environment is defined by the Dockerfile; runtime changes create unreproducible drift that a rebuild silently reverts. To add a package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from the `daaf-docker` folder. When feasible, prefer the **user additions block** near the end of the Dockerfile — late layers rebuild fast because Docker layer caching spares the expensive layers above them (place it earlier only when functionally required, e.g. a build-time system dependency).
-- **Two enforcement chokepoints.** Command-line installs are blocked by the `bash-safety.sh` §8 guard; installs written *inside* a script (which shell-level hooks cannot see) are blocked by a pre-execution content scan in `run_with_capture.sh` — the wrapper refuses to execute (exit 3) and appends no execution log, so the script stays editable in place once the install call is removed.
-- **Exception — read-only inspection is fine:** `pip list`, `pip show`, `pip freeze`, `uv --version`, and R's `installed.packages()`/`library()` stay open.
+- You MUST NEVER install or remove packages at runtime. This covers both languages and the LaTeX and Quarto tools. **Python:** `pip`/`pip3`/`pipx install`/`uninstall`, `python -m pip install`, `uv pip install`/`uv add`/`uv sync`/`uv tool install`, `uvx`, `easy_install`, or `conda install`/`remove`/`update`. **R:** `R CMD INSTALL`, and R-eval installs such as `Rscript -e 'install.packages(...)'` (plus the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs). **LaTeX and Quarto tools:** `tlmgr install`/`update`/`remove` (with or without `--usermode`), `quarto install`/`update`/`uninstall` of any of its tools (TinyTeX, VeraPDF, Chrome Headless Shell, Chromium), and R's `tinytex::install_tinytex()`, `tinytex::tlmgr_install()` and `tinytex::tlmgr_update()`. Every form is forbidden, whether typed at the command line **or written inside a `.R` (or `.py`) script** executed via `run_with_capture.sh`. The container environment is defined by the Dockerfile; runtime changes create unreproducible drift that a rebuild silently reverts. To add a package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from the `daaf-docker` folder. When feasible, prefer the **user additions block** near the end of the Dockerfile — late layers rebuild fast because Docker layer caching spares the expensive layers above them (place it earlier only when functionally required, e.g. a build-time system dependency). For a LaTeX package, the Dockerfile change goes in the TinyTeX block's `TT_PKGS` list rather than the user additions block: add its TeX Live name there, and the build installs it from a dated archive (`user_reference/04_extending_daaf.md` gives the steps).
+- **Two enforcement chokepoints.** Command-line installs are blocked by the `bash-safety.sh` §8 guard; the common install and removal forms written *inside* a script (which shell-level hooks cannot see) are blocked by a pre-execution content scan in `run_with_capture.sh`, whose install-scan comments list the in-script forms it does not catch — the wrapper refuses to execute (exit 3) and appends no execution log, so the script stays editable in place once the install call is removed. Neither chokepoint covers the LaTeX and Quarto tools. The TinyTeX tree under `/opt/TinyTeX` is root-owned and read-only for the container user, so `tlmgr install` fails (as does `tinytex::tlmgr_install()` with its default `usermode = FALSE`). Nothing blocks the forms that write into the home folder instead (`--usermode`, `quarto install`/`update`, `tinytex::install_tinytex()`), which put a second TinyTeX in `~/.TinyTeX`, a user TeX tree, or a tool in Quarto's tool folder, so this rule is their only guard.
+- **Exception — read-only inspection is fine:** `uv pip list`, `uv pip show`, `uv pip freeze`, `uv --version`, and R's `installed.packages()`/`library()` stay open.
 
 ### Repository & Remote Safety
 
-- You MUST NOT push to any remote repository without explicit user instruction — `git push` is not in the auto-allow list and will prompt for confirmation each time
+- You MUST NOT push to any remote repository without explicit user instruction — `git push` is not in the auto-allow list and will prompt for confirmation each time (the `permissions.ask` rules in `.claude/settings.json`, which cover `git push …` and `git -C <dir> push …`, make it prompt in auto mode too; other forms, such as `git -c <key>=<value> push` or a push wrapped in another command like `bash -c`, may slip past those rules, so never use them)
 - You MUST NOT modify CI/CD pipelines, GitHub Actions workflows, or branch protection rules
 
 ### Scope Boundaries
@@ -301,7 +306,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Defense-in-Depth Architecture
 
-Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh`, and the subagent-dispatch guards), a pre-execution content scan in `run_with_capture.sh`, `settings.json` permission deny/allow rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/` and `scripts/test_safety_hooks.sh`.
+Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh` and `adjudicator-read-scope.sh`, and the subagent-dispatch guards), a pre-execution content scan (exit 3: package installs, environment-secret prints, and the four Literature Review commands that record a researcher's decision, which only the orchestrator runs at a permission prompt) and post-execution evidence verification (exit 74) in `run_with_capture.sh`, `settings.json` permission deny/allow/ask rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/`, `scripts/test_safety_hooks.sh` and `scripts/test_enforce_single_command.sh`.
 
 ---
 
@@ -309,15 +314,10 @@ Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-singl
 
 ### Bash Command Rule: One Command Per Call
 
-**Rule:** Every Bash tool call must contain exactly one command. No `&&`, `;`, or `||` chaining, to better prevent running up against safety boundaries and permission triggers.
+**Rule:** Every Bash tool call must contain exactly one command. No `&&`, `;`, `||`, background `&` or line-break chaining, to better prevent running up against safety boundaries and permission triggers.
 
 - **Wrong:** `mkdir -p /path && cp file /path && ls /path`
 - **Right:** Three separate Bash calls, each with one command
-
-**Script execution:** Use absolute paths — no `cd` required:
-```
-bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
-```
 
 ### Shell Script Permissions
 
@@ -325,15 +325,26 @@ All `.sh` files are committed with the executable bit set: after creating or mod
 
 ### Scratch Files
 
-**Temporary and intermediate working files go inside the project, never in `/tmp`.** Use `{PROJECT_DIR}/scripts/scratch/` (create it on first use). It is inside the backup boundary and the audit trail; scratch files are transient by nature but are retained for provenance. For sessions without a research project yet (e.g., early-stage exploration), use the session workspace once it is created.
+**Working files go inside the project, never in `/tmp`.** DAAF has three scratch areas, each with one owner:
 
-`/tmp` writes are blocked by both the `bash-safety.sh` hook (shell writes) and `settings.json` deny rules (`Write`/`Edit` tools) because `/tmp` is outside the backup and audit boundary. **Legitimate exception:** DAAF's own hooks and statuslines cache coordination state in `/tmp` (e.g. `/tmp/claude-model-*`) — *reading* those caches is fine; agents just must not *write* to `/tmp`.
+- **Project scratch, `{PROJECT_DIR}/scripts/scratch/`** (create it on first use): working files, kept but never relied on. If losing a file would break anything or be missed, it does not belong in scratch. Before anything outside scratch (a note, report, STATE.md or SESSION_NOTES.md entry, skill, agent, script) cites a file, move it to its named home in the project and cite that path. A root-level `{PROJECT_DIR}/scratch/` is not the convention.
+- **Tool scratch, repo-level `scripts/scratch/`:** owned by framework tooling (test suites, CI staging and smoke tools manage their own subfolders). Never put work there; work without a research project gets a session workspace.
+- **Claude Code's temp root, top-level `claude-code-tmp/`:** Claude Code's own, outside both `scripts/scratch/` folders; it deletes a session's scratchpad with its transcript (after `cleanupPeriodDays`, default 30), so use project scratch instead and never cite it. One exception: materials read where no project exists yet to hold work — before a mode's Scope Check, or in a mode that never creates one (Data Lookup, User Support, Data Discovery) — are staged in the session scratchpad (fetches, PDF ingests, a digest) and moved into the project if one is created, before anything cites them (orchestrator `SKILL.md` § Scope Check > Read First). Modes that never create a project leave them there. If your scratchpad path still starts with `/tmp/`, `CLAUDE_CODE_TMPDIR` has not taken effect: tell the user.
 
-**Self-cleaning probes.** A scratch probe that creates invariant-violating filesystem objects (e.g., symlinks, especially with tab/newline names) must delete those objects before it exits, via trap-based cleanup *inside the probe script* (`trap cleanup EXIT INT TERM` + `find "$PROBE_DIR" -type l -delete`) — a dispatch-prompt instruction binds only its addressee, but a script-embedded trap covers every future runner (leftover probe symlinks have broken real backups). Verify the workspace is clean with `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`, which walks the live filesystem for unauthorized symlinks and repo-root leak artifacts (zero-byte stub files, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run) — git cannot see untracked scratch. See the `shell-scripting` skill > `bash-standards.md` > "Probe and Test-Harness Hygiene."
+Framework files never cite scratch: a file they need lives in a tracked home. Before the final report or synthesis (at wrap-up if there is none; Framework Development runs it before its review), run the Scratch Graduation Check (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check).
+
+**Self-cleaning probes.** A scratch probe or test that creates invariant-violating filesystem objects (symlinks, especially with tab/newline names; files or folders whose names Windows cannot create — control characters, `< > : " | ? * \`, a trailing dot or space, or reserved device names such as `CON` or `nul.txt`; and case-only name pairs) must delete them before it exits, via trap-based cleanup *inside the probe script* (`trap cleanup EXIT INT TERM` + `find "$FIXTURE_DIR" -depth -delete` on a dedicated fixture directory) — a dispatch-prompt instruction binds only its addressee, but a script-embedded trap covers every future runner (leftover probe symlinks have broken real backups, and a leftover newline-named fixture aborted a Windows backup). Verify the workspace is clean with `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`, which walks the live filesystem for unauthorized symlinks, repo-root leak artifacts (zero-byte stub files, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run), and names Windows cannot create or case-only name clashes anywhere outside `.git` — git cannot see untracked scratch. See the `shell-scripting` skill > `bash-standards.md` > "Probe and Test-Harness Hygiene."
 
 ### Versioning & Naming
 
-**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. When a script fails, the original keeps its appended execution log; fixes go into `_a`/`_b` revisions created with `scripts/create_script_revision.sh` (max 2 self-revisions before escalating). Never modify a script after its execution log is appended. The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. A failed script's fixes go into `_a`/`_b` revisions (§ Execution Philosophy > Immutable script versioning), at most 2 self-revisions before escalating. The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+
+### Subagent File Output
+
+Claude Code 2.1.281 (observed 2026-10-19) adds a note to every subagent's instructions not to Write report, summary, findings or analysis `.md` files, because "the parent agent reads your text output, not files you create". In DAAF that premise does not hold: DAAF's working files (plans, reports, review records, notes, skill files) are named deliverables that other agents and the researcher read from disk, and they also fit the note's own exemption for "files written as input to another tool". The same instructions say the launching agent's messages direct your work, so the dispatch and your agent definition decide: when either names a file to write, write it (under a compliant name) and still return your text output; when neither does, return text. Agents without the Write tool (DAAF's read-only agents: plan-checker, data-verifier, integration-checker, citation-adjudicator) never write deliverable or report files: they return text and the orchestrator persists it.
+
+- **Naming rule:** a Markdown file a subagent writes with the Write tool never has a basename starting with `report`, `summary`, `findings` or `analysis`, in any case (this catches `reporting.md` too; other extensions are unaffected). The Write tool rejects such a name for subagents before any hook runs, so no hook or permission rule can allow it; Edit of an existing file is not blocked. Use DAAF's date or stage/sequence prefixes, or lead with another word: `2026-10-19_Analysis_Report.md`, `05_consistency_review.md`, `checklist_reporting.md`.
+- **If Write returns** "Subagents should return findings as text, not write report files…": never drop the content silently, and do not route around the block with shell writes (heredoc, redirect, `tee`), a script, or by creating the file with Edit (e.g. an empty `old_string`). Recover in this order: (1) if the file already exists and the dispatch asks you to change it, use Edit (never for a research version file; § Versioning & Naming); (2) otherwise write under a minimally changed compliant name (prefix the date or stage/sequence number: `report.md` → `2026-10-19_report.md`) and state the rename prominently in your return; if the dispatch requires the exact path, skip to (3); (3) as a last resort, return the full content inline under a clearly labeled section that names the intended path, for the orchestrator to persist. See `agent_reference/ERROR_RECOVERY.md` § Harness Write-Tool Rejections.
 
 ---
 
@@ -343,30 +354,13 @@ All `.sh` files are committed with the executable bit set: after creating or mod
 |------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Script execution protocol, format templates, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Script documentation standards (IAT) |
-| `agent_reference/PLAN_TEMPLATE.md` | Research plan template (Full Pipeline) |
-| `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template (Full Pipeline) |
-| `agent_reference/STATE_TEMPLATE.md` | Session state file template (Full Pipeline) |
-| `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | Session state file template (Data Onboarding mode) |
-| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
-| `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
-| `agent_reference/SCOPE_POLICY.md` | Canonical plan scope / task-count policy (data-planner + plan-checker) |
-| `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | AI use attribution and GUIDE-LLM checklist mapping for all modes |
-| `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` | Reproduction Report template (Reproducibility Verification mode) |
-| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
-| `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
-| `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |
-| `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Full pipeline analysis Phase 4: Stages 7-10 |
-| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Full pipeline analysis Phase 5: Stages 11-12 |
 | `agent_reference/BOUNDARIES.md` | Agent boundary definitions |
-| `agent_reference/CITATION_REFERENCE.md` | Citation index for pipeline citation propagation and verification |
 | `agent_reference/ERROR_RECOVERY.md` | Error recovery protocols |
-| `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
-| `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
-| `agent_reference/MODE_TEMPLATE.md` | Engagement mode definition template |
-| `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` | Comprehensive registration-point checklists for all framework component types |
 | `agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md` | Context-threshold profile-selection mechanics (canonical) |
 | `.claude/agents/README.md` | Agent index and usage guide |
+
+Mode- and role-specific references (templates, workflow phases, checkpoint definitions, scope policy, authoring templates, the integration checklist) are named by the mode files and agent definitions that use them.
 
 ---
 
@@ -396,9 +390,30 @@ indicates a preference during conversation.
        workflows for research artifacts. When disabled (the default), neither the
        orchestrator nor any agent runs `git commit` — all script versions are
        preserved in the working tree, which serves as the complete audit trail.
-       When enabled, the orchestrator may propose commits at natural milestones
+       (One exception: the User Support update-conflict walkthrough finishes the
+       user's merge or rebase; see user-support-mode.md.) When enabled, the orchestrator may propose commits at natural milestones
        (plan approval, phase completion, delivery) and executes a commit only
        after the user approves it in-session. Subagents never run `git commit`
        under either setting — commit execution is orchestrator-only, with user
        consent. Agents always report a suggested commit message in their output
        for the user/orchestrator to use if desired. -->
+- **PDF page-image cross-checking:** auto
+  <!-- Options: auto | all-pages | off. Governs how the pdf-reading skill uses
+       rendered page images when an agent reads a PDF (e.g., the Literature
+       Review mode's paper reader). "auto" (default) = render and visually
+       cross-check only the pages pdf_ingest flags (tables, figures,
+       numeric-dense, scanned, garbled, rotated, low extractor agreement, a
+       suspected existing OCR text layer). "all-pages" = render
+       and read every page (about +4k tokens per page; ~+120k for a 30-page
+       paper). Both "auto" and "all-pages" apply when the reading agent's
+       exact model ID and route are on the skill's dated vision-validated list.
+       For any other model the agent reads the text layer only and marks the
+       evidence card "vision: unavailable", unless the researcher, warned
+       before a Literature Review starts, records a choice (lit_verify
+       vision-override): "check" (page images read; every number taken from
+       one is listed for the researcher to compare with the page) or "accept"
+       (page images read; the readings are accepted without a comparison and
+       the review labels them as read by a model DAAF has not tested). "off" =
+       text layer only. A vision reading is
+       a second reading, never ground truth: text/vision disagreements are
+       logged in the card, never silently resolved. -->

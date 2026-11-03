@@ -182,9 +182,12 @@ sample size after NA removal with an `# ASSUMES:` comment.
 ## Confidence Intervals
 
 ```r
-# 95% confidence interval (default)
+# 95% confidence interval (default: Normal, i.e. df = Inf)
 mn <- svymean(~income, design = des, na.rm = TRUE)
 confint(mn)
+
+# t-based interval on the design df (always wider; noticeably so with few PSUs)
+confint(mn, df = degf(des))
 
 # 99% confidence interval
 confint(mn, level = 0.99)

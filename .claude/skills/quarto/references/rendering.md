@@ -24,7 +24,9 @@ quarto render analysis.qmd
 
 ```bash
 quarto render analysis.qmd --to html
-quarto render analysis.qmd --to pdf
+quarto render analysis.qmd --to pdf     # PDF via LaTeX (lualatex); set latex-auto-install: false in the YAML first
+quarto render analysis.qmd --to typst   # PDF via Typst
+quarto render analysis.qmd --to latex   # LaTeX source (.tex) only, not compiled
 quarto render analysis.qmd --to docx
 ```
 
@@ -64,7 +66,7 @@ quarto render doc.qmd   # Produces doc.html
 ---
 format:
   html: default
-  pdf: default
+  typst: default
   docx: default
 ---
 ```
@@ -73,8 +75,8 @@ format:
 # Render all formats
 quarto render doc.qmd
 
-# Render only PDF
-quarto render doc.qmd --to pdf
+# Render only the PDF (Typst)
+quarto render doc.qmd --to typst
 ```
 
 ### Format-Specific Options
@@ -85,9 +87,9 @@ format:
   html:
     toc: true
     theme: cosmo
-  pdf:
+  typst:
     toc: true
-    documentclass: article
+    number-sections: true
 ---
 ```
 
@@ -319,8 +321,8 @@ scripts wrap render + copy-out + browser-open in one step (the R counterpart to
 | Stage 9 notebook (eval: false, ~20 chunks) | 2-5 seconds |
 | Analysis doc (10 chunks, no caching) | 10-30 seconds |
 | Analysis doc (cached) | 3-5 seconds |
-| PDF with LaTeX | 15-60 seconds |
-| PDF with Typst | 5-15 seconds |
+| PDF with LaTeX (one-page document, lualatex) | about 5 seconds |
+| PDF with Typst (short document) | about a second |
 
 ## Common Render Commands for DAAF
 
@@ -331,8 +333,11 @@ quarto render 2026-05-08_Research_Notebook.qmd --to html
 # Analysis report with code execution
 quarto render 2026-05-08_Analysis_Report.qmd --to html
 
-# PDF report
+# PDF report through LaTeX (templates, kableExtra; set latex-auto-install: false in the YAML first)
 quarto render 2026-05-08_Report.qmd --to pdf
+
+# PDF report through Typst (fast, simple PDFs)
+quarto render 2026-05-08_Report.qmd --to typst
 
 # Check rendering setup
 quarto check knitr
@@ -345,7 +350,8 @@ quarto check knitr
 | "knitr not found" | R/knitr not installed | `quarto check knitr` |
 | Render hangs | Infinite loop in R code | Add `--execute-debug` |
 | Missing figures | Wrong working directory | Check `--execute-dir` |
-| PDF fails | No LaTeX | `quarto install tinytex` |
+| LaTeX PDF fails with "LaTeX Error: File ... not found" naming a `.sty` | A LaTeX package the image lacks | Never edit the Dockerfile on your own initiative: tell the user the document needs that package, which means adding it to the Dockerfile's TinyTeX package list and rebuilding (the user decides, may ask you to make the edit, and runs the rebuild); never `tlmgr install`. Or render with `--to typst` if nothing LaTeX-specific is needed (see `./gotchas.md` § Missing LaTeX Packages) |
+| First LaTeX render in a new container prints "This can take several minutes" | lualatex building its font-name cache, which is kept in the container | Wait; it adds about a second (see `./gotchas.md` § First LaTeX Render Builds the Font Database) |
 | Old output | Cache stale | `--cache-refresh` or delete `_cache/` |
 
 See `./gotchas.md` for more detailed troubleshooting.

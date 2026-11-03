@@ -59,7 +59,7 @@ result = gpd.sjoin_nearest(
 )
 ```
 
-`sjoin_nearest` requires both GeoDataFrames in a projected CRS for meaningful distances.
+`sjoin_nearest` requires both GeoDataFrames in a projected CRS for meaningful distances. It returns one row per equidistant nearest feature, so check for duplicated left indices (below).
 
 ### Post-Join Validation
 
@@ -161,7 +161,7 @@ gdf.dissolve(
     aggfunc="first",      # Aggregation: 'first', 'sum', 'mean', 'min', 'max', or dict
     as_index=True,        # Use group column as index
     sort=True,            # Sort by group column
-    method="unary"        # 'unary' (default), 'coverage_union' (faster if no overlaps)
+    method="unary"        # 'unary' (default), 'coverage' (faster; non-overlapping polygons only), 'disjoint_subset'
 )
 ```
 
@@ -177,7 +177,7 @@ schools_in_state = gpd.clip(schools, state_boundary)
 
 # Clip a polygon layer to a bounding box
 from shapely.geometry import box
-bbox = box(-78.0, 38.0, -76.0, 40.0)
+bbox = box(-78.0, 38.0, -76.0, 40.0)  # must be in gdf's CRS (lon/lat here); a bare shapely mask is never CRS-checked
 clipped = gpd.clip(gdf, bbox)
 ```
 

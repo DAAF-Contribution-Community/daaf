@@ -4,6 +4,8 @@ How to adapt your communication strategy based on who is reading. Every dimensio
 
 The AAAS communication framework puts it simply: **Goal → Audience → Message.** Define your purpose, identify who can act on it, then craft language for that specific reader. Never write first and identify the audience second.
 
+The example sentences, chart titles and numbers in this file are invented for illustration, including the reading-program and class-size scenario in the tone table (200 districts, $8M, 15 and 42 cents); they are not research findings.
+
 ## The Five Audience Types
 
 ### 1. Academic Researchers
@@ -40,10 +42,10 @@ Decision makers working under time constraints who need evidence translated into
 | **Length** | 2-4 pages for briefs. 1 page for executive summaries. Assume only the first page will be read. |
 | **Purpose** | Inform a decision. Translate evidence into implications without prescribing specific policy choices. |
 
-**What makes policy communication distinct:** Policymakers are buying *decision-relevant evidence*, not evaluating your methodology. They need to know: What did you find? How confident should I be? What does it mean for my decision? The IES framework emphasizes: "summarize, don't extrapolate" — present what the evidence shows without overstepping into prescription.
+**What makes policy communication distinct:** Policymakers are buying *decision-relevant evidence*, not evaluating your methodology. They need to know: What did you find? How confident should I be? What does it mean for my decision? The IES blog post's sixth strategy is "Conclude by summarizing not extrapolating" — present what the evidence shows without overstepping into prescription.
 
 **Preparing for policymaker engagement (AAAS):**
-- Understand where in the policy cycle your evidence is relevant (agenda setting, option identification, implementation, evaluation)
+- Understand where in the policy cycle your evidence is relevant (AAAS: review evidence, identify and appraise options, assess uncertainties and risks, choose and implement an option, monitor progress)
 - Define your "ask" before the meeting — what action are you requesting?
 - Be prepared for conversations of only a few minutes
 - Identify overlapping interests between your work and their agenda
@@ -84,7 +86,7 @@ Diverse audiences with varying educational backgrounds, lived experiences, and r
 | **Length** | Under 1 page for written materials. 3-5 minutes for presentations. Brevity is kindness. |
 | **Purpose** | Inform, build trust, create shared understanding. Respect the audience's intelligence while meeting them where they are. |
 
-**What makes public communication distinct:** The public audience is the most heterogeneous — they have no shared technical vocabulary and no obligation to keep reading. You must earn their attention with immediate relevance and maintain it with clarity. NIH's research shows that clear, simple communication benefits *all* readers, including experts — simplicity is a feature, not a concession.
+**What makes public communication distinct:** The public audience is the most heterogeneous — they have no shared technical vocabulary and no obligation to keep reading. You must earn their attention with immediate relevance and maintain it with clarity. NIH's *Clear & Simple* guide notes that people with average or good reading skills also appreciate messages conveyed simply and clearly — simplicity is a feature, not a concession.
 
 **Critical framing consideration:** People may see themselves in your data. If your findings are about communities, schools, or demographic groups, readers may be members of those groups. Communicate with empathy and respect. See `accessibility-equity.md` for equity-aware framing guidance.
 
@@ -105,13 +107,13 @@ Intermediaries who translate your work for their own audiences. Journalists work
 | **Length** | For interviews: prepare for 15-30 minutes but assume only 1-2 sentences will be quoted. For press releases: 1 page. For backgrounders: 2-3 pages. |
 | **Purpose** | Equip the journalist to tell an accurate story. Build a relationship for future coverage. |
 
-**What makes media communication distinct:** You are providing raw material, not a finished product. Journalists will select, condense, and reframe. Your job is to make the accurate version of the story the easiest one to tell. The AAAS recommends building ongoing relationships with journalists (not just responding reactively) and connecting with institutional communications staff who can facilitate.
+**What makes media communication distinct:** You are providing raw material, not a finished product. Journalists will select, condense, and reframe. Your job is to make the accurate version of the story the easiest one to tell. The AAAS recommends getting to know local journalists and being a resource for their questions, and working with your institution's public information officers, who act as liaisons between scientists and journalists and can help prepare interviews and core messages.
 
 **Pre-interview preparation (AAAS checklist):**
 - Who is the journalist's audience and what do they value?
 - What is your three-point core message?
 - Why should their specific audience care?
-- What are the most common misinterpretations you want to prevent?
+- Which difficult or controversial questions might come up, and how will you answer them?
 
 ---
 
@@ -173,10 +175,10 @@ When your audience is heterogeneous (e.g., a presentation to a room with both te
 
 AAAS. "Communication Toolkit." https://www.aaas.org/resources/communication-toolkit
 
-Dykes, B. (2019). *Effective Data Storytelling: How to Drive Change with Data, Narrative, and Visuals*. Wiley.
+Dykes, B. (2019). *Effective Data Storytelling: How to Drive Change with Data, Narrative and Visuals*. Wiley.
 
-IES. "Six Strategies for Effectively Communicating Research Findings to Decision Makers." https://ies.ed.gov/blogs/research/post/six-strategies-for-effectively-communicating-research-findings-to-decision-makers
+Miller, L. C., & Piver-Renna, J. (2022, October 27). Six strategies for effectively communicating research findings to decision makers. Institute of Education Sciences. https://ies.ed.gov/learn/blog/six-strategies-effectively-communicating-research-findings-decision-makers
 
 Nussbaumer Knaflic, C. (2015). *Storytelling with Data: A Data Visualization Guide for Business Professionals*. Wiley.
 
-NIH. "Clear & Simple: Developing Effective Print Materials for Low-Literate Readers." https://www.nih.gov/institutes-nih/nih-office-director/office-communications-public-liaison/clear-communication/clear-simple
+NIH. "Clear & Simple." https://www.nih.gov/institutes-nih/nih-office-director/office-communications-public-liaison/clear-communication/clear-simple (archived 2024-01-11)

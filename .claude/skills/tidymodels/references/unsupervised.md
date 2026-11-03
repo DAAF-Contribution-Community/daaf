@@ -122,7 +122,8 @@ ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = label)) +
 ### UMAP Caveats
 
 - **Visualization only**: UMAP distorts distances to preserve local neighborhoods.
-  Cluster sizes and between-cluster gaps in the plot are not meaningful.
+  Cluster sizes and between-cluster gaps in the plot may not be meaningful
+  (McInnes, Healy & Melville, 2018, Section 6).
 - **Parameter sensitivity**: Results change with `n_neighbors` and `min_dist`.
   Run multiple parameter values and report sensitivity.
 - **Reproducibility**: Always set `set.seed()` before calling `umap()`.
@@ -191,7 +192,8 @@ mean(sil[, "sil_width"])  # Average silhouette width
 | K-means (stats) | Partition data into k groups | No (standalone) |
 
 For methodology guidance on when to use clustering, PCA, or UMAP, consult
-the `data-scientist` skill's `exploratory-unsupervised.md` reference.
+the `data-scientist` skill's `exploratory-unsupervised.md` reference; its
+References section gives full citations for works cited here.
 
 ## Quick Reference
 

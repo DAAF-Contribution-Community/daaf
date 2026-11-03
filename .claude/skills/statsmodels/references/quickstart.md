@@ -321,14 +321,30 @@ Covariance types available:
 |------------|-------------|------------|
 | `'nonrobust'` | Standard OLS (default) | Homoskedastic errors assumed |
 | `'HC0'` | White (1980) | Cross-sectional heteroskedasticity |
-| `'HC1'` | White with df correction | Cross-sectional heteroskedasticity (preferred) |
+| `'HC1'` | White with df correction (OLS/WLS only: GLM and discrete-model results return HC0 for `'HC1'`, `'HC2'` and `'HC3'`) | Cross-sectional heteroskedasticity (preferred) |
 | `'HC2'` | Leverage-adjusted | Cross-sectional heteroskedasticity |
 | `'HC3'` | Jackknife-approximation | Small-sample cross-sectional |
 | `'cluster'` | One-way clustered | Panel/grouped data, `cov_kwds={'groups': var}` required |
 | `'HAC'` | Newey-West | Time series with autocorrelation |
 
-The `cov_type` only changes standard errors and test statistics — point estimates
-(coefficients) are unaffected.
+The `cov_type` leaves point estimates unchanged, but it changes the standard
+errors **and the reference distribution**. With the default `'nonrobust'`, OLS
+p-values and CIs use t(df_resid). With any robust `cov_type`, statsmodels 0.14.6
+uses the normal distribution unless you pass `use_t=True` (`results.use_t` shows
+which). GLM and discrete models use the normal even when nonrobust. For
+`'cluster'`, the SE already includes the factor G/(G−1)·(N−1)/(N−K)
+(`use_correction=True`, the default), and `df_correction=True` (the default) sets
+the inference df to G−1, but that df is used only when `use_t=True`. To match
+pyfixest `vcov={"CRV1": "g"}` (SEs, p-values and CIs):
+
+```python
+results = smf.ols("y ~ x1", data=df).fit(
+    cov_type='cluster', cov_kwds={'groups': df['g']}, use_t=True)
+```
+
+`cov_type='HC1', use_t=True` likewise matches pyfixest `vcov="hetero"`. With few
+clusters the choice matters: in one synthetic example with 15 clusters, a default
+(normal) p-value of 0.429 is 0.443 under t(14).
 
 ---
 
@@ -397,8 +413,8 @@ results = smf.ols("y ~ scale(income)", data=df).fit()
 |------|-------------|----------|
 | Basic OLS | `smf.ols("y ~ x", data=df).fit()` | `pf.feols("y ~ x", data=df)` |
 | OLS with fixed effects | Not recommended (use dummies) | `pf.feols("y ~ x \| fe1 + fe2", data=df)` |
-| Heteroskedasticity-robust SE | `.fit(cov_type='HC1')` | `.vcov("hetero")` |
-| Clustered SE | `.fit(cov_type='cluster', cov_kwds={'groups': var})` | `.vcov({"CRV1": "cluster_var"})` |
+| Heteroskedasticity-robust SE | `.fit(cov_type='HC1', use_t=True)` | `.vcov("hetero")` |
+| Clustered SE | `.fit(cov_type='cluster', cov_kwds={'groups': var}, use_t=True)` | `.vcov({"CRV1": "cluster_var"})` |
 | GLM (logit, Poisson, etc.) | `smf.glm(..., family=...)` | Limited (`feglm` only) |
 | Time series models | Full support (ARIMA, VAR, etc.) | Not available |
 | Diagnostic tests | Full test suite | Not available |
@@ -424,8 +440,9 @@ results = smf.ols("y ~ scale(income)", data=df).fit()
 - Estimating many models in a loop over panel data
 
 Both libraries support heteroskedasticity-robust and clustered standard errors for
-OLS. For plain OLS without FE, either works — statsmodels has more post-estimation
-diagnostics.
+OLS (statsmodels needs `use_t=True` for its p-values to match pyfixest's; see
+Robust Standard Errors). For plain OLS without FE, either works — statsmodels has
+more post-estimation diagnostics.
 
 ---
 

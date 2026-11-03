@@ -24,7 +24,9 @@ linearmodels provides rich covariance estimation across all model types. Key poi
 - **Panel-aware clustering**: entity and time dimensions are built into the API
   (`cluster_entity`, `cluster_time`) -- no need to pass cluster variables manually
 - **Driscoll-Kraay SEs**: kernel-based covariance robust to cross-sectional dependence,
-  available for panel models -- not offered by statsmodels
+  available for PanelOLS, PooledOLS, RandomEffects and FirstDifferenceOLS (BetweenOLS
+  accepts only `unadjusted`, `robust` and `clustered`; FamaMacBeth's `kernel` is a HAC
+  on the per-period estimates). statsmodels offers DK as `cov_type="hac-groupsum"`.
 - **Small-sample corrections**: all covariance estimators accept a `debiased` parameter
 - **SE type is specified at `.fit()` time**, not post-estimation -- unlike pyfixest's
   `.vcov()` method, you must re-fit to change the covariance type
@@ -72,8 +74,10 @@ res = mod.fit(cov_type="clustered", clusters=df["state_id"])
 - Entity clustering accounts for arbitrary within-entity serial correlation
 - Time clustering accounts for cross-sectional correlation within time periods
 - Two-way clustering accounts for both simultaneously (Cameron, Gelbach, Miller 2011)
-- When clustering by the same variable used for FE, the df correction properly
-  accounts for absorbed effects
+- When clustering by the same variable as a single FE (e.g. entity FE with
+  entity clusters), the covariance scale does not count the nested effects, but
+  p-values still use t(n-k-effects), not t(G-1) (see
+  [The debiased Parameter](#the-debiased-parameter))
 - Custom `clusters` variable must have the same index as the dependent variable
 
 ### Driscoll-Kraay (Kernel)
@@ -118,6 +122,17 @@ res = mod.fit(cov_type="unadjusted")
 
 # HAC-adjusted FM SEs (accounts for serial dependence in coefficient averages)
 res = mod.fit(cov_type="kernel", kernel="bartlett", bandwidth=5)
+```
+
+With the default `debiased=True`, p-values and CIs use t(`df_resid`), and
+`df_resid` is all observations minus k, not the T-1 periods the averages rest
+on. For t(T-1) p-values, recompute from the t-statistics:
+
+```python
+from scipy import stats
+
+T = res.all_params.dropna().shape[0]  # periods with a cross-sectional fit
+p_T1 = 2 * stats.t.sf(res.tstats.abs(), T - 1)
 ```
 
 ## IV Model Covariance Types
@@ -187,6 +202,7 @@ res = mod.fit(cov_type="clustered", clusters=df["group"])
 
 For `IVSystemGMM`, the `weight_type` parameter controls the GMM weight matrix
 independently of `cov_type`, following the same pattern as single-equation `IVGMM`.
+IVSystemGMM supports `unadjusted`, `robust`, `kernel` only.
 
 ## GMM Weight Matrices
 
@@ -196,23 +212,27 @@ while `cov_type` determines inference. These should generally match.
 ```python
 from linearmodels.iv import IVGMM
 
-mod = IVGMM.from_formula(
-    "np.log(wage) ~ 1 + exper + [educ ~ motheduc + fatheduc]", data=df
-)
+formula = "np.log(wage) ~ 1 + exper + [educ ~ motheduc + fatheduc]"
+
+# weight_type and its options go to the model; fit() takes cov_type and its own options (kernel, bandwidth, clusters are not inherited)
 
 # Homoskedastic weight matrix
-res = mod.fit(weight_type="unadjusted", cov_type="unadjusted")
+mod = IVGMM.from_formula(formula, data=df, weight_type="unadjusted")
+res = mod.fit(cov_type="unadjusted")
 
 # Robust weight matrix (heteroskedastic-efficient)
-res = mod.fit(weight_type="robust", cov_type="robust")
+mod = IVGMM.from_formula(formula, data=df, weight_type="robust")
+res = mod.fit(cov_type="robust")
 
 # HAC weight matrix (serial-correlation-efficient)
-res = mod.fit(weight_type="kernel", kernel="bartlett", bandwidth=5,
-              cov_type="kernel")
+mod = IVGMM.from_formula(formula, data=df, weight_type="kernel",
+                         kernel="bartlett", bandwidth=5)
+res = mod.fit(cov_type="kernel", kernel="bartlett", bandwidth=5)
 
 # Clustered weight matrix
-res = mod.fit(weight_type="clustered", clusters=df["group"],
-              cov_type="clustered")
+mod = IVGMM.from_formula(formula, data=df, weight_type="clustered",
+                         clusters=df["group"])
+res = mod.fit(cov_type="clustered", clusters=df["group"])
 ```
 
 | `weight_type` | Efficient Under | Pair with `cov_type` |
@@ -236,9 +256,12 @@ res = mod.fit(cov_type="clustered", cluster_entity=True, debiased=True)
 res = mod.fit(cov_type="clustered", cluster_entity=True, debiased=False)
 ```
 
-- When `True`: applies (N-1)/(N-K) type adjustments to the covariance matrix
-- For clustered SEs with FE: the correction accounts for degrees of freedom
-  consumed by absorbed entity/time effects
+- When `True`: scales by n/(n-k) and reports t(df_resid) p-values and CIs; when
+  `False`, normal (z)
+- Absorbed effects are counted separately (and not at all when a single FE is
+  nested in the cluster variable). For the G/(G-1) cluster factor in panel
+  models add `group_debias=True`; IV `clustered` + `debiased=True` already
+  applies it
 - Default value varies by model type -- always specify explicitly for
   reproducibility
 
@@ -273,14 +296,14 @@ most widely reported in applied econometrics.
 
 | SE Type | linearmodels | pyfixest | statsmodels |
 |---------|-------------|----------|-------------|
-| Robust (HC1) | `cov_type="robust"` | `vcov="hetero"` | `cov_type="HC1"` |
-| Cluster (1-way) | `cov_type="clustered", cluster_entity=True` | `vcov={"CRV1": "entity"}` | Limited support |
-| Cluster (2-way) | `cluster_entity=True, cluster_time=True` | `vcov={"CRV1": "e+t"}` | Not available |
-| Driscoll-Kraay | `cov_type="kernel", kernel="bartlett"` | `vcov="DK"` | Not available |
+| Robust (HC1) | `cov_type="robust"` (HC1 only with `debiased=True`, the panel default; IV default is HC0) | `vcov="hetero"` | `cov_type="HC1"` |
+| Cluster (1-way) | `cov_type="clustered", cluster_entity=True` | `vcov={"CRV1": "entity"}` | `cov_type="cluster"` |
+| Cluster (2-way) | `cluster_entity=True, cluster_time=True` | `vcov={"CRV1": "e+t"}` | `cov_type="cluster"` (2-column `groups`) |
+| Driscoll-Kraay | `cov_type="kernel", kernel="bartlett"` | `vcov="DK"` | `cov_type="hac-groupsum"` |
 | HAC (Newey-West) | `cov_type="kernel", kernel="bartlett"` | `vcov="NW"` | `cov_type="HAC"` |
 | CRV3 | Not available | `vcov={"CRV3": "g"}` | Not available |
 | Wild bootstrap | Not available | `.wildboottest()` | Not available |
-| Post-estimation switch | Not available (must re-fit) | `.vcov("hetero")` | Not available |
+| Post-estimation switch | Not available (must re-fit) | `.vcov("hetero")` | `get_robustcov_results()` |
 
 ## Key Differences from pyfixest
 

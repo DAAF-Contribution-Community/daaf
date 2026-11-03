@@ -17,6 +17,11 @@ setup() {
 }
 
 teardown() {
+    # The unreadable-settings loader tests chmod the fixture to 000; give it its
+    # permissions back so the fixture tree is left in a normal state for removal.
+    if [ -e "${TEST_DIR}/environment_settings.txt" ]; then
+        chmod 644 "${TEST_DIR}/environment_settings.txt" 2>/dev/null || true
+    fi
     common_teardown
 }
 
@@ -488,6 +493,295 @@ teardown() {
     assert_output --partial "NAME=UNSET"
 }
 
+@test "load_daaf_settings returns non-zero on an unreadable file and adopts nothing" {
+    # An existing file that cannot be opened must be a tested failure, not a
+    # silent no-op: under `set -e`, a caller's `if ! load_daaf_settings` runs the
+    # loader with errexit off, so only an explicit non-zero return reaches it.
+    # Nothing is adopted (the read never starts), so the env and tracker are
+    # exactly as before the call; an exported value is untouched.
+    printf 'DAAF_PROJECT_NAME=fromfile\nDAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PROJECT_NAME DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DEV=7
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+        echo "DEV=${DAAF_DEV}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "NAME=UNSET"
+    assert_output --partial "PORT=UNSET"
+    assert_output --partial "DEV=7"
+    assert_output --partial "TRACKED=[]"
+    # Tested in a condition, the failure never reaches the ERR trap.
+    refute_output --partial "ERR_TRAP"
+    # The open check is silent: the caller prints its own message, so bash's raw
+    # redirection error must not appear above it.
+    refute_output --partial "Permission denied"
+}
+
+@test "load_daaf_settings on an unreadable file returns a status in POSIX mode (POSIXLY_CORRECT)" {
+    # The silent open check must use a regular builtin (`true`), not `:`: in
+    # POSIX mode a redirection error on a special builtin exits the whole shell
+    # silently, so the caller never gets to print its message.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run env POSIXLY_CORRECT=1 bash -c '
+        set -Eeuo pipefail
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "AFTER_CALL_REACHED"
+    '
+    assert_success
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "AFTER_CALL_REACHED"
+    refute_output --partial "Permission denied"
+}
+
+@test "load_daaf_settings on an unreadable file still stops a plain set -e caller" {
+    # A caller that runs the loader unguarded is still ended by the non-zero
+    # return under `set -e`. The open check is silent, so such a caller exits
+    # without bash's raw "Permission denied" line -- and without any message.
+    # That is why every shipped caller tests the result and explains the failure
+    # itself (daaf.sh, view_quarto.sh, view_notebooks.sh, view_logs.sh,
+    # run_vscode.sh; each suite pins its message).
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run bash -c '
+        set -euo pipefail
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings "./environment_settings.txt"
+        echo "SHOULD_NOT_PRINT"
+    '
+    assert_failure
+    refute_output --partial "Permission denied"
+    refute_output --partial "SHOULD_NOT_PRINT"
+}
+
+@test "load_daaf_settings silences only the failed open, not later errors" {
+    # The 2>/dev/null is scoped to the open check alone. A copy of the library
+    # gets one extra stderr line just after that check (a stand-in for any
+    # loader bug); it must reach the caller, and the load must still succeed.
+    # The source-file seam (sed on a unique source line) does not depend on how
+    # `declare -f` formats the body, which differs across bash versions.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    sed 's/^    local key val line$/    local key val line; echo "INJECTED_LOADER_STDERR" >\&2/' \
+        "${REPO_ROOT}/scripts/host/daaf_lib.sh" > "${TEST_DIR}/lib_injected.sh"
+    [ "$(grep -c 'INJECTED_LOADER_STDERR' "${TEST_DIR}/lib_injected.sh")" -eq 1 ]
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "./lib_injected.sh"
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "INJECTED_LOADER_STDERR"
+    assert_output --partial "RC=0"
+    assert_output --partial "PORT=3001"
+    refute_output --partial "ERR_TRAP"
+}
+
+@test "load_daaf_settings does not hide an unbound-variable bug from a guarded caller" {
+    # The shape a closing review found hidden: a nounset error inside the loader,
+    # called as `if ! load_daaf_settings`. Bash ends the script on it either way;
+    # the error text must be visible, and the caller's "cannot read" branch must
+    # not run in its place.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    sed 's/^    local key val line$/    local key val line; : "${_DAAF_TEST_INJECTED_UNBOUND}"/' \
+        "${REPO_ROOT}/scripts/host/daaf_lib.sh" > "${TEST_DIR}/lib_injected.sh"
+    [ "$(grep -c '_DAAF_TEST_INJECTED_UNBOUND' "${TEST_DIR}/lib_injected.sh")" -eq 1 ]
+    run bash -c '
+        set -Eeuo pipefail
+        unset _DAAF_LIB_LOADED _DAAF_TEST_INJECTED_UNBOUND
+        source "./lib_injected.sh"
+        if ! load_daaf_settings "./environment_settings.txt"; then
+            echo "CALLER_SAYS_CANNOT_READ"
+        fi
+        echo "SHOULD_NOT_PRINT"
+    '
+    assert_failure
+    assert_output --partial "_DAAF_TEST_INJECTED_UNBOUND: unbound variable"
+    refute_output --partial "CALLER_SAYS_CANNOT_READ"
+    refute_output --partial "SHOULD_NOT_PRINT"
+}
+
+# =========================================================================
+# Settings provenance + reload (reload_daaf_settings)
+# =========================================================================
+# load_daaf_settings records which keys it adopted FROM THE FILE in
+# _DAAF_KEYS_FROM_FILE; reload_daaf_settings unsets exactly those and reloads,
+# so an edited file takes effect while user-exported values keep winning.
+
+@test "reload_daaf_settings picks up a value changed in the file after the first load" {
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings
+        echo "FIRST=${DAAF_PORT_MARIMO}"
+        printf "DAAF_PORT_MARIMO=3002\n" > ./environment_settings.txt
+        load_daaf_settings
+        echo "PLAIN_RELOAD=${DAAF_PORT_MARIMO}"
+        reload_daaf_settings
+        echo "AFTER_RELOAD=${DAAF_PORT_MARIMO}"
+    '
+    assert_success
+    assert_output --partial "FIRST=3001"
+    # A plain second load keeps the first value (already-set wins) -- the reason
+    # reload_daaf_settings exists.
+    assert_output --partial "PLAIN_RELOAD=3001"
+    assert_output --partial "AFTER_RELOAD=3002"
+}
+
+@test "reload_daaf_settings keeps a user-exported value winning over the file" {
+    printf 'DAAF_PROJECT_NAME=fromfile\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_PROJECT_NAME=fromshell
+        load_daaf_settings
+        printf "DAAF_PROJECT_NAME=edited\n" > ./environment_settings.txt
+        reload_daaf_settings
+        echo "NAME=${DAAF_PROJECT_NAME}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "NAME=fromshell"
+    # The user export was never adopted from the file, so it is never recorded.
+    assert_output --partial "TRACKED=[]"
+}
+
+@test "reload_daaf_settings unsets a key that was removed from the file" {
+    printf 'DAAF_PORT_VSCODE=3020\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PORT_VSCODE
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings
+        printf "# DAAF_PORT_VSCODE removed\n" > ./environment_settings.txt
+        reload_daaf_settings
+        echo "PORT=${DAAF_PORT_VSCODE:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "PORT=UNSET"
+}
+
+@test "load_daaf_settings tracks only file-adopted keys, without duplicates" {
+    # DAAF_DEV is pre-exported (not adopted); DAAF_PORT_MARIMO appears twice with an
+    # empty first value, so it is adopted twice but must be listed once.
+    printf 'DAAF_PROJECT_NAME=inst\nDAAF_PORT_MARIMO=\nDAAF_PORT_MARIMO=3001\nDAAF_DEV=1\n' \
+        > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PROJECT_NAME DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DEV=0
+        load_daaf_settings
+        load_daaf_settings
+        reload_daaf_settings
+        load_daaf_settings
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+        echo "PORT=${DAAF_PORT_MARIMO}"
+        echo "DEV=${DAAF_DEV}"
+    '
+    assert_success
+    assert_output --partial "TRACKED=[DAAF_PROJECT_NAME DAAF_PORT_MARIMO]"
+    assert_output --partial "PORT=3001"
+    assert_output --partial "DEV=0"
+}
+
+@test "reload_daaf_settings propagates a read failure (tracked keys stay unset)" {
+    # The reload unsets the file-adopted keys BEFORE it reads, so on a read
+    # failure they stay unset and the tracker stays empty; a user-exported value
+    # (never tracked) keeps its value. Callers that must keep their settings
+    # snapshot first (daaf.sh handle_restart) -- this test pins what they undo.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    chmod 644 "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_PROJECT_NAME=fromshell
+        load_daaf_settings
+        echo "BEFORE=${DAAF_PORT_MARIMO} TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+        chmod 000 ./environment_settings.txt
+        if reload_daaf_settings; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+        echo "NAME=${DAAF_PROJECT_NAME}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "BEFORE=3001 TRACKED=[DAAF_PORT_MARIMO]"
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "PORT=UNSET"
+    assert_output --partial "NAME=fromshell"
+    assert_output --partial "TRACKED=[]"
+    refute_output --partial "ERR_TRAP"
+}
+
+@test "reload_daaf_settings only ever unsets DAAF_* names (tampered tracker)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        _DAAF_KEYS_FROM_FILE="HOME DAAF_PORT_MARIMO"
+        export DAAF_PORT_MARIMO=1234
+        reload_daaf_settings
+        echo "HOME_SET=${HOME:+yes}"
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "HOME_SET=yes"
+    assert_output --partial "PORT=UNSET"
+}
+
+@test "daaf_lib.sh resets the provenance tracker at load (an inherited value is ignored)" {
+    run env _DAAF_KEYS_FROM_FILE="DAAF_PROJECT_NAME" bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "TRACKED=[]"
+}
+
 # =========================================================================
 # Data-volume name resolver (resolve_data_volume_name)
 # =========================================================================
@@ -546,6 +840,225 @@ teardown() {
 }
 
 # =========================================================================
+# Compose project-name normalization (resolve_project_name) and its copies
+# =========================================================================
+# Docker Compose normalizes the project name (compose-go NormalizeProjectName:
+# lowercase, keep [a-z0-9_-], trim leading '_'/'-'), so `Work` in the settings file
+# makes the volume "work_daaf-data". Every host script that derives a Docker name
+# from the project must use that same name. The helper lives in daaf_lib.sh; the
+# standalone scripts (backup_daaf.sh, restore_from_backup.sh, update_daaf.sh, and the
+# maintainer harness test_migration.sh) carry a byte-identical copy, and install.sh
+# and run_daaf.sh carry their own two inline lines. The tests below pin all of them
+# to one fixed input set.
+#
+# The scripts that carry an inline copy (word-split on purpose: plain file names).
+_PROJECT_NAME_COPIES="backup_daaf.sh restore_from_backup.sh update_daaf.sh test_migration.sh"
+#
+# The fixed input set: "<printf format of the input><TAB><expected>". Non-ASCII
+# inputs are octal escapes so this file stays ASCII: \303\204 is A-umlaut, \342\204\252
+# the Kelvin sign U+212A (Go's Unicode lowercasing would keep it as 'k'; every DAAF
+# copy drops it, review 45q NIT-1), \304\260 a dotted capital I. An empty expected
+# value means the name is refused.
+_project_name_cases() {
+    printf '%s\t%s\n' \
+        'Work' 'work' \
+        'work ' 'work' \
+        'x # mine' 'xmine' \
+        '"x' 'x' \
+        '_x' 'x' \
+        '-x' 'x' \
+        '-_x' 'x' \
+        'x.y' 'xy' \
+        '\303\204BC' 'bc' \
+        '\342\204\252x' 'x' \
+        '\304\260x' 'x' \
+        '___' '' \
+        '@@' '' \
+        'daaf' 'daaf' \
+        'daaf2' 'daaf2' \
+        'My_Proj-1' 'my_proj-1' \
+        '--a-b_' 'a-b_'
+}
+
+# Run the normalizer defined in the file $1 (which must define resolve_project_name)
+# over the fixed input set, printing "OK" or "MISMATCH" per case, then the two
+# default cases (unset and empty DAAF_PROJECT_NAME => "daaf").
+_run_project_name_cases() {
+    local def="$1" fmt want got
+    while IFS="$(printf '\t')" read -r fmt want; do
+        # `--` so inputs such as "-x" are not read as printf options.
+        # shellcheck disable=SC2059  # the case column IS a printf format (octal escapes)
+        got="$(DAAF_PROJECT_NAME="$(printf -- "${fmt}")" bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+        if [ "${got}" = "${want}" ]; then echo "OK [${fmt}]"; else echo "MISMATCH [${fmt}] want=[${want}] got=[${got}]"; fi
+    done <<EOF
+$(_project_name_cases)
+EOF
+    got="$(env -u DAAF_PROJECT_NAME bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+    echo "UNSET=[${got}]"
+    got="$(DAAF_PROJECT_NAME= bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+    echo "EMPTY=[${got}]"
+}
+
+@test "resolve_project_name normalizes DAAF_PROJECT_NAME as Docker Compose does (fixed input set)" {
+    run _run_project_name_cases "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    refute_output --partial "MISMATCH"
+    # 17 table cases, plus the two defaults.
+    [ "$(printf '%s\n' "${output}" | grep -c '^OK ')" -eq 17 ]
+    assert_output --partial "UNSET=[daaf]"
+    assert_output --partial "EMPTY=[daaf]"
+}
+
+@test "resolve_data_volume_name uses the normalized project name (Work -> work_daaf-data)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="-Work.1"
+        resolve_data_volume_name
+    '
+    assert_success
+    # Compose created "work1_daaf-data" for this name, not "-Work.1_daaf-data".
+    assert_output "work1_daaf-data"
+}
+
+@test "resolve_data_volume_name never normalizes the DAAF_DATA_VOLUME_NAME override" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DATA_VOLUME_NAME="My.Shared_Vol"
+        export DAAF_PROJECT_NAME="Work"
+        resolve_data_volume_name
+    '
+    assert_success
+    # The override is a literal Docker volume name: upper case and '.' are kept.
+    assert_output "My.Shared_Vol"
+}
+
+@test "resolve_data_volume_name prints nothing and fails when the project name normalizes to nothing" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="___"
+        resolve_data_volume_name
+    '
+    assert_failure
+    assert_output ""
+}
+
+@test "resolve_project_name copies in backup/restore/update/test_migration are byte-identical to daaf_lib.sh" {
+    # The standalone scripts do not source daaf_lib.sh, so each carries the function
+    # inline. Extract each definition (from the `resolve_project_name() {` line to
+    # the first column-0 `}`) and compare bytes with the library's.
+    local lib f extracted
+    lib="$(sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/daaf_lib.sh")"
+    # Guard against an empty or wrong extraction making every copy "equal".
+    [ "$(printf '%s\n' "${lib}" | grep -c 'LC_ALL=C tr -cd')" -eq 1 ]
+    for f in ${_PROJECT_NAME_COPIES}; do
+        extracted="$(sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/${f}")"
+        if [ "${extracted}" != "${lib}" ]; then
+            echo "DIFFERS: ${f}"
+            diff <(printf '%s\n' "${lib}") <(printf '%s\n' "${extracted}") || true
+            return 1
+        fi
+    done
+}
+
+@test "resolve_project_name: each inline copy, install.sh and run_daaf.sh give the library's results on the fixed input set" {
+    local f n
+    # The library is the reference (pinned to the expected column above); every copy
+    # is run over the same cases and must give the same per-case lines.
+    run _run_project_name_cases "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    local want="${output}"
+    for f in ${_PROJECT_NAME_COPIES}; do
+        sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/${f}" > "${TEST_DIR}/copy_${f}"
+        run _run_project_name_cases "${TEST_DIR}/copy_${f}"
+        assert_success
+        [ "${output}" = "${want}" ] || { echo "COPY ${f} differs:"; echo "${output}"; return 1; }
+    done
+    # install.sh runs standalone (curl | bash) and keeps its own two lines: the
+    # lowercase-and-filter line and the leading-'_'/'-' trim. Wrap exactly those
+    # lines (each must occur once) in a resolve_project_name with the installer's
+    # own default and empty handling, then run the same cases.
+    n="$(grep -cF 'INSTALL_TARGET_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/install.sh")"
+    [ "${n}" -eq 1 ]
+    n="$(grep -cF 'INSTALL_TARGET_PROJECT="${INSTALL_TARGET_PROJECT#' "${REPO_ROOT}/scripts/host/install.sh")"
+    [ "${n}" -eq 1 ]
+    {
+        echo 'resolve_project_name() {'
+        echo '    PROJECT_NAME_GIVEN="${DAAF_PROJECT_NAME:-}"'
+        echo '    INSTALL_TARGET_PROJECT="daaf"'
+        echo '    if [ -n "${PROJECT_NAME_GIVEN}" ]; then'
+        grep -F 'INSTALL_TARGET_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/install.sh"
+        grep -F 'INSTALL_TARGET_PROJECT="${INSTALL_TARGET_PROJECT#' "${REPO_ROOT}/scripts/host/install.sh"
+        echo '    fi'
+        echo '    printf "%s\n" "${INSTALL_TARGET_PROJECT}"'
+        echo '}'
+    } > "${TEST_DIR}/copy_install.sh"
+    run _run_project_name_cases "${TEST_DIR}/copy_install.sh"
+    assert_success
+    [ "${output}" = "${want}" ] || { echo "install.sh differs:"; echo "${output}"; return 1; }
+    # run_daaf.sh also runs standalone and keeps its own two lines, which feed
+    # every -p and DAAF_PROJECT_NAME= it prints (its default "daaf" is inside the
+    # first line). Wrap exactly those lines the same way.
+    n="$(grep -cF 'HINT_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/run_daaf.sh")"
+    [ "${n}" -eq 1 ]
+    n="$(grep -cF 'HINT_PROJECT="${HINT_PROJECT#' "${REPO_ROOT}/scripts/host/run_daaf.sh")"
+    [ "${n}" -eq 1 ]
+    {
+        echo 'resolve_project_name() {'
+        grep -F 'HINT_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/run_daaf.sh"
+        grep -F 'HINT_PROJECT="${HINT_PROJECT#' "${REPO_ROOT}/scripts/host/run_daaf.sh"
+        echo '    printf "%s\n" "${HINT_PROJECT}"'
+        echo '}'
+    } > "${TEST_DIR}/copy_run_daaf.sh"
+    run _run_project_name_cases "${TEST_DIR}/copy_run_daaf.sh"
+    assert_success
+    [ "${output}" = "${want}" ] || { echo "run_daaf.sh differs:"; echo "${output}"; return 1; }
+}
+
+@test "resolve_project_name: no host script derives a Docker name from the RAW DAAF_PROJECT_NAME" {
+    # The copies above are only useful if the scripts call them. Every code line (not
+    # a comment) that once read "${DAAF_PROJECT_NAME:-daaf}" for a volume or container
+    # name must now go through resolve_project_name, so a revert of any one site fails
+    # here. (The backup/restore/update suites check the names behaviourally; this pin
+    # also covers test_migration.sh, which needs Docker and a network to run.)
+    local f n
+    for f in daaf_lib.sh ${_PROJECT_NAME_COPIES}; do
+        n="$(grep -v '^[[:space:]]*#' "${REPO_ROOT}/scripts/host/${f}" | grep -c 'DAAF_PROJECT_NAME:-daaf' || true)"
+        [ "${n}" -eq 0 ] || { echo "${f}: ${n} raw DAAF_PROJECT_NAME:-daaf code line(s)"; return 1; }
+    done
+    for f in backup_daaf.sh restore_from_backup.sh test_migration.sh; do
+        n="$(grep -cxF 'PROJECT_NAME="$(resolve_project_name)"' "${REPO_ROOT}/scripts/host/${f}" || true)"
+        [ "${n}" -eq 1 ] || { echo "${f}: PROJECT_NAME is not taken from resolve_project_name (${n})"; return 1; }
+    done
+    # test_migration.sh: every identifier it checks is built from that PROJECT_NAME.
+    n="$(grep -cE '^readonly (VOLUME_NAME|CLAUDE_VOLUME_NAME|CONTAINER_MAIN|CONTAINER_INIT|IMAGE_NAME)="\$\{PROJECT_NAME\}[-_]' "${REPO_ROOT}/scripts/host/test_migration.sh" || true)"
+    [ "${n}" -eq 5 ]
+    # daaf_lib.sh's own data-volume resolver calls the helper.
+    n="$(sed -n '/^resolve_data_volume_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/daaf_lib.sh" | grep -cF 'project="$(resolve_project_name)"' || true)"
+    [ "${n}" -eq 1 ]
+}
+
+@test "resolve_project_name: test_migration.sh refuses a project name that normalizes to nothing" {
+    # Static: the harness needs Docker and a network to run. Its empty-name refusal
+    # must follow the derivation and exit before any identifier is used.
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh" derive refuse first_use
+    derive="$(grep -nxF 'PROJECT_NAME="$(resolve_project_name)"' "${sh}" | cut -d: -f1)"
+    refuse="$(grep -nxF 'if [ -z "${PROJECT_NAME}" ]; then' "${sh}" | head -n 1 | cut -d: -f1)"
+    first_use="$(grep -nE '^readonly VOLUME_NAME=' "${sh}" | cut -d: -f1)"
+    echo "derive=${derive} refuse=${refuse} first_use=${first_use}"
+    [ -n "${derive}" ] && [ -n "${refuse}" ] && [ -n "${first_use}" ]
+    [ "${derive}" -lt "${refuse}" ]
+    [ "${refuse}" -lt "${first_use}" ]
+    run sed -n "${refuse},$((refuse + 5))p" "${sh}"
+    assert_output --partial "cannot be used as a Docker Compose project name."
+    assert_output --partial "exit 1"
+}
+
+# =========================================================================
 # docker-compose.yml multi-instance interpolation defaults
 # =========================================================================
 
@@ -580,7 +1093,12 @@ teardown() {
 
 @test "Dockerfile installs Codex in every image while developer tools remain opt-in" {
     # Match active ARG directives only; comments cannot satisfy either assertion.
-    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.144\.1[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.164\.0[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    # Each architecture's tarball is checksum-pinned (64 lowercase hex digits).
+    run grep -E '^ARG CODEX_SHA256_AMD64=[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^ARG CODEX_SHA256_ARM64=[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
     assert_success
     run grep -E '^[[:space:]]*ARG DAAF_DEV_CODEX_VERSION([=[:space:]]|$)' "${REPO_ROOT}/Dockerfile"
     assert_failure
@@ -597,6 +1115,16 @@ teardown() {
     refute_output --partial 'if [ "${DAAF_DEV}" = "1" ]'
     assert_output --partial 'CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz"'
     assert_output --partial 'https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_TGZ}'
+    # The download is verified before extraction, selecting the arch's hash.
+    assert_output --partial 'amd64) CODEX_TRIPLE=x86_64; CODEX_SHA256="${CODEX_SHA256_AMD64}" ;;'
+    assert_output --partial 'arm64) CODEX_TRIPLE=aarch64; CODEX_SHA256="${CODEX_SHA256_ARM64}" ;;'
+    assert_output --partial '&& echo "${CODEX_SHA256}  /tmp/${CODEX_TGZ}" | sha256sum -c - \'
+    local verify_line extract_line
+    verify_line=$(printf '%s\n' "${output}" | grep -n -F 'sha256sum -c -' | cut -d: -f1)
+    extract_line=$(printf '%s\n' "${output}" | grep -n -F 'tar zxf "/tmp/${CODEX_TGZ}"' | cut -d: -f1)
+    [ -n "${verify_line}" ]
+    [ -n "${extract_line}" ]
+    [ "${verify_line}" -lt "${extract_line}" ]
     assert_output --partial 'mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex'
     assert_output --partial 'chmod +x /usr/local/bin/codex'
     assert_output --partial 'rm -f "/tmp/${CODEX_TGZ}"'
@@ -622,4 +1150,118 @@ teardown() {
     # No opt-in guard or ARG survives the unconditional migration.
     run grep -q 'DAAF_R' "${REPO_ROOT}/Dockerfile"
     assert_failure
+}
+
+@test "Dockerfile freezes the build to its environment dates (digests, uv cutoff, apt snapshot same or later)" {
+    # Base image: digest-pinned via a pre-FROM ARG, and the only FROM is that ARG.
+    run grep -E '^ARG UBUNTU_BASE_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^FROM ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ "${#lines[@]}" -eq 1 ]
+    [ "${lines[0]}" = 'FROM ${UBUNTU_BASE_IMAGE}' ]
+
+    # uv binaries: tag AND index digest on the literal COPY --from reference.
+    run grep -E '^COPY --from=ghcr\.io/astral-sh/uv:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64} /uv /uvx /usr/local/bin/$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # Python cutoff: full RFC 3339 UTC timestamp (never a TZ-dependent bare
+    # date), persisted as ENV so in-container dry-runs see the same date.
+    run grep -E '^ARG UV_EXCLUDE_NEWER=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local uv_cutoff="${output#ARG UV_EXCLUDE_NEWER=}"
+    run grep -E '^ENV UV_EXCLUDE_NEWER=\$\{UV_EXCLUDE_NEWER\}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # apt snapshot ID: the SAME instant as the uv cutoff by default, or LATER
+    # during a dated security exception listed in the Dockerfile banner (now
+    # exception (3), since 2026-10-28: 20261024T000000Z for Ubuntu's
+    # poppler/ca-certificates/openssl fixes, while the Python date stays;
+    # remove this note when the exception retires, Dockerfile banner RETIRING
+    # THEM). Never earlier: that would freeze apt before the Python date. Both
+    # IDs are fixed-width UTC (YYYYMMDDTHHMMSSZ), so a string comparison orders
+    # them. The next test fails a silent divergence.
+    run grep -E '^ARG UBUNTU_SNAPSHOT=[0-9]{8}T[0-9]{6}Z$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local snapshot_id="${output#ARG UBUNTU_SNAPSHOT=}"
+    local cutoff_compact="${uv_cutoff//[-:]/}"
+    [ "${#cutoff_compact}" -eq "${#snapshot_id}" ]
+    run bash -c '[[ "$1" == "$2" || "$1" > "$2" ]]' _ "${snapshot_id}" "${cutoff_compact}"
+    assert_success
+
+    # apt is frozen by DIRECT snapshot URIs (architecture-independent), not by
+    # apt's Snapshot: field / APT::Snapshot (shadowed live-archive fetches, or a
+    # silent live fallback) and not by a ports.ubuntu.com host-mapping conf.
+    run grep -F 'SNAPSHOT_URI="https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -F '"URIs: ${SNAPSHOT_URI}"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^[^#]*(50daaf-snapshot|Snapshot: \$|APT::Snapshot|--snapshot)' "${REPO_ROOT}/Dockerfile"
+    assert_failure
+
+    # The snapshot origin guard helper is defined and refreshes with --error-on=any.
+    run grep -F "COPY --chmod=0755 <<'DAAF_APT_UPDATE_EOF' /usr/local/bin/daaf-apt-update" "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -F 'apt-get update --error-on=any "$@"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # No bare `apt-get update` anywhere outside the helper heredoc: neither in an
+    # active instruction nor in a commented example (examples teach the pattern).
+    # Prose comments that merely mention the command are allowed.
+    run awk '
+        /^COPY --chmod=0755 <<.DAAF_APT_UPDATE_EOF. / { in_helper = 1; next }
+        /^DAAF_APT_UPDATE_EOF$/ { in_helper = 0; next }
+        in_helper { next }
+        /apt-get update/ && ($0 !~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*#[[:space:]]*RUN /) { print NR ": " $0 }
+    ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ -z "${output}" ]
+
+    # Every apt layer calls the helper: snapshot layer x2 branches + 8 install
+    # layers (system deps, universe self-heal, geospatial + tesseract-ocr [PDF
+    # OCR shares this layer since 2026-10-14], DAAF_DEV shellcheck/bats, R
+    # runtime .deb, R system libs, TinyTeX xz-utils [since 2026-11-01],
+    # nodejs) = 10. The helper's own COPY line is
+    # excluded, and the commented USER ADDITIONS example is excluded by matching
+    # active lines only. An exact count makes a dropped call site fail this test.
+    run bash -c "grep -E '^[^#]*daaf-apt-update( |;|\$)' '${REPO_ROOT}/Dockerfile' | grep -vc '^COPY '"
+    assert_success
+    [ "${output}" -eq 10 ]
+}
+
+@test "Dockerfile banner states both frozen dates and names an apt snapshot that runs ahead" {
+    # The ENVIRONMENT DATE banner lists the values a rebuild reproduces; they
+    # must match the active ARGs. When UBUNTU_SNAPSHOT differs from the uv
+    # cutoff (allowed only as a dated security exception, see the test above),
+    # the banner's SECURITY EXCEPTIONS list must name that exception and the
+    # snapshot ID, so a divergence cannot happen silently. When the two are
+    # one instant again, the list must no longer describe that exception, so
+    # a retirement that leaves the text behind fails too (banner, RETIRING
+    # THEM). Both phrases are matched on the list with comment markers and
+    # line breaks squeezed to single spaces, so re-wrapping the comment does
+    # not matter; the exact wording is a contract with the banner.
+    local uv_cutoff snapshot_id
+    uv_cutoff="$(sed -n 's/^ARG UV_EXCLUDE_NEWER=//p' "${REPO_ROOT}/Dockerfile")"
+    snapshot_id="$(sed -n 's/^ARG UBUNTU_SNAPSHOT=//p' "${REPO_ROOT}/Dockerfile")"
+    [ -n "${uv_cutoff}" ]
+    [ -n "${snapshot_id}" ]
+
+    # Banner value lines (comments before the first FROM).
+    run awk '/^FROM / { exit } { print }' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local banner="${output}"
+    grep -qE "^#   UV_EXCLUDE_NEWER +${uv_cutoff}( |\$)" <<< "${banner}"
+    grep -qE "^#   UBUNTU_SNAPSHOT +${snapshot_id}( |\$)" <<< "${banner}"
+
+    run awk '/^# SECURITY EXCEPTIONS/ { on = 1 } /^# BUMPING:/ { on = 0 } on { print }' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local flat
+    flat="$(tr -s ' #\n' ' ' <<< "${output}")"
+    if [ "${uv_cutoff//[-:]/}" != "${snapshot_id}" ]; then
+        [[ "${flat}" == *"apt snapshot ahead of UV_EXCLUDE_NEWER"* ]]
+        # The exception names the ID it allows.
+        [[ "${flat}" == *"UBUNTU_SNAPSHOT is ${snapshot_id}"* ]]
+    else
+        [[ "${flat}" != *"apt snapshot ahead of UV_EXCLUDE_NEWER"* ]]
+    fi
 }

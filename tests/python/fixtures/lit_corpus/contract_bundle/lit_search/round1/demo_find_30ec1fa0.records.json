@@ -1,0 +1,89 @@
+{
+ "schema_version": "scholar-records-v1",
+ "tool_version": "synthetic (lit_corpus demo)",
+ "command": "find",
+ "query": "small-group tutoring reading",
+ "raw_artifact": "demo_find_30ec1fa0.json",
+ "raw_sha256": "3ad51f64038c692e5cb37c98d01b78a89b11c6c33156840d4ac3c45cacc8fc7e",
+ "fusion": {
+  "version": "fuse-v1"
+ },
+ "limit": 10,
+ "groups_total": 2,
+ "legs": [
+  {
+   "leg": "openalex_semantic",
+   "backend": "openalex",
+   "count": 2,
+   "total": 2,
+   "failed": null
+  }
+ ],
+ "groups": [
+  {
+   "rank": 1,
+   "score": 0.03,
+   "found_by": {
+    "openalex_semantic": 1,
+    "elicit": 1
+   },
+   "primary": {
+    "title": "Tutoring Small Groups: An Invented Trial",
+    "year": 2019,
+    "authors": [
+     "Ada Allen",
+     "Bo Brook"
+    ],
+    "venue": "Journal of Invented Studies",
+    "type": "article",
+    "doi": "10.9999/fixture.0001",
+    "ids": {
+     "openalex": [
+      "W900000001"
+     ],
+     "doi": [
+      "10.9999/fixture.0001"
+     ],
+     "eric": [],
+     "s2": []
+    },
+    "cites": 3,
+    "abstract": "An invented abstract."
+   },
+   "members": [
+    {
+     "leg": "openalex_keyword",
+     "ids": {
+      "openalex": "W900000011"
+     },
+     "title": "Tutoring small groups (working paper)"
+    }
+   ]
+  },
+  {
+   "rank": 2,
+   "score": 0.03,
+   "found_by": {
+    "openalex_semantic": 2,
+    "elicit": 1
+   },
+   "primary": {
+    "title": "An Invented Survey of Adult Reading Clubs",
+    "authors": [
+     "Eve Evans"
+    ],
+    "year": 2018,
+    "doi": "10.9999/fixture.0005",
+    "ids": {
+     "openalex": [
+      "W900000005"
+     ],
+     "doi": [
+      "10.9999/fixture.0005"
+     ]
+    }
+   },
+   "members": []
+  }
+ ]
+}

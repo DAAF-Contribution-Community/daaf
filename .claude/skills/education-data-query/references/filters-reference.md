@@ -2,6 +2,8 @@
 
 Complete reference for all filter variables available in the Education Data Portal API.
 
+> Names marked † are legacy API filter names with no column of that name in the pinned mirror (rev `0ad00ce0`); the nearest mirror columns are `title_i_status`, `cc_basic_2021` and `urban_centric_locale`. Coded values below were checked on 2026-10-28 against the declared varlist (`education-data-explorer/references/variable-dictionary-*.md`) and, where noted, values observed in the pinned mirror.
+
 ## Filter Syntax
 
 ### Single Filter
@@ -50,19 +52,24 @@ Available across all endpoints.
 |--------|--------|-------------|
 | `charter` | 0, 1 | Charter school (1=yes, 0=no) |
 | `magnet` | 0, 1 | Magnet school |
-| `virtual` | 0, 1, 2 | Virtual school (1=yes, 0=no, 2=supplemental) |
+| `virtual` | 0, 1, 2, 3 | Virtual school (0=no, 1=yes, 2=virtual with face-to-face options, 3=supplemental virtual) |
 | `shared_time` | 0, 1 | Shared-time school |
-| `school_level` | 0-4 | School level (see below) |
+| `school_level` | 0-7 | School level (see below) |
 | `school_type` | 1-4 | School type (see below) |
 
 **school_level values:**
 | Value | Description |
 |-------|-------------|
-| 0 | Not applicable |
+| 0 | Prekindergarten |
 | 1 | Primary (elementary) |
 | 2 | Middle |
 | 3 | High |
 | 4 | Other |
+| 5 | Ungraded |
+| 6 | Adult Education |
+| 7 | Secondary |
+
+Declared in `variable-dictionary-ccd.md` (`school_level`), plus `-1` missing, `-2` not applicable, `-3` suppressed; the 2022 directory year populates `-2, -1, 0-7` (mirror probe 2026-10-28).
 
 **school_type values:**
 | Value | Description |
@@ -77,7 +84,7 @@ Available across all endpoints.
 | Filter | Values | Description |
 |--------|--------|-------------|
 | `school_status` | 1-8 | Operational status |
-| `updated_status` | 1-8 | Updated operational status |
+| `updated_status` † | 1-8 | Updated operational status |
 
 **school_status values:**
 | Value | Description |
@@ -86,7 +93,7 @@ Available across all endpoints.
 | 2 | Closed |
 | 3 | New |
 | 4 | Added |
-| 5 | Changed boundary |
+| 5 | Changed agency |
 | 6 | Inactive |
 | 7 | Future |
 | 8 | Reopened |
@@ -96,7 +103,7 @@ Available across all endpoints.
 | Filter | Values | Description |
 |--------|--------|-------------|
 | `title_i_eligible` | 0, 1 | Title I eligible |
-| `title_i_school_wide` | 0, 1 | Title I school-wide program |
+| `title_i_school_wide` † | 0, 1 | Title I school-wide program |
 
 ### Locale Filters
 
@@ -127,9 +134,9 @@ Available across all endpoints.
 | Filter | Type | Description | Example |
 |--------|------|-------------|---------|
 | `leaid` | string | NCES district ID (7 chars) | `?leaid=0600001` |
-| `leaid_num` | integer | Numeric district ID | `?leaid_num=600001` |
+| `leaid_num` † | integer | Numeric district ID (no CCD mirror column; present in the EDFacts district assessment files) | `?leaid_num=600001` |
 
-### Agency Type Filter
+### Agency Type (not an API filter; filter locally)
 
 | Filter | Values | Description |
 |--------|--------|-------------|
@@ -152,7 +159,7 @@ Available across all endpoints.
 
 | Filter | Values | Description |
 |--------|--------|-------------|
-| `boundary_change_indicator` | 0-3 | Boundary change type |
+| `boundary_change_indicator` | 1-8 | Boundary change (1 no change, 2 closed, 3 new, 4 added, 5 boundary/responsibility change, 6 temporarily closed, 7 future, 8 reopened); declared filter flag `no`, so filter locally |
 
 ## College Filters (IPEDS)
 
@@ -204,7 +211,7 @@ Available across all endpoints.
 | `tribal_college` | 0, 1 | Tribal college |
 | `degree_granting` | 0, 1 | Grants degrees |
 | `hospital` | 0, 1 | Has hospital |
-| `medical` | 0, 1 | Grants medical degree |
+| `medical` † | 0, 1 | Grants medical degree |
 | `land_grant` | 0, 1 | Land grant institution |
 
 ### Carnegie Classification
@@ -212,7 +219,7 @@ Available across all endpoints.
 | Filter | Values | Description |
 |--------|--------|-------------|
 | `inst_size` | 1-5 | Institution size category |
-| `ccbasic` | various | Carnegie basic classification |
+| `ccbasic` † | various | Carnegie basic classification (mirror columns: `cc_basic_2000` … `cc_basic_2021`, `cc_basic_2025`) |
 
 **inst_size values:**
 | Value | Description |
@@ -227,7 +234,7 @@ Available across all endpoints.
 
 | Filter | Values | Description |
 |--------|--------|-------------|
-| `locale` | 11-43 | Urban-centric locale (same as schools) |
+| `locale` † | 11-43 | Urban-centric locale (same as schools; mirror column `urban_centric_locale`) |
 | `region` | 0-9 | Bureau of Economic Analysis region |
 
 ## Enrollment Disaggregators
@@ -276,8 +283,13 @@ Use in path: `/enrollment/{year}/grade-{value}/`
 | `pk` | -1 | Pre-kindergarten |
 | `k` | 0 | Kindergarten |
 | `1`-`12` | 1-12 | Grades 1-12 |
-| `13` | 13 | Ungraded |
+| `13` | 13 | Grade 13 |
+| `14` | 14 | Adult education (route value inferred, not tested) |
+| `15` | 15 | Ungraded (route value inferred, not tested) |
 | `99` | 99 | Total (all grades) |
+| (not documented) | 999 | Not specified |
+
+Declared in `variable-dictionary-ccd.md` (`grade`); the 2022 CCD school enrollment file populates `-1` through `15`, `99` and `999` (mirror probe 2026-10-28). Code `14` is adult education, not ungraded.
 
 ### Race Disaggregator
 
@@ -293,9 +305,10 @@ Returns records with `race` field (integer, not string codes):
 | 5 | American Indian/Alaska Native |
 | 6 | Native Hawaiian/Pacific Islander |
 | 7 | Two or more races |
+| 9 | Unknown |
 | 99 | Total |
 
-**Note:** The Portal uses integers (1-7), NOT string codes like "WH", "BL", "HI", etc.
+**Note:** The Portal uses integers (1-7, 9, 99; IPEDS adds 8, Nonresident alien), NOT string codes like "WH", "BL", "HI", etc. CCD 2022 school enrollment populates `1-7, 9, 99` (mirror probe 2026-10-28); see `education-data-explorer/references/variable-codes.md` for the per-source populated subsets.
 
 ### Sex Disaggregator
 
@@ -306,12 +319,12 @@ Returns records with `sex` field (integer, not string codes):
 |-------|-------------|
 | 1 | Male |
 | 2 | Female |
-| 3 | Another gender (IPEDS 2022+ only) |
-| 4 | Unknown gender (IPEDS 2022+ only) |
+| 3 | Gender Not-Identified (declared in every dictionary; populated only in some IPEDS 2022+ files and the CRDC 2021 enrollment file) |
+| 4 | Not declared; populated only in IPEDS `fall-enrollment-race_2022` |
 | 9 | Unknown |
 | 99 | Total |
 
-**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F". Codes 3 and 4 appear only in IPEDS data starting 2022-23.
+**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F". Codes 3, 4 and 9 are populated only in some files (mirror probe 2026-10-30); see `education-data-explorer/references/variable-codes.md` (Sex Codes) for which.
 
 ## Complete FIPS Code List
 

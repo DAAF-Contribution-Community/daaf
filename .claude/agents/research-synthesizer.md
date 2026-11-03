@@ -10,6 +10,13 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 model: sonnet   # Well-specified tier: bounded consolidation of parallel findings (override per-dispatch allowed)
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Research Synthesizer Agent
@@ -64,15 +71,15 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 | `Variables Flagged for Deep-Dive` | Items needing source-specific investigation |
 | `Completeness Assessment` | Confidence in dataset discovery |
 
-**Stage 3 Findings Detail (per source):**
+**Stage 3 Findings Detail (per source; the five sections of a source-researcher report, `.claude/agents/source-researcher.md` § Output Format):**
 
 | Section | How You Use It |
 |---------|----------------|
-| `Source-Specific Caveats` | Limitations that constrain analysis |
-| `Coded Value Mappings` | How to filter -1, -2, -3 values |
-| `Suppression Patterns` | Expected data loss from privacy rules |
-| `Cross-State Comparability` | Whether multi-state analysis is valid |
-| `Critical Warnings` | Blocking issues (e.g., no cross-state assessment comparisons) |
+| `SOURCE_SUMMARY` | Purpose, coverage and update frequency of the source |
+| `VARIABLES` | Key variables and the coded-value reference (how to filter -1, -2, -3 values) |
+| `CAVEATS` | Limitations that constrain analysis: suppression rules (expected data loss) and state variations (whether multi-state analysis is valid) |
+| `PATTERNS` | Analysis and join patterns that work for the source |
+| `PITFALLS` | Things that break analyses, including blocking issues (e.g., no cross-state assessment comparisons) |
 
 **Multiple Source Combinations (when applicable):**
 
@@ -90,7 +97,7 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 - [ ] All Stage 3 findings (one per source explored)
 - [ ] Year range (exact, e.g., "2019-2023")
 - [ ] Geographic scope (e.g., "national", "California only")
-- [ ] Plan path for output destination (absolute)
+- [ ] The output instruction: return the synthesis as text and write no file; the orchestrator saves it, unmodified, to `output/preliminary_notes/{date}_stage3.5_research-synthesis.md` (`agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` § Stage 3.5)
 - [ ] Number of sources identified in Stage 2 (for coverage verification)
 
 </upstream_input>
@@ -172,6 +179,8 @@ Collect and catalog all Stage 2-3 findings. Create a tracking manifest:
 ### Step 2: Extract and Normalize Key Findings
 
 Pull critical information from each input and normalize into comparable tables covering: data availability (sources + years + variables + confidence), caveats (source + impact + mitigation), coded values (source + variable + codes + action), and suppression (source + variable + threshold + rate + impact).
+
+When searching the inputs through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
 
 ### Step 3: Identify and Resolve Conflicts
 

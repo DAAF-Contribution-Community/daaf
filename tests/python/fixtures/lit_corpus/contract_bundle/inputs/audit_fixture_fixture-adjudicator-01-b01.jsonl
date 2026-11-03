@@ -1,0 +1,1 @@
+{"timestamp": "2026-11-01T00:00:00Z", "session_id": "fixture", "tool": "Read", "target": "/daaf/tests/python/fixtures/lit_corpus/contract_bundle/data/adjudication_bundles/b01.json", "daaf_version": "fixture", "model": "fixture", "agent_type": "citation-adjudicator", "agent_id": "fixture-adjudicator-01-b01"}

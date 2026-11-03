@@ -2,13 +2,13 @@
 
 Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
-> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer for Stage 11, then data-verifier for Stage 12), not parallel waves. Under async dispatch, each returns via a completion notification rather than a synchronous tool return. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
+> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer then integration-checker for Stage 11; integration-checker then data-verifier for Stage 12), not parallel waves. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
 
 ---
 
 ## Stage 11: Report Generation
 
-**Executor:** report-writer agent (`general-purpose`)
+**Executor:** report-writer agent
 **Purpose:** Synthesize all pipeline artifacts into a stakeholder-appropriate report
 
 ### Upstream Inputs
@@ -27,17 +27,7 @@ Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA prot
 
 ### Section-Source Mapping
 
-The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections to pipeline artifacts:
-
-| Report Section | Primary Source | Secondary Sources |
-|---|---|---|
-| Executive Summary | Plan.md Research Outcomes + notebook execution logs | LEARNINGS.md |
-| Research Question | Plan.md (verbatim) | — |
-| Data & Methods | Plan.md Methodology + Stage 5-6 execution logs | STATE.md checkpoints |
-| Quality Assurance | STATE.md QA Findings Summary | STATE.md checkpoint statuses |
-| Key Findings | Stage 7 transforms + Stage 8.1 analysis results + Stage 8.2 figures | Plan.md Research Outcomes |
-| Limitations | Plan.md Risk Register + STATE.md Runtime Risks + source caveats + suppression rates + LEARNINGS.md | STATE.md blockers |
-| References | STATE.md Citations Accumulated | Plan.md Data Citations + CITATION_REFERENCE.md (verification) |
+report-writer maps each REPORT_TEMPLATE.md section to its primary and secondary source artifacts; the mapping is defined in `.claude/agents/report-writer.md` Core Behavior 2 (Section-Source Mapping Discipline). The orchestrator does not draft the report: the Upstream Inputs table above is what the dispatch must supply, and the mapping matters to the orchestrator only when it checks Gate G11.
 
 ### Actions
 
@@ -45,12 +35,11 @@ The report-writer follows a systematic mapping from REPORT_TEMPLATE.md sections 
 2. **Verify figures** — Confirm all figure files exist before referencing
 3. **Draft report** — Follow REPORT_TEMPLATE.md section by section using Section-Source Mapping
 4. **Cross-check Research Outcomes** — Every Research Outcome from Plan.md addressed in Key Findings
-5. **Write Report.md** — Save to project folder with date prefix
+5. **Write the report** — Save to project folder with date prefix (`YYYY-MM-DD[suffix]_[Title]_Report.md`)
 
 ### Invocation Template: report-writer
 
 **Agent:** report-writer
-**Subagent Type:** `general-purpose`
 **Skills:** `data-scientist` (synthesis agent — key domain knowledge is in upstream artifacts)
 
 ```python
@@ -84,6 +73,7 @@ Agent({
     - DAAF Version: {daaf_commit_hash}
     - Session Model ID: {session_model_id}
     - Subagent Model Tiers: {subagent_model_tiers}
+    - Provider Route: {provider_route}
     - Session Date(s): {session_dates}
 
     **Target Audience:** {target_audience} (from Plan.md; if non-technical, include instruction to load science-communication skill)
@@ -95,7 +85,8 @@ Agent({
     Follow the Section-Source Mapping for every section.
     Verify all figure references before embedding.
     Cross-check all Research Outcomes from Plan.md.
-    Write Report.md to the project folder.
+    Write the report to the project folder as {report_filename} (the dated
+    YYYY-MM-DD[suffix]_[Title]_Report.md name, never a bare Report.md).
 
     Return findings using the Report Writer Output Format.""",
     subagent_type: "report-writer"
@@ -104,11 +95,11 @@ Agent({
 
 #### Pre-Report: Session Log Collection
 
-Before invoking report-writer, collect session transcripts into the project:
+Before invoking report-writer, run the Scratch Graduation Check (`SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check; the plan, notes and report never cite a file in `scripts/scratch/`, and graduated files, old → new, are named in the delivery message), then collect session transcripts into the project:
 ```
 bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
 ```
-Then update STATE.md: confirm `logs/` contains collected files, and fill in the `Archive` column in the Session History table with the archive filenames for each session row.
+Then update STATE.md: confirm `logs/` holds the transcripts of the earlier sessions, and fill in the `Archive` column in the Session History table with the archive filenames for each of those session rows. The current session is archived only when it ends (its archive name carries the end time), and the collection request the script records should copy it into `logs/` then (if it is still missing afterwards, the script can be run again in a later session). So `logs/` holds no file for the current session yet, and a project worked on only in this session has an empty `logs/` at this point: that is expected. Enter "copied at session end" in the current session's `Archive` cell.
 
 #### Context Completeness Checklist (Stage 11)
 
@@ -126,15 +117,51 @@ Before invoking report-writer, verify:
 - [ ] Project path specified (absolute)
 - [ ] DAAF commit hash provided (from STATE.md Session Metadata)
 - [ ] Session model ID and subagent model tiers provided (from STATE.md Session Metadata) — so report-writer can populate the Report's session + specialist model rows
+- [ ] Scratch Graduation Check run (no cited file left in `scripts/scratch/`)
 - [ ] Session logs collected into `logs/` (collect_session_logs.sh run)
 - [ ] Target audience specified (from Plan.md; if non-technical, include `science-communication` skill loading instruction)
 
 #### Expected Output
 
 report-writer returns:
-- **COMPLETE** → Proceed to Stage 12 (data-verifier)
-- **COMPLETE_WITH_GAPS** → Log gaps, proceed to Stage 12 (verifier will assess severity)
+- **COMPLETE** → Dispatch integration-checker for the Stage 11 wiring check (below)
+- **COMPLETE_WITH_GAPS** → Log gaps, then dispatch the Stage 11 wiring check (below); data-verifier assesses the gaps' severity at Stage 12
 - **BLOCKED** → Resolve missing inputs, re-invoke
+
+### Invocation Template: integration-checker (Stage 11 wiring check)
+
+**Purpose:** Verify the new Report's references resolve before final review
+**Stage:** 11, after report-writer returns COMPLETE or COMPLETE_WITH_GAPS
+**Agent:** integration-checker (see `.claude/agents/integration-checker.md`, Core Behavior 6)
+**Model:** `sonnet` (frontmatter default)
+
+```python
+Agent({
+    description: "Stage 11: Integration Check (report wiring)",
+    prompt: """**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+**STAGE:** 11 (use the Stage 11 scope in your Core Behavior 6)
+
+**CONTEXT:**
+- Plan path: {plan_path}
+- Notebook path: {notebook_path}
+- Report path: {report_path}
+- Project folder: {PROJECT_DIR}
+- Figure files: {figure_file_list}
+- Stage 9 integration result: {stage9_status_and_open_warnings}
+
+**TASK:**
+Check Report -> figure references (exist, >1KB), Report -> notebook outputs and
+analysis files, path and citation references in the Report, and figure orphans.
+Read-only: no files written, no Python or R of your own, no render or export.
+
+Return findings using the Integration Checker Output Format.""",
+    subagent_type: "integration-checker"
+})
+```
+
+**Handling the verdict:** Record every verdict in the Stage 11 row of STATE.md § Final Review Log > Integration Checks. CONNECTED satisfies the G11 wiring checkbox. WARNING: log it in that row and pass it to Stage 12. BLOCKER or STOP: G11 is not satisfied; route a broken Report reference to report-writer (a missing figure to research-executor), then re-dispatch integration-checker for Stage 11 (`ERROR_RECOVERY.md` § Error Recovery Routing, "Integration issue").
 
 ### Gate Criteria (G11)
 
@@ -146,13 +173,48 @@ report-writer returns:
 - [ ] All statistics trace to execution logs or dataset metadata
 - [ ] References section populated from STATE.md > Citations Accumulated (all four subsections addressed; cross-referenced against CITATION_REFERENCE.md if available)
 - [ ] AI Use Disclosure section populated (GUIDE-LLM items addressed or marked N/A)
+- [ ] **Wiring:** integration-checker (Stage 11 scope) returned CONNECTED, or ISSUES FOUND with WARNING only (logged in STATE.md § Integration Checks); no BLOCKER open
 
 ---
 
 ## Stage 12: Final Review
 
-**Executor:** Orchestrator invokes `data-verifier` agent (adversarial verification), then performs consolidation
+**Executor:** Orchestrator invokes `integration-checker` (full wiring check), then `data-verifier` (adversarial verification), then performs consolidation
 **Purpose:** Adversarial goal-backward verification of completed analysis, followed by lessons consolidation and delivery
+
+### Step 0: Invoke integration-checker (full scope)
+
+**Division of labor:** integration-checker answers "are the pieces connected?" (every reference resolves, every file is non-empty and readable, no orphans, one E2E trace). data-verifier's wiring layer (Layer 3) starts from that result and asks whether the connections carry the right information and whether the artifacts cohere. Both run; neither replaces the other.
+
+```python
+Agent({
+    description: "Stage 12: Integration Check (full pipeline wiring)",
+    prompt: """**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+**STAGE:** 12 (full protocol, Core Behavior 6)
+
+**CONTEXT:**
+- Plan path: {plan_path}
+- Notebook path: {notebook_path}
+- Report path: {report_path}
+- Project folder: {PROJECT_DIR}
+- STATE.md path: {state_path}
+- Execution scripts and their output files (Stages 5-8): {script_output_list}
+- Expected figures: {figure_list}
+- Stage 9 and 11 integration results: {prior_integration_results}
+
+**TASK:**
+Run the full protocol: every reference, all orphan directories, data source
+coverage against Plan.md, and at least one E2E trace from download to Report.
+Read-only: no files written, no Python or R of your own, no render or export.
+
+Return findings using the Integration Checker Output Format.""",
+    subagent_type: "integration-checker"
+})
+```
+
+**Handling the verdict:** integration-checker has no Write tool, so the orchestrator persists its Stage 12 return in full and unmodified, with the provenance header, at `{project_dir}/output/preliminary_notes/{date}_stage12_integration-check.md` (`SKILL.md` § Subagent Return Processing steps 2a-2c; a gate condition), and records the verdict in the Stage 12 row of STATE.md § Final Review Log > Integration Checks. CONNECTED or WARNING-only: pass that path to data-verifier in Step 1, with the status and the count of references marked Not verified; data-verifier starts Layer 3 from its flow, reference and orphan tables. BLOCKER or STOP: fix before verification (Stage 9 or 11 routing above, or debugger for a disconnected stage), then re-dispatch integration-checker; do not dispatch data-verifier on a known broken connection.
 
 ### Step 1: Invoke data-verifier (MANDATORY)
 
@@ -175,6 +237,8 @@ Agent({
     - STATE.md path: {state_path}
     - LEARNINGS.md path: {learnings_path}
     - QA Summary findings: {qa_summary_or_path}
+    - Stage 12 integration-checker result (Step 0): status {integration_status}, references not verified {not_verified_count}; full return (flow, reference, orphan and issue tables) at {project_dir}/output/preliminary_notes/{date}_stage12_integration-check.md
+    - Stage 9 render/export evidence (from STATE.md § Final Review Log > Stage 9 Check Evidence, with run timestamps): {stage9_check_evidence}
 
     **DISCOVERY PRELIMINARY NOTES (for Telephone Game trace):**
     The following preliminary notes contain the original source research. Use these
@@ -191,7 +255,12 @@ Agent({
     analysis. Verify all four layers (existence, substantiveness,
     wiring, coherence). Perform research question stress test,
     Telephone Game trace, alternative interpretation probing, silent
-    failure audit, and QA history review.
+    failure audit, and QA history review. Check the deliverables against
+    the Plan's Confirmed Pre-Flight Scope and User-Referenced Materials
+    subsections too (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` §
+    Traditional Review Checklist, 2a): a scope the
+    user narrowed at the pre-flight binds them, unless the Decisions Log
+    records the departure.
 
     Return findings using the Data Verifier Output Format.""",
     subagent_type: "data-verifier"
@@ -200,10 +269,10 @@ Agent({
 
 #### Expected Output
 
-data-verifier returns:
-- **VERIFIED** → Proceed to Step 2 (consolidation and delivery)
-- **VERIFIED_WITH_WARNINGS** → Log warnings in STATE.md Final Review Log, proceed to Step 2
-- **FAILED** → STOP, escalate to user with specific failures and remediation options
+data-verifier returns (`full-pipeline-mode.md` § Gate Status Translation):
+- **PASSED** → Proceed to Step 2 (consolidation and delivery)
+- **ISSUES_FOUND (severity: WARNING)** → Log warnings in STATE.md Final Review Log, proceed to Step 2 with caveats
+- **ISSUES_FOUND (severity: BLOCKER)**, or a **DATA-VERIFIER STOP** → STOP, escalate to user with specific failures and remediation options
 
 ---
 
@@ -226,11 +295,11 @@ These are topics that must be rigorously investigated and reported for the analy
 | No validation checkpoints failed | Review CP1-CP4 status | [ ] |
 | Limitations explicitly documented | Check Report limitations section | [ ] |
 | Data transformations preserve integrity | Review transformation log | [ ] |
-| No coded values in analysis variables | Check processed data | [ ] |
+| No coded values in analysis variables | Read the CP2/CP3 coded-value counts in the Stage 6-7 execution logs and the code-reviewer QA logs | [ ] |
 | Suppression rate acceptable (<50%) | Review CP2 results | [ ] |
 | Cross-state comparisons valid (if any) | Check against validity matrix | [ ] |
 
-**Verification:** For each item, actively verify (don't assume). Check file contents, run queries, read sections.
+**Verification:** For each item, actively verify (don't assume). Check file contents, read execution logs, checkpoint and QA output, and report sections. data-verifier does not query data (it has no Write tool and its file-first hook blocks direct Python and R): an item with no readable evidence is NOT VERIFIED, and the orchestrator decides whether an executor produces the evidence.
 
 #### 2. What Must EXIST (Concrete Artifacts)
 
@@ -284,7 +353,7 @@ Artifacts must contain **real implementation**, not placeholders. Flag these pat
 | All nulls | Column entirely null | Join or filter failed |
 | Suspiciously round numbers | All values end in 000 | Placeholder data |
 
-**Stub Detection Protocol:**
+**Stub Detection Protocol** (pseudocode for a search over each text file with the Grep tool where available, else `grep -n -i` via Bash; not a script to run):
 
 ```python
 # Text files
@@ -304,8 +373,8 @@ for pattern in stub_patterns:
 - [ ] No TODO/FIXME comments in delivered code
 - [ ] No placeholder text in Report
 - [ ] No empty function bodies
-- [ ] Data has expected variation (not all same value)
-- [ ] Count columns have non-zero values
+- [ ] Data has expected variation (not all same value), per the value summaries in execution or QA logs
+- [ ] Count columns have non-zero values, per the same log evidence
 - [ ] All Report sections have content
 
 #### 3. What Must Be WIRED (Critical Connections)
@@ -350,9 +419,59 @@ Execute verification in this order:
    └─ Verify Plan.md commitments fulfilled
    └─ Check checkpoint statuses in STATE.md
 
-5. EXECUTION CHECK
-   └─ Load notebook: `marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless` (Python) or `quarto render [notebook].qmd` (R)
+5. EXECUTION CHECK (Python: read-only; data-verifier never runs `marimo export`)
+   └─ Python 6a: `marimo check {PROJECT_DIR}/{notebook} --format json --select MB` (reads only; never
+      `--fix`, `--unsafe-fixes` or `--strict`). PASS: exit 0, `summary.errored` false,
+      `summary.files_with_issues` 0
+   └─ Python 6b evidence, without re-executing: the session snapshot
+      `{PROJECT_DIR}/__marimo__/session/{notebook}.json` that Stage 9's `marimo export html` wrote
+      ├─ exists and is newer than the notebook:
+      │  `ls -l --time-style=full-iso {PROJECT_DIR}/{notebook} {PROJECT_DIR}/__marimo__/session/{notebook}.json` (quote it)
+      └─ `jq -c '{cells: (.cells | length), no_output: ([.cells[] | select((.outputs | length) == 0)] | length), errors: ([.cells[] | select(any(.outputs[]?; .type == "error"))] | length)}' {PROJECT_DIR}/__marimo__/session/{notebook}.json`
+         prints `errors` 0, `no_output` 0, and `cells` equal to the notebook's cell count: the Grep
+         tool in count mode (`output_mode: "count"`), pattern `^@app.cell`, path `{PROJECT_DIR}/{notebook}`,
+         where available, else `grep -c '^@app.cell' {PROJECT_DIR}/{notebook}` via Bash
+   └─ Snapshot missing or older than the notebook, `no_output` > 0, or the cell count differs: NOT VERIFIED.
+      The orchestrator has Stage 9 Step 6 re-run; data-verifier does not run the export.
+      Any `errors` > 0: the Stage 9 execution check did not pass (report the failing cells)
+   └─ Python 6c evidence, read-only (data-verifier never runs the decompiler): the folder Stage 9's
+      verbatim fidelity check wrote, `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_{n}`
+      ├─ exists, and its MANIFEST.md is newer than the notebook:
+      │  `ls -l --time-style=full-iso {PROJECT_DIR}/{notebook} {PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_[0-9]*/MANIFEST.md`
+      │  (quote it; the folder names end in a number, so `[0-9]*` skips folders of a notebook whose name
+      │  only starts with `{notebook-stem}`, such as `{notebook-stem}_draft.py`). Use the folder whose
+      │  MANIFEST.md is newest; call it `{folder}`
+      ├─ belongs to this notebook: the Grep tool where available, else `grep -n` via Bash, pattern
+      │  `^\*\*Source Notebook:\*\* `, path `{folder}/MANIFEST.md`, prints one line whose file name, between its backticks, is exactly
+      │  `{notebook}` (quote it). Any other name is NOT VERIFIED: `[0-9]*` still matches the folders of a notebook named
+      │  `{notebook-stem}_2.py`, so the newest folder can belong to another notebook
+      ├─ (i) + (ii): the Grep tool where available, pattern `Validated source/log associations|Legacy non-raw|can close their code fence`,
+      │  else `grep -n -e 'Validated source/log associations' -e 'Legacy non-raw' -e 'can close their code fence'`
+      │  via Bash, path `{folder}/MANIFEST.md`: the legacy-literal count and the early-fence count are 0, and the
+      │  validated count equals the number of final-version scripts found in (iii)
+      ├─ (iii): the decompiled paths (Glob tool, pattern `stage*/*.py`, path `{folder}`; or `ls -R {folder}`)
+      │  are exactly the final versions in the four stage folders of `{PROJECT_DIR}/scripts`
+      │  (`stage5_fetch`, `stage6_clean`, `stage7_transform`, `stage8_analysis`; per task the
+      │  highest letter suffix wins, `_b` over `_a` over the base name)
+      └─ (iv): `git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts {folder}`
+         (reads only; exits 1 because MANIFEST.md differs, so judge by the lines): every line is an
+         ` => dev/null}` line or the single line whose path starts with `/{dev/null => ` and ends in
+         `/MANIFEST.md}`
+   └─ No such folder, every MANIFEST.md older than the notebook, or a newest MANIFEST.md that names
+      another notebook: NOT VERIFIED. The orchestrator has Stage 9 Step 6 re-run (a re-run writes a
+      new, newest folder for this notebook). Any failed condition: the notebook does not archive the
+      final scripts verbatim (report the missing, extra or differing paths)
+   └─ R, read-only (data-verifier never runs `quarto render`, which writes the HTML): Stage 9's render
+      evidence. notebook-assembler ran `quarto render {PROJECT_DIR}/{notebook}` (Step 6) and reported
+      its outcome, which the orchestrator passes in the dispatch. Check that the rendered
+      `{PROJECT_DIR}/{notebook-stem}.html` exists and is newer than the `.qmd`:
+      `ls -l --time-style=full-iso {PROJECT_DIR}/{notebook} {PROJECT_DIR}/{notebook-stem}.html` (quote it)
+   └─ No HTML, an HTML older than the `.qmd`, or no reported render outcome: NOT VERIFIED. The
+      orchestrator has notebook-assembler re-run Stage 9 Step 6; a reported render error means the
+      Stage 9 check did not pass
 ```
+
+`{notebook}` is the notebook file name (e.g. `2026-01-24_Title.py`, or `.qmd` for R); `{notebook-stem}` is the same name without its extension. See notebook-assembler Step 6 for all three checks; `marimo run --headless` is a server and executes nothing. data-verifier derives the 6c final-version list itself from the scripts listing rather than taking it from the notebook or the MANIFEST, so (ii) and (iii) are checked against an independent expectation; the MANIFEST's legacy-literal and early-fence counts are the only read-only record of condition (i), and a notebook with a non-raw log literal, or with a log line that cuts its displayed log off, can pass (ii)-(iv).
 
 ---
 
@@ -371,6 +490,14 @@ In addition to goal-backward verification, complete these traditional checks:
 | Clarification | Implemented? | Notes |
 |---------------|--------------|-------|
 | [Each clarification] | Yes/No | [How implemented] |
+
+#### 2a. Confirmed Pre-Flight Scope (Full Pipeline)
+
+Read the Plan's `### Confirmed Pre-Flight Scope (Full Pipeline)` and `### User-Referenced Materials (Full Pipeline)` subsections. A scope the user narrowed or reshaped at the pre-flight binds the deliverables, not the original request alone; a departure counts as met only when the Plan's Decisions Log records it.
+
+| Confirmed scope item, decision, or referenced material | Honoured? | Location |
+|-----------------------------------------------------------|-----------|----------|
+| [Each confirmed scope item and decision; each material and what it defines] | Yes/No/Departure logged | [Where in deliverables, or the Decisions Log entry] |
 
 #### 3. Plan Commitments
 
@@ -407,9 +534,13 @@ Document any deviations from the original Plan:
 
 ### Review Outcome
 
+The outcome uses data-verifier's status vocabulary (`.claude/agents/data-verifier.md` § Output Format; Step 1 > Expected Output above):
+
 **PASSED:** All checks complete, proceed to delivery.
 
-**ISSUES FOUND:**
+**ISSUES_FOUND (WARNING only):** Log the warnings in STATE.md § Final Review Log and proceed to delivery with caveats.
+
+**ISSUES_FOUND (BLOCKER), or a DATA-VERIFIER STOP:** Escalate to the user with the specific failures and remediation options, then:
 1. Document issues
 2. Resolve issues
 3. Re-run affected checkpoints
@@ -422,6 +553,7 @@ Document any deviations from the original Plan:
 1. **Check Alignment**
    - Original request fulfilled?
    - Clarifications implemented?
+   - Confirmed pre-flight scope honoured, and referenced materials used (Full Pipeline)?
    - Plan commitments met?
 
 2. **Document Deviations**
@@ -442,7 +574,7 @@ Document any deviations from the original Plan:
    - Flush any remaining signals from STATE.md buffer
    - See "Lessons Learned Consolidation" section below for the full consolidation protocol
 
-6. **Generate System Update Action Plan (REQUIRED)**
+5. **Generate System Update Action Plan (REQUIRED)**
    - Add "System Update Action Plan" section to LEARNINGS.md
    - For each learning: determine if it generalizes beyond this project
    - If yes: identify target file(s) and draft concrete change description
@@ -451,7 +583,7 @@ Document any deviations from the original Plan:
    - This plan is NOT auto-executed — it serves as a work queue
    - Include action item count in delivery message
 
-7. **Deliver to User**
+6. **Deliver to User**
    - Summary message
    - File locations
    - Key findings
@@ -473,12 +605,15 @@ After passing Final Review, deliver to user:
 - Report: `research/[folder]/[Report file]`
 - Data: `research/[folder]/data/`
 - Figures: `research/[folder]/output/figures/`
-- Learnings: `research/[folder]/LEARNINGS.md`
+- Lessons file: `research/[folder]/LEARNINGS.md` (what this project taught us: data quirks, decisions, and ideas for improving DAAF)
 - Session logs: `research/[folder]/logs/`
 
+[If any working files were moved out of scratch for the record:]
+**Files moved for the record:**
+- `[old path]` → `[new path]`
+
 **Explore Session Logs:**
-To browse the session timeline interactively in your browser, run in the Docker terminal:
-`bash /daaf/scripts/generate_log_viewer.sh /daaf/research/[folder]`
+This session's transcript should reach `logs/` when the session ends. After that, to browse the session timeline in your browser, choose **3) View Session Logs** in the DAAF Control Panel and pick this project. (From a terminal in the container, `bash /daaf/scripts/generate_log_viewer.sh /daaf/research/[folder]` does the same.)
 
 **Key Findings:**
 1. [Finding 1]
@@ -527,7 +662,7 @@ By Stage 12, LEARNINGS.md should already contain incremental entries from Stages
 4. **Ensure minimum sections populated:** What Worked Well, What Didn't Work, Access/Data Gotchas.
 5. **Flush any remaining signals** from STATE.md buffer.
 
-This replaces the old "create from scratch at Stage 12" approach. Because entries were captured incrementally, consolidation is a review-and-polish task, not a reconstruction-from-memory task.
+Because entries are captured incrementally, consolidation is a review-and-polish task, not a reconstruction from memory.
 
 #### Step B: System Update Action Plan
 
@@ -781,6 +916,7 @@ These quick notes can be expanded into full entries at Stage 12.
 
 ### Gate Criteria (G12)
 
+- [ ] integration-checker (Stage 12, full scope) returned CONNECTED, or ISSUES FOUND with WARNING only (logged in STATE.md § Integration Checks); its return was persisted at `output/preliminary_notes/{date}_stage12_integration-check.md` and that path was passed to data-verifier
 - [ ] All alignment checks pass
 - [ ] Quality verified
 - [ ] Deviations documented
@@ -808,19 +944,3 @@ Apply this checklist after the data-verifier subagent returns its final review f
 - [ ] Confidence assessment completed for all five aspects with rationale
 - [ ] Verification Quality Self-Check results included (all 8 questions)
 - [ ] If PASSED: conclusion articulates WHY the analysis is sound, not just absence of failures
-
----
-
-## Pre-Pipeline Skills
-
-### data-ingest
-
-**Purpose:** Profile new datasets and author comprehensive Skills
-**Stage:** Pre-pipeline (on demand, when new data files arrive)
-**Agent:** `data-ingest` (see `.claude/agents/data-ingest.md`)
-**Subagent:** general-purpose
-
-For the complete invocation pattern, see `.claude/agents/README.md` data-ingest section
-or `.claude/agents/data-ingest.md` Invocation section.
-
----

@@ -9,7 +9,7 @@
 
 **Update ALL of these for EVERY new agent. No exceptions.**
 
-> These items correspond to FRAMEWORK_INTEGRATION_CHECKLIST.md items A3-A5 and A14. Consult that document for the canonical specification; this section provides walkthrough detail.
+> These items correspond to FRAMEWORK_INTEGRATION_CHECKLIST.md items A3-A5. Consult that document for the canonical specification; this section provides walkthrough detail.
 
 ### 1. `.claude/agents/README.md` — Agent Index table
 
@@ -38,10 +38,9 @@ Follow the format of existing agent subsections in this file.
 - What this agent produces and who consumes it
 - What this agent consumes and who produces it
 
-### 4. `README.md` (project root) — Agent count and table
+### 4. `README.md` (project root) — no update
 
-**Section:** Agent Ecosystem
-**What to add:** Update agent count and add row to agent table if one exists. This is the project root `README.md`, distinct from `.claude/agents/README.md`.
+Retired (FRAMEWORK_INTEGRATION_CHECKLIST.md item A14): the project root `README.md` lists no agents and no agent count, so a new agent needs no change there. The agent registry is `.claude/agents/README.md` (items 1-3).
 
 ---
 
@@ -110,6 +109,11 @@ Follow the format of existing agent subsections in this file.
 **Condition:** Agent uses one or more skills during execution
 **What to add:** Ensure the agent's `skills:` frontmatter field lists preloaded skills. Stage-specific skill loading is documented in the agent's Protocol section and the corresponding `agent_reference/WORKFLOW_PHASE*.md` invocation templates.
 
+### 14b. Agent file — `hooks:` frontmatter field (`enforce-file-first.sh`)
+
+**Condition:** `Bash` is in the agent's `tools` list. Required for every Bash holder, read-only agents included: under auto mode Claude Code ignores a subagent's `permissionMode`, so the tool list and this hook are the only constraints on what its Bash runs.
+**What to add:** The `hooks:` block from the agent-authoring skill's "Per-Agent Hooks" section (FRAMEWORK_INTEGRATION_CHECKLIST.md item A13).
+
 ---
 
 ## Tier 3: CONDITIONAL Narrative Updates
@@ -161,19 +165,7 @@ done
 
 **Expected:** .claude/agents/README.md has 3+ references (index, when-to-use, coordination matrix).
 
-### 2. Agent Count Consistency
-
-```bash
-# Count actual agent files (excluding README, _revised, and this file)
-ACTUAL=$(ls .claude/agents/*.md | grep -v README | grep -v _revised | wc -l)
-echo "Actual agent files: $ACTUAL"
-
-# Check README.md header
-grep "Specialized Agents" README.md
-# The number in parentheses should match $ACTUAL
-```
-
-### 3. Cross-Reference Integrity
+### 2. Cross-Reference Integrity
 
 ```bash
 # Verify no broken agent references in .claude/agents/README.md
@@ -201,7 +193,6 @@ done
 - [ ] .claude/agents/README.md — Agent Index table (new row)
 - [ ] .claude/agents/README.md — "When to Use" section (new subsection)
 - [ ] .claude/agents/README.md — Agent Coordination Matrix (producer/consumer rows)
-- [ ] README.md (project root) — Agent count and table
 
 ### Tier 2: CONDITIONAL (check applicability)
 - [ ] full-pipeline-mode.md — Skill-to-Stage Mapping (if stage-specific)
@@ -214,6 +205,7 @@ done
 - [ ] .claude/agents/README.md — Orchestration Flow diagram (if changes workflow)
 - [ ] agent_reference/ERROR_RECOVERY.md — Error Recovery Routing (if handles errors)
 - [ ] Agent file — `skills:` frontmatter field (if uses skills)
+- [ ] Agent file — `hooks:` registers `enforce-file-first.sh` (if `Bash` is in `tools`)
 
 ### Tier 3: CONDITIONAL (review applicability)
 - [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)
@@ -232,6 +224,5 @@ done
 
 ### Post-Integration Verification
 - [ ] Agent name found in all Tier 1 files
-- [ ] Agent count in README.md matches actual count
 - [ ] No broken cross-references
 ```

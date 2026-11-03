@@ -33,7 +33,7 @@ Returns all rows from both DataFrames:
 
 ```python
 df1.join(df2, on="key", how="full")
-# Note: how="outer" is NOT valid in Polars 1.x; use how="full"
+# Note: how="outer" is deprecated (still runs with a DeprecationWarning); use how="full"
 ```
 
 ### Cross Join
@@ -104,23 +104,21 @@ df1.join(df2, on="id")
 # Custom suffix
 df1.join(df2, on="id", suffix="_from_df2")
 
-# Coalesce (keep left value, fill with right if null)
+# Coalesce join keys: one "id" column instead of "id" and "id_right".
+# Non-key columns (value / value_right) are never merged; use pl.coalesce for that
 df1.join(df2, on="id", how="full", coalesce=True)
 ```
 
-## Join Strategies
+## Null Keys
 
-For performance optimization with large datasets:
+By default null keys never match.
 
 ```python
-# Let Polars decide (default)
+# Default: null keys do not match (nulls_equal=False)
 df1.join(df2, on="key")
 
-# Force hash join (good for unique keys)
-df1.join(df2, on="key", join_nulls=False)
-
-# Include null keys in join
-df1.join(df2, on="key", join_nulls=True)
+# Match null keys to each other (renamed from join_nulls in 1.24)
+df1.join(df2, on="key", nulls_equal=True)
 ```
 
 ## Concatenation
@@ -134,8 +132,8 @@ pl.concat([df1, df2])
 # Multiple DataFrames
 pl.concat([df1, df2, df3, df4])
 
-# Different column order (aligns by name)
-pl.concat([df1, df2], how="align")
+# Different column order: reorder first (how="align" is a horizontal full join, not a stack)
+pl.concat([df1, df2.select(df1.columns)])
 
 # Diagonal (union of all columns, nulls for missing)
 pl.concat([df1, df2], how="diagonal")
@@ -197,7 +195,7 @@ df.pivot(
     on="product",
     index="date",
     values="sales",
-    aggregate_function="first"   # first, last, sum, mean, count, etc.
+    aggregate_function="first"   # first, last, sum, mean, len, etc.
 )
 ```
 
@@ -243,7 +241,7 @@ df.unpivot(
 # | 2024-01-01 | product_B | 150   |
 ```
 
-**Note**: `melt` was renamed to `unpivot` in Polars 1.0. Both still work.
+**Note**: `melt` was renamed to `unpivot` in Polars 1.0; `melt` still runs but emits a DeprecationWarning.
 
 ### Unpivot All Except Index
 
@@ -298,7 +296,7 @@ orders.join(products, left_on="product_code", right_on="code", how="left")
 ### Update Values from Another DataFrame
 
 ```python
-# Use coalesce with full join
+# Left join, then pl.coalesce to prefer the new value
 df1.join(df2, on="id", how="left", suffix="_new").with_columns(
     pl.coalesce(pl.col("value_new"), pl.col("value")).alias("value")
 ).drop("value_new")

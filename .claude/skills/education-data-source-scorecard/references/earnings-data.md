@@ -1,6 +1,6 @@
 # Earnings Data
 
-College Scorecard's earnings data represents actual post-college earnings from IRS W-2 records, making it uniquely valuable for understanding labor market outcomes.
+College Scorecard's earnings data come from Treasury/IRS tax records — W-2 wages plus Schedule SE self-employment earnings — making it uniquely valuable for understanding labor market outcomes.
 
 > **Portal dataset:** `scorecard/colleges_scorecard_earnings` (203,066 rows x 33 columns)
 >
@@ -10,30 +10,25 @@ College Scorecard's earnings data represents actual post-college earnings from I
 
 ## Data Source: IRS/Treasury
 
-Earnings come from IRS W-2 wage records matched to students via Social Security numbers:
+Earnings come from Treasury (IRS) administrative tax records linked to NSLDS records of federally aided students:
 
 | Aspect | Detail |
 |--------|--------|
-| Source | IRS W-2 forms (employer-reported wages) |
-| Matching | Treasury matches NSLDS records to tax filings |
-| Reporting | Aggregated to protect individual privacy |
-| Coverage | Employed individuals with W-2 income only |
+| Source | W-2 wages and deferred compensation (Box 1 + Box 12) plus positive self-employment earnings from Schedule SE |
+| Matching | NSLDS records of Title IV recipients linked to tax records |
+| Reporting | Aggregated; counts and medians perturbed with differential-privacy noise; suppressed (`PS`) when cells are too small |
+| Coverage | Federally aided students who are working (W-2 or Schedule SE earnings) and not enrolled |
 
-### What W-2 Earnings Include
+### What the earnings measure includes
+- Wages, salaries, tips and deferred compensation on W-2 forms (full- and part-time jobs)
+- Positive self-employment earnings reported on Schedule SE
 
-- Wages, salaries, tips
-- Employer-reported compensation
-- Most full-time and part-time employment
-
-### What W-2 Earnings Exclude
-
+### What it excludes
 | Excluded Income | Impact on Analysis |
 |-----------------|-------------------|
-| Self-employment (1099) | Entrepreneurs, gig workers missing |
-| Business income | Small business owners missing |
-| Investment income | Passive income not counted |
-| Non-reported income | Cash economy excluded |
-| Foreign earnings | Those working abroad missing |
+| Investment and other non-labor income | Passive income not counted |
+| Unreported (cash-economy) income | Not captured |
+| Earnings not reported on U.S. tax forms | Not captured |
 
 ## Cohort Definitions
 
@@ -55,7 +50,7 @@ Entry Cohort Example:
 ### Entry Cohort Construction
 
 Students included in entry cohorts:
-- First-time undergraduates who received Title IV aid
+- Title IV recipients (Pell Grant or undergraduate federal loan) assigned to an entry year from their first aid receipt at the institution, back-dated by up to two years using the FAFSA grade level (not restricted to first-time students)
 - Includes full-time AND part-time students
 - Includes students who transferred in (at receiving institution)
 - Includes students who did not complete
@@ -174,24 +169,22 @@ Disaggregated by FAFSA-reported family income tercile:
 ## Working Population Filter
 
 **Critical:** Earnings are only calculated for students who are:
-1. Working (have positive W-2 earnings)
+1. Working (have positive W-2 or Schedule SE earnings)
 2. Not enrolled in postsecondary education
 
 ### Who Is Excluded from Earnings Calculations
 
 | Excluded Group | Reason | Impact |
 |----------------|--------|--------|
-| Graduate school students | Enrolled, not working | Fields with high grad school rates (e.g., biology, pre-law) show higher earnings than they would if grads included |
-| Non-employed | No W-2 income | Unemployed, stay-at-home parents, disabled excluded |
-| Self-employed only | No W-2 | Entrepreneurs missing |
-| Deceased | No W-2 | Small effect |
-| Living abroad | No W-2 | May affect certain fields |
+| Students enrolled in school (e.g., graduate school) | In-school deferment status for at least 30 days of the measurement year, whether or not working | Where many students are still enrolled, the earnings cohort is a selected subset; the technical documentation states the exclusion but not the direction of the bias |
+| Non-employed | No W-2 or Schedule SE earnings | Unemployed, stay-at-home parents, disabled excluded |
+| Deceased | No tax-record earnings | Small effect |
+| Living abroad | No U.S. tax-record earnings | May affect certain fields |
 
 ### Implications for Analysis
 
-- Fields with high graduate school attendance may appear to have HIGHER earnings (low earners are still in school)
+- Fields or institutions with high graduate-school attendance have a selected earnings cohort (enrolled students are excluded); the direction of the bias is not documented
 - Institutions/programs with higher unemployment rates are NOT penalized in earnings metrics
-- Self-employment heavy fields (arts, consulting) may show lower median earnings
 
 ## Earnings Suppression
 
@@ -199,10 +192,7 @@ Earnings are suppressed when privacy thresholds are not met:
 
 ### Suppression Rules
 
-| Threshold | Action |
-|-----------|--------|
-| < 30 students with positive earnings | Earnings suppressed |
-| Small cells in disaggregations | Additional suppression |
+Scorecard suppresses NSLDS and Treasury elements (shown as `PS`) when cell sizes do not meet privacy standards, and adds differential-privacy noise to earnings counts and medians (small differences of 1–3 in counts are expected). For consumer-site elements, separate `*_SUPP` versions suppress institutions with fewer than 30 students in the denominator (e.g., `C150_4_POOLED_SUPP`, `RPY_3YR_RT_SUPP`). The base-element cell-size thresholds are not stated in the October 2026 technical documentation.
 
 ### Variables Indicating Suppression
 
@@ -254,7 +244,7 @@ For annual data files (e.g., `merged_2022_23`):
 
 ### Data Errata
 
-**Known Issue (2022-2023):** Entry-cohort earnings calculations in some files were calculated with misaligned cohorts. Check the College Scorecard errata document for affected variables.
+The October 2026 technical documentation notes that previously published entry-cohort earnings differ from the current methodology, as described in the Scorecard data errata document; check the errata for affected files and variables.
 
 ## Recommended Practices
 
@@ -292,10 +282,9 @@ Institution A: Median 6-year earnings = $45,000
 
 What this means:
 - Half of Title IV aid recipients earned more, half less
-- Measured 6 years after first enrollment
+- Measured 6 years after the estimated entry year at the institution
 - Only includes those working and not enrolled
-- Excludes students in graduate school
-- Excludes unemployed, self-employed, those abroad
+- Excludes the non-working and those still enrolled
 - Reflects cohort that entered ~6 years ago
 - May not reflect current program quality or labor market
 ```

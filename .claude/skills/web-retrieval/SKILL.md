@@ -1,11 +1,11 @@
 ---
 name: web-retrieval
 description: >-
-  DAAF's protocol for retrieving web documents that an agent needs to READ (docs pages, articles, API references, issue threads). Retrieval runs through the framework CLI `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`, which saves the raw response, a deterministic extract, and a provenance manifest to disk — the built-in WebFetch is blocked because it returns an AI paraphrase, not source text. Covers when to fetch at all (check local skills first), tool syntax and flags, the two-artifact + MANIFEST provenance model, the exit-code failure table, the untrusted-content rule, thin-extract diagnosis, extract size rules, and destination conventions. Use when a permitted context (search-agent, data-ingest, debugger, orchestrator) must pull a specific web page into context to read or quote it. NOT for discovery — WebSearch stays built-in for finding URLs. NOT for pipeline data acquisition — Stage 5 / onboarding scripts fetching datasets into parquet are a separate, unchanged activity for any pipeline agent.
+  DAAF's protocol for retrieving web documents that an agent needs to READ (docs pages, articles, API references, issue threads). Retrieval runs through the framework CLI `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`, which saves the raw response, a deterministic extract, and a provenance manifest to disk — the built-in WebFetch is blocked because it returns an AI paraphrase, not source text. Covers when to fetch at all (check local skills first), tool syntax and flags, the two-artifact + MANIFEST provenance model, the exit-code failure table, the untrusted-content rule, thin-extract diagnosis, extract size rules, and destination conventions. Use when a permitted context (search-agent, data-ingest, debugger, literature-searcher, orchestrator) must pull a specific web page into context to read or quote it. NOT for discovery — WebSearch stays built-in for finding URLs. NOT for pipeline data acquisition — Stage 5 / onboarding scripts fetching datasets into parquet are a separate activity for any pipeline agent.
 metadata:
   audience: web-tooled-agents
   domain: framework-tooling
-  skill-last-updated: "2026-08-08"
+  skill-last-updated: "2026-10-03"
 ---
 
 # Web Retrieval
@@ -19,8 +19,10 @@ is blocked by a PreToolUse hook: it returns an AI-model paraphrase of the page
 and 100KB truncation), so its "quotes" may be paraphrase — irreconcilable with
 DAAF's evidence-graded quoting doctrine. This skill covers when to fetch, the
 tool syntax and flags, the two-artifact provenance model, the failure table
-keyed by exit code, the untrusted-content rule, thin-extract diagnosis, extract
-size rules, and destination conventions. Discovery (finding URLs) stays with the
+keyed by exit code, the untrusted-content rule, thin-extract diagnosis,
+fallbacks for hosts that block automated fetches (Wayback Machine snapshots,
+Crossref, Europe PMC, PMC, raw GitHub), extract size rules, and destination
+conventions. Discovery (finding URLs) stays with the
 built-in WebSearch; dataset acquisition into parquet is a separate activity (see
 Governance Boundary below).
 
@@ -31,17 +33,17 @@ what this skill governs:
 
 | Activity | What it is | Tool | Permitted contexts |
 |----------|-----------|------|--------------------|
-| **Web retrieval** | Fetching a document (page, article, docs, issue thread) for an agent to *read or quote* | `scripts/web_fetch.sh` (this skill) | search-agent, data-ingest, debugger, orchestrator |
+| **Web retrieval** | Fetching a document (page, article, docs, issue thread) for an agent to *read or quote* | `scripts/web_fetch.sh` (this skill) | search-agent, data-ingest, debugger, literature-searcher (a Literature Review's open-access retrieval), orchestrator |
 | **Pipeline data acquisition** | Stage 5 / Data Onboarding scripts fetching *datasets* into parquet under IAT | Normal fetch scripts (education-data-query, etc.) — unchanged | any pipeline agent |
 
 If you are pulling a dataset into `data/raw/` as parquet under an inline audit
 trail, that is pipeline data acquisition — this skill does not apply and nothing
 about it changed. If you are pulling a *document to read*, use `web_fetch.sh`.
 
-Agents outside the four permitted contexts should not perform agent-reading web
+Agents outside the five permitted contexts should not perform agent-reading web
 retrieval. Enforcement is doctrinal (curl/httpx are physically available to any
 Bash-capable agent), so this is a boundary of discipline, not a hard block: if
-you are not one of the four contexts and you find yourself wanting to fetch a
+you are not one of the five contexts and you find yourself wanting to fetch a
 document, return that need to the orchestrator instead.
 
 ## When to Fetch at All
@@ -128,7 +130,9 @@ Read cheaply and safely, in this order:
    first ~20 lines). Often sufficient.
 2. **Read the `.md` extract** for the full clean text — but mind the size rule:
    - Extract **> 8 KB**: do **not** `Read` the whole file. Use `Grep` with
-     context (`-C`) or offset/limit reads to pull only the relevant spans.
+     context (`-C`) or offset/limit reads to pull only the relevant spans
+     (throughout this skill, `Grep` means the Grep tool where available, else
+     `grep -n -C` via Bash; native Claude Code builds have no Grep tool).
    - Extract ≤ 8 KB: a full `Read` is fine.
 3. **Access the raw `.html` only via `Grep`**, never a full `Read`, and only
    when the extract looks incomplete (see Thin-Extract Diagnosis). Raw lines are
@@ -162,10 +166,10 @@ reserved exit 3.
 | 2 | Refused by guard | URL/destination rejected before any request (bad scheme, oversize URL, userinfo, secret-value in URL, or DEST_DIR outside `/daaf`). Fix the argument. |
 | 3 | RESERVED — never emitted | Reserved by `run_with_capture.sh`; `web_fetch` deliberately never uses it. |
 | 4 | Network failure (DNS, connection refused, TLS, too many redirects) | Verify the host/URL; the host may be down or unreachable. |
-| 5 | Non-2xx HTTP status | Check the status in the manifest. 403 → consider `--browser-ua` (Cloudflare-AI block). 404 → wrong URL. |
+| 5 | Non-2xx HTTP status | Check the status in the manifest. 403 → consider `--browser-ua` (Cloudflare-AI block); if that also fails, see Blocked Hosts and Fallbacks. 404 → wrong URL, or try a Wayback snapshot of it. |
 | 6 | Timeout | Retry with a larger `--timeout`, or accept the page is too slow. |
 | 7 | Oversize (exceeds 10 MB cap) | The document is too large to fetch as one artifact; reconsider whether you need it. |
-| 8 | Not extractable (content-type not HTML) | The raw artifact was still written with the correct extension (`.pdf`/`.json`/`.bin`); read/inspect the raw file directly. This is **not** an extraction failure. |
+| 8 | Not extractable (content-type not HTML) | The raw artifact was still written with the correct extension (`.pdf`/`.json`/`.bin`); read/inspect the raw file directly. For a `.pdf`, load the `pdf-reading` skill and run `pdf_ingest.sh` on it (it links the PDF to this MANIFEST row by hash). This is **not** an extraction failure. |
 | 9 | Empty extraction (HTML fetched, extract empty/near-empty) | Trafilatura recall failure — go to the raw `.html` via `Grep`. See Thin-Extract Diagnosis. |
 
 Exit 8 vs 9 matters: 8 means "we got the bytes but they are not HTML, so there
@@ -189,10 +193,76 @@ or exit 9:
    the document may need a rendering fetcher DAAF does not ship — report that
    limitation rather than quoting an empty extract.
 
+## Blocked Hosts and Fallbacks
+
+Some hosts refuse automated fetches outright, and `--browser-ua` does not help.
+Observed in DAAF research sessions on 2026-10-03 (exit 5 / HTTP 403, an
+Incapsula or cookie-wall page, or a thin extract of the block page):
+
+| Host | Observed behavior | Reliable alternative |
+|------|-------------------|----------------------|
+| `journals.sagepub.com`, `direct.mit.edu` (author guidelines) | 403 with and without `--browser-ua` | Wayback snapshot (below); society page for scope |
+| `science.org`, `jamanetwork.com`, `tandfonline.com` | 403 (Wayback attempts for `science.org` also failed) | Crossref API for metadata; Europe PMC or PMC for abstracts and open full text; Wayback where a capture exists. If nothing works, label search-snippet evidence as such |
+| `apastyle.apa.org`, `apa.org` | Incapsula bot-challenge page instead of content | Wayback; quote the guidance only from a captured page |
+| `pubmed.ncbi.nlm.nih.gov` | Cookie-wall extract with no article content | Europe PMC REST (same records); PMC for full text |
+| GitHub-hosted docs that render client-side (`github.com/...`) | Thin or JS-stub extract | `raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}` or the GitHub contents API |
+
+This list is a point-in-time observation, not a rule. Hosts change their bot
+policies, so try the live URL first and fall back when it fails. Record failed
+attempts as they happen; MANIFEST.jsonl logs them automatically.
+
+**Metadata and abstract endpoints that fetch cleanly** (JSON, exit 8, so read the
+raw `.json`):
+- Crossref: `https://api.crossref.org/works/{DOI}` gives the authoritative title,
+  journal, volume, issue, pages, and date. Use it to verify a citation.
+- Europe PMC REST: `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:{DOI}&resultType=core&format=json`
+  (also `EXT_ID:{PMID}`, `TITLE:"…"`, `AUTH:"…"`) gives abstracts and PMCIDs.
+- PMC full text: `https://pmc.ncbi.nlm.nih.gov/articles/{PMCID}/`.
+
+For literature search, citation verification, and open-access lookups, the
+`scholarly-search` skill's CLI is usually the better first move; use these raw
+endpoints when you need one specific record.
+
+### Wayback Machine fallback
+
+When the live page is blocked or gone, fetch a raw archived snapshot:
+
+```
+bash /daaf/scripts/web_fetch.sh "https://web.archive.org/web/{YYYY}id_/{URL}" <DEST_DIR>
+```
+
+- `{YYYY}` (or a fuller `YYYYMMDD`) asks for the capture closest to that date.
+  The `id_` suffix returns the page as originally captured, without the Wayback
+  toolbar or rewritten links, so the extract is clean.
+- **Record the snapshot timestamp as provenance.** Wayback redirects to the
+  actual capture, and the final URL carries it: a request for `/web/2026id_/…`
+  can land on `/web/20250801023702id_/…`, a capture from 2025-08-01. The final
+  URL is in the tool's stdout and in MANIFEST.jsonl (`final_url`). Cite the page
+  as "archived YYYY-MM-DD" with that URL, not as the live page.
+- **The snapshot may be stale.** Captures can be months old. For volatile facts
+  (journal policies, fees, limits, AI rules), state the snapshot date and ask the
+  user to confirm against the live page before relying on it.
+- If the final URL still shows only the year you requested (no 14-digit
+  timestamp), no capture was resolved. Check the extract before using it, then
+  try a different year or a fuller date.
+
 ## Destination Conventions
 
 - **Inside a research project:** fetch into `{PROJECT_DIR}/web_fetches/`.
-- **No research project yet:** a fetch **is** a first artifact-producing action,
+- **Reading what the user pointed to, before a mode's Scope Check:** follow
+  the orchestrator `SKILL.md` § Scope Check > Read First, the single home of
+  this rule. If a folder for the task already exists (an existing project, a
+  reproduction folder, a workspace), fetch into its `web_fetches/`;
+  otherwise fetch into the session's staging folder,
+  `{scratchpad}/scope_staging/web_fetches/` (`{scratchpad}` is the scratchpad
+  directory in the orchestrator's environment, under `/daaf/claude-code-tmp/`),
+  which moves into the project when the scope is confirmed. The dispatch names
+  the destination.
+- **Data Lookup, User Support and Data Discovery** (modes that never create a
+  project): every fetch, including Data Discovery's exploration fetches, goes
+  to `{scratchpad}/scope_staging/web_fetches/` and stays there; it moves into a
+  project only if the session escalates to a mode that creates one.
+- **No research project yet** (any other fetch): a fetch **is** a first artifact-producing action,
   so it follows the ad-hoc-collaboration workspace convention — create/confirm
   the session workspace (`research/YYYY-MM-DD_AdHoc_{Topic}/`) and fetch into
   its `web_fetches/`. Do not invent an ad-hoc auto-name outside that convention,
@@ -220,8 +290,11 @@ them:
   `permissions.deny` rule for it, because a deny-rule would fire before the hook
   and suppress the instructional redirect message that teaches you to use this
   protocol. If you call WebFetch you will get that redirect, not silence.
-- **Pre-rebuild degradation.** `web_fetch.sh` needs `trafilatura` (added via a
-  Dockerfile rebuild) for full extraction. Before the rebuild it degrades to a
-  raw-only mode with a loud warning (still applying line-wrapping and the
-  injection scan to the raw path). If you see that warning, the extract path is
-  unavailable until the image is rebuilt — work from the raw artifact.
+- **Extractor fallback.** The DAAF image ships `trafilatura`, the extractor
+  behind the `.md` artifact. If an image lacks it, `web_fetch.sh` prints a
+  warning on stderr and extracts with a minimal BeautifulSoup extractor instead
+  (the MANIFEST row records `"extractor": "bs4-fallback"` and
+  `"trafilatura_version": "absent"`). Only when neither can be imported does it
+  write the raw artifact alone (`"extraction_status": "raw-only"`, exit 0);
+  then work from the raw artifact, and ask the user to rebuild the container:
+  choose 10) Rebuild Container in the DAAF Control Panel.

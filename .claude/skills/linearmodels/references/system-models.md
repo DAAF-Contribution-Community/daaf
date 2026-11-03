@@ -11,7 +11,7 @@ identification, see the data-scientist skill's `statistical-modeling.md` referen
 - [SUR (Seemingly Unrelated Regression)](#sur-seemingly-unrelated-regression)
 - [IV3SLS (Three-Stage Least Squares)](#iv3sls-three-stage-least-squares)
 - [IVSystemGMM](#ivsystemgmm)
-- [Cross-Equation Constraints (LinearConstraint)](#cross-equation-constraints-linearconstraint)
+- [Cross-Equation Constraints (add_constraints)](#cross-equation-constraints-add_constraints)
 - [Interpreting System Output](#interpreting-system-output)
 - [Performance Notes](#performance-notes)
 - [References and Further Reading](#references-and-further-reading)
@@ -33,7 +33,7 @@ Key differences from panel and IV models:
 
 - **Input format**: dict or `OrderedDict` of equations, not a single formula
 - **No MultiIndex required**: data is a flat DataFrame (or arrays per equation)
-- **No `.from_formula()` on the constructor**: use a dict of formula strings instead
+- **`from_formula()` takes a dict of formula strings**
 - **Cross-equation covariance** (sigma matrix) is estimated and used for GLS
 
 ## Data Setup
@@ -143,8 +143,8 @@ Iterative SUR re-estimates the sigma matrix and GLS coefficients until
 convergence. Produces maximum likelihood estimates under normality.
 
 ```python
-# Iterative SUR — set iter_limit > 1
-res_isur = mod.fit(iter_limit=100, cov_type="robust")
+# Iterative SUR — iterate=True (iter_limit caps iterations, default 100)
+res_isur = mod.fit(iterate=True, cov_type="robust")
 print(f"Iterations: {res_isur.iterations}")
 ```
 
@@ -222,8 +222,8 @@ parametric GLS covariance.
 ```python
 from linearmodels.system import IVSystemGMM
 
-mod = IVSystemGMM(equations)
-res = mod.fit(weight_type="robust")
+mod = IVSystemGMM(equations, weight_type="robust")
+res = mod.fit()
 print(res.summary)
 ```
 
@@ -242,7 +242,7 @@ print(res.summary)
 - Small samples: 3SLS may be more stable (GMM weight matrix estimation is noisy)
 - Report both as a robustness check when feasible
 
-## Cross-Equation Constraints (LinearConstraint)
+## Cross-Equation Constraints (add_constraints)
 
 Test or impose linear restrictions across equation parameters using the
 `R * beta = q` format. Common use: constraining a coefficient to be equal across
@@ -263,8 +263,8 @@ for i, name in enumerate(res.params.index):
 ### Imposing an Equality Constraint
 
 ```python
-from linearmodels.system import SUR, LinearConstraint
 import numpy as np
+import pandas as pd
 
 # Suppose res.params.index is:
 #   [0] earnings_const
@@ -276,30 +276,30 @@ import numpy as np
 
 # Constraint: exper coefficient equal across equations
 # earnings_exper - benefits_exper = 0
-total_params = len(res.params)
-r = np.zeros((1, total_params))
-r[0, 1] = 1.0    # earnings_exper
-r[0, 4] = -1.0   # benefits_exper
-q = np.array([0.0])
+# r must be a DataFrame whose columns are the parameter names
+r = pd.DataFrame(np.zeros((1, len(res.params))), columns=res.params.index)
+r.loc[0, "earnings_exper"] = 1.0
+r.loc[0, "benefits_exper"] = -1.0
 
-constraint = LinearConstraint(r, q)
-res_constrained = mod.fit(constraints=constraint, cov_type="robust")
+mod.add_constraints(r, pd.Series([0.0]))
+res_constrained = mod.fit(cov_type="robust")
 print(res_constrained.summary)
+mod.reset_constraints()  # constraints stay on the model until reset
 ```
 
 ### Multiple Simultaneous Constraints
 
 ```python
 # Constrain both exper AND constant to be equal across equations
-r = np.zeros((2, total_params))
-r[0, 0] = 1.0    # earnings_const
-r[0, 3] = -1.0   # benefits_const
-r[1, 1] = 1.0    # earnings_exper
-r[1, 4] = -1.0   # benefits_exper
-q = np.array([0.0, 0.0])
+r = pd.DataFrame(np.zeros((2, len(res.params))), columns=res.params.index)
+r.loc[0, "earnings_const"] = 1.0
+r.loc[0, "benefits_const"] = -1.0
+r.loc[1, "earnings_exper"] = 1.0
+r.loc[1, "benefits_exper"] = -1.0
 
-constraint = LinearConstraint(r, q)
-res_constrained = mod.fit(constraints=constraint, cov_type="robust")
+mod.add_constraints(r, pd.Series([0.0, 0.0]))
+res_constrained = mod.fit(cov_type="robust")
+mod.reset_constraints()
 ```
 
 ## Interpreting System Output
@@ -342,18 +342,23 @@ print(f"Total parameters: {len(res.params)}")
 
 ### Joint Hypothesis Tests
 
-Use the Wald test via constraints to test joint hypotheses across equations:
+SystemResults has no `wald_test`, and a constrained fit reports no test
+statistic. Compute W = (Rb)'(RVR')⁻¹(Rb) from the unconstrained `res.params`
+and `res.cov` (chi2 with rows(R) degrees of freedom):
 
 ```python
-# Test H0: exper coefficient = 0 in BOTH equations simultaneously
-r = np.zeros((2, total_params))
-r[0, 1] = 1.0   # earnings_exper = 0
-r[1, 4] = 1.0   # benefits_exper = 0
-q = np.array([0.0, 0.0])
+import scipy.stats as st
 
-# Compare constrained vs unconstrained fit
-constraint = LinearConstraint(r, q)
-res_restricted = mod.fit(constraints=constraint)
+# Test H0: exper coefficient = 0 in BOTH equations simultaneously
+res = mod.fit(cov_type="robust")  # unconstrained fit
+R = pd.DataFrame(np.zeros((2, len(res.params))), columns=res.params.index)
+R.loc[0, "earnings_exper"] = 1.0
+R.loc[1, "benefits_exper"] = 1.0
+
+Rb = R.to_numpy() @ res.params.to_numpy()
+RVR = R.to_numpy() @ res.cov.to_numpy() @ R.to_numpy().T
+wald = float(Rb @ np.linalg.inv(RVR) @ Rb)
+print(f"Wald: {wald:.3f}, p-value: {st.chi2.sf(wald, df=R.shape[0]):.4f}")
 ```
 
 ## Performance Notes
@@ -366,7 +371,7 @@ res_restricted = mod.fit(constraints=constraint)
   efficiency).
 - Cross-equation constraints add minimal overhead -- the constraint matrix is small
   relative to the system.
-- Iterative SUR (`iter_limit > 1`) adds one matrix factorization per iteration but
+- Iterative SUR (`iterate=True`) adds one matrix factorization per iteration but
   typically converges in fewer than 20 iterations.
 
 ## References and Further Reading

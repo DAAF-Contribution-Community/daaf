@@ -4,17 +4,26 @@ Structured collaboration for modifying DAAF's own framework components — skill
 
 ## User Orientation
 
-After mode confirmation, briefly orient the user:
+The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
 - This mode is for modifying DAAF itself — its skills, agents, modes, templates, reference documents, and configuration
-- I'll start by scoping the current state of whatever you want to change, then present findings before modifying anything
+- I'll start by reading anything you point me to and mapping the current state of whatever you want to change, then present a Scope Check before modifying anything
 - All framework changes follow canonical templates and go through an integration checklist to ensure consistency across the system
 - A multi-angle review pass at the end catches any missed registration points or quality issues
-- You'll review and approve changes at two key points: after scoping (confirm approach) and after review (approve final state)
-
-**When to skip:** User is a returning framework developer, has indicated familiarity, or immediately specifies a precise modification.
+- You'll review and approve at the Scope Check (confirm scope and approach), at a design review for complex work (approve the design), and after the review pass (approve the final state)
 
 **For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and `{BASE_DIR}/user_reference/04_extending_daaf.md`.
+
+---
+
+## Scope Check
+
+- **Tier:** Hard. Blocking: nothing is modified until the user confirms (GFD-1).
+- **Where:** Checkpoint 1, the PSU-FD1 template "Framework Development: Scope Check" (§ Phase 1 > PSU-FD1: Scope Check), presented after Phase 1 exploration.
+- **Read first:** every material the user pointed to (a design doc, a spec, a LEARNINGS.md, a prior workspace, an issue thread, a URL), read by the orchestrator or listed in every scoping dispatch's Files to Read (§ Phase 1 > Read User-Referenced Materials First), alongside the framework files Phase 1 maps. Fetches, PDF ingests and a digest are staged until Checkpoint 1 is confirmed, then move into the workspace (if Phase 1 has already created the workspace when a material is read, its artifacts go straight in).
+- **On resume:** do not re-present it when SESSION_NOTES.md records the scope as confirmed; present it again if the notes record it as awaiting confirmation, or record no confirmed scope.
+
+The read-first rule, the tier definitions and the standard block are in `SKILL.md` § Scope Check; PSU-FD1 embeds that block alongside this mode's own fields.
 
 ---
 
@@ -27,12 +36,13 @@ After mode confirmation, briefly orient the user:
                    │
 ┌──────────────────▼──────────────────┐
 │   PHASE 1: SCOPE                    │
-│   Classify work type, explore       │
+│   Read what the user pointed to,    │
+│   classify work type, explore       │
 │   existing state, present findings  │
 └──────────────────┬──────────────────┘
                    │
 ┌──────────────────▼──────────────────┐
-│   ★ CHECKPOINT 1                    │
+│   ★ CHECKPOINT 1: SCOPE CHECK       │
 │   User confirms scope and approach  │
 └──────────────────┬──────────────────┘
                    │
@@ -73,9 +83,9 @@ After mode confirmation, briefly orient the user:
 
 | Gate | After | Criteria | Pass Condition |
 |------|-------|----------|----------------|
-| GFD-1 | Phase 1 (Scope) | Work type classified, exploration complete, user confirmed scope at Checkpoint 1 | User explicitly confirms scope and approach |
+| GFD-1 | Phase 1 (Scope) | User-referenced materials read, work type classified, exploration complete, user confirmed scope at Checkpoint 1 (the Scope Check) | User explicitly confirms scope and approach |
 | GFD-2 | Phase 2 (Design) | Design approved (Complex) or Phase 2 skipped (Simple/Moderate) | User approves design OR complexity is Simple/Moderate |
-| GFD-3 | Phase 3 (Author & Integrate) | All artifacts authored, integration checklist executed, framework-engineer returned COMPLETED | framework-engineer status is COMPLETED and all applicable checklist items are done |
+| GFD-3 | Phase 3 (Author & Integrate) | All artifacts authored, integration checklist executed, and, when framework-engineer was dispatched, its status COMPLETED (Simple work the orchestrator authors directly has no framework-engineer return) | All applicable checklist items are done and, when framework-engineer was dispatched, its status is COMPLETED |
 | GFD-4 | Phase 4 (Review) | Review subagents returned, user approved final state at Checkpoint 2 | User explicitly approves OR requests only minor iteration |
 
 **Iteration limits:**
@@ -87,6 +97,19 @@ After mode confirmation, briefly orient the user:
 
 ## Phase 1: Scope
 
+### Read User-Referenced Materials First
+
+Before classifying or exploring, gather every material the user pointed to: those named at mode confirmation plus any added since (a design doc, a spec, a LEARNINGS.md, a prior Framework Development workspace, an issue thread, a URL, a paper). Each one is either:
+
+- **read by the orchestrator** — short local documents, read in full (CLAUDE.md § Context-Efficient Reading); this is the normal path under light scoping; or
+- **listed in every scoping dispatch's `## Files to Read`** (absolute paths), so each search-agent works from it. For large or many materials, and for any PDF, dispatch one search-agent digest that writes its record to the staging folder (`{scratchpad}/scope_staging/{date}_{slug}_materials-digest.md`) and cites staged artifacts by paths relative to the staging root (`SKILL.md` § Scope Check > Read First), and list the digest path as well.
+
+**Staged until Checkpoint 1, then graduated.** Until the user confirms Checkpoint 1, what Phase 1 reads for the user's materials is staged in the session scratchpad while no workspace exists (`SKILL.md` § Scope Check > Read First): web pages fetched with `web_fetch.sh` into `{scratchpad}/scope_staging/web_fetches/`, a PDF outside `/daaf` copied into `{scratchpad}/scope_staging/user_pdfs/`, PDFs ingested by the digest search-agent into `{scratchpad}/scope_staging/papers/`, and the digest record. (If Phase 1's own scoping work has already created the workspace when a material is read, its artifacts go straight into the workspace instead, § Workspace Setup.) Give scoping dispatches the absolute staged paths and ask them to name these materials by title or URL in their records, because the paths move. When the user confirms Checkpoint 1, move the staged items into the workspace (`web_fetches/`, `papers/` and `user_pdfs/`, the digest into `preliminary_notes/`), creating the workspace first if it does not exist yet, re-ingest any paper whose source PDF moved, with `--reingest`, and record the moves as one dated old → new line in SESSION_NOTES.md (§ Workspace Setup). If the user declines and no workspace existed, nothing was written to `research/` for them.
+
+**Incorporate Learnings:** when the user names a specific LEARNINGS.md (or a project), scope the Learnings Scan to that file; scan every `research/*/LEARNINGS.md` only when the user asks for all of them or names none.
+
+Why: a user's design doc or chosen LEARNINGS.md often reshapes the work. A scope built from the request alone anchors the user on a guess; the Scope Check's "What changed from your original request" line is where reading shows its effect.
+
 ### Work Type Classification
 
 When the user describes their framework need, classify it into one of these work types:
@@ -97,6 +120,8 @@ When the user describes their framework need, classify it into one of these work
 | **New Agent** | "create an agent for...", "add a specialist..." | `AGENT_TEMPLATE.md` (12 sections) | FRAMEWORK_INTEGRATION_CHECKLIST.md § 2 |
 | **New Mode** | "add a new mode for...", "create a workflow..." | `MODE_TEMPLATE.md` | FRAMEWORK_INTEGRATION_CHECKLIST.md § 3 |
 | **New Reference File** | "create a reference for...", "document the protocol for..." | Examine 2-3 existing exemplars | FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 |
+| **New Scholarly Search Backend** | "add a new scholarly source", "add PubMed as a backend", "can the lit search use CORE?" | `scholarly-search` skill `references/adding-a-backend.md` (procedure) + `references/_BACKEND_TEMPLATE.md` | FRAMEWORK_INTEGRATION_CHECKLIST.md § 8 |
+| **New Framework CLI** | "add a CLI tool for...", "build a framework script that ingests/verifies...", "a new `scripts/*.sh` command" | No template file: the existing framework CLIs (`scripts/scholar_search.sh` + `.py`, `scripts/web_fetch.sh` + `.py`, `scripts/pdf_ingest.sh` + `.py`, `scripts/lit_verify.sh` + `.py`, `scripts/lit_corpus.sh` + `.py`) are the exemplars | FRAMEWORK_INTEGRATION_CHECKLIST.md § 9 |
 | **Modify Existing** | "update the X skill...", "change the Y agent..." | Read existing artifact + template | FRAMEWORK_INTEGRATION_CHECKLIST.md § modification subsection |
 | **Incorporate Learnings** | "incorporate learnings", "apply learnings", "process LEARNINGS.md", "update framework from learnings" | Existing LEARNINGS.md System Update Action Plans | FRAMEWORK_INTEGRATION_CHECKLIST.md (section varies by action item target) |
 | **Multi-Component** | Complex work touching multiple component types | All applicable | Multiple sections |
@@ -105,7 +130,7 @@ For ambiguous requests, ask clarifying questions before classifying.
 
 ### Exploration Protocol
 
-Launch **3 search-agent subagents** in parallel to thoroughly explore the relevant existing framework state. These are read-only research agents dispatched via the Agent tool with `subagent_type: "search-agent"` — they can read files, search code, and fetch web pages but cannot write. The exact focus of each subagent depends on the work type:
+Launch **3 search-agent subagents** in parallel to thoroughly explore the relevant existing framework state. These are search and information-gathering agents dispatched via the Agent tool with `subagent_type: "search-agent"`: they read files, search code, and fetch web pages, and may write their own detailed report to a path the dispatch names, but they never modify existing framework files. The exact focus of each subagent depends on the work type:
 
 **For New Skill:**
 1. **Existing skills survey:** List all skills in the same category (data source, tool, methodology). Read 2-3 exemplar SKILL.md files for structural patterns.
@@ -119,8 +144,23 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 
 **For New Mode:**
 1. **Existing modes survey:** Read all mode reference files (first 50-80 lines each). Identify the closest analog mode. Read it fully.
-2. **Registration landscape:** Read orchestrator SKILL.md sections that reference modes (Decision Framework, Summary Table, Escalation Paths, Reference Index, Loading Tree). Count current modes.
+2. **Registration landscape:** Read orchestrator SKILL.md sections that reference modes (Decision Framework, Summary Table, Escalation Paths, Reference Index). Count current modes.
 3. **Downstream documentation:** Read `user_reference/02_understanding_daaf.md` mode sections, `README.md` modes table, `BOUNDARIES.md` mode sections, `AI_DISCLOSURE_REFERENCE.md`, `session-recovery.md`.
+
+**For New Reference File:**
+1. **Exemplars:** Read 2-3 existing reference files of the same type (same folder and purpose) for structure and depth. Voice and audience come from `agent_reference/DOCUMENTATION_STANDARDS.md` (§ Audiences), not from the exemplars; note any exemplar that departs from the standard.
+2. **Loading surfaces:** Find where comparable references are registered and loaded (skill tables, mode files' reference-loading tables and steps, agent References tables, the CLAUDE.md Reference Files table); FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 lists the points.
+3. **Overlap check:** Grep for existing coverage of the topic, so the new file references rather than duplicates it.
+
+**For New Scholarly Search Backend:**
+1. **Source docs and terms:** Fetch the vendor's API documentation and terms of use with `web_fetch.sh` into the session workspace's `web_fetches/` (a web-capable search-agent; this fetch is a required workflow step, checklist item SB2). Report auth, endpoints, limits, cost and storage terms with quotes.
+2. **Adapter landscape:** Read `adding-a-backend.md`, `_BACKEND_TEMPLATE.md` and the closest existing adapter in `scripts/scholar_backends/` (same capability, same access model). Note name, key and rate-lane collisions.
+3. **Registration surfaces:** Read the `scholarly-search` SKILL.md tables, `licensing.md`, the env template's scholarly block, and the `user_reference/01` key table. If the backend would join an existing command (`retractions`, `find`), grep for scripts that parse that command's output.
+
+**For New Framework CLI:**
+1. **Conventions and reuse:** Read the closest existing framework CLI (`scripts/scholar_search.sh` + `.py`, `scripts/web_fetch.sh` + `.py`, `scripts/pdf_ingest.sh` + `.py`, `scripts/lit_verify.sh` + `.py`, `scripts/lit_corpus.sh` + `.py`) and `scripts/web_retrieval_common.py`. Report the wrapper shape, the exit-code table and its three copies, the MANIFEST row and `finish()` path, the untrusted-text order, and which shared helpers the new CLI can import.
+2. **Hook and permission constraints:** Grep `bash-safety.sh`, `enforce-file-first.sh` and `settings.json` for the CLI's name and any binary it will call. Confirm how its tests will run file-first (a captured `.py` that calls `unittest` through `subprocess`) and how CI runs them (`.github/workflows/ci-scripts.yml`).
+3. **Dependencies and registration surfaces:** List any new Python package or system binary (installed today or not; license; pin at or before the Dockerfile's frozen date) and every doc that will mention the CLI: the skill that documents it, existing text that should point to it, the CONTRIBUTING change-surface matrix, README acknowledgments. FRAMEWORK_INTEGRATION_CHECKLIST.md § 9 lists the points.
 
 **For Modify Existing:**
 1. **Current state:** Read the target artifact in full. Read files that reference it (grep for filename).
@@ -128,7 +168,7 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 3. **Downstream impact:** Identify which other files reference or depend on the content being modified.
 
 **For Incorporate Learnings:**
-1. **Learnings scan:** Scan all `research/*/LEARNINGS.md` files. Extract every System Update Action Plan table. Consolidate action items across projects, noting source project for each. Flag duplicates where multiple projects identified the same issue.
+1. **Learnings scan:** Scan the LEARNINGS.md file(s) the user named, or all `research/*/LEARNINGS.md` files when the user named none (§ Read User-Referenced Materials First). Extract every System Update Action Plan table. Consolidate action items across projects, noting source project for each. Flag duplicates where multiple projects identified the same issue.
 2. **Current state check:** For each action item, read the target file(s) mentioned. Determine whether the proposed change has already been made (fully or partially). Mark items as "already addressed", "partially addressed", or "still needed".
 3. **Dependency and ordering analysis:** Identify dependencies across action items (e.g., a skill change that requires an agent change). Group items by target file to minimize file-switching. Propose an execution order respecting dependencies and priority (P1 before P2 before P3).
 
@@ -141,10 +181,13 @@ Combine the relevant exploration sets. Distribute across 3 subagents by grouping
 
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — [focus area]
 
-You are a READ-ONLY research agent. Do NOT write or modify any files.
+Do NOT modify any existing framework or research file. [If a report path is
+named:] Write your full report to {path} and return a summary with the path;
+[otherwise:] return your report as text.
 
 ## Focus
 
@@ -153,7 +196,10 @@ You are a READ-ONLY research agent. Do NOT write or modify any files.
 
 ## Files to Read
 
-[List specific files with absolute paths]
+[List specific files with absolute paths. Always include every material the
+user pointed to (or its digest path), so this exploration starts from it.
+For staged materials, add: "These sit in the scratchpad staging folder
+and will move; name them by title or URL in your report, not by path."]
 
 ## Expected Output
 
@@ -173,19 +219,25 @@ For the "Incorporate Learnings" work type, the 3 search-agent subagents have spe
 **Subagent 1: Learnings Scan**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Learnings Scan
 
-You are a READ-ONLY research agent. Do NOT write or modify any files.
+Do NOT modify any existing file (LEARNINGS.md files are immutable project
+artifacts). [If a report path is named:] Write your full report to {path} and
+return a summary with the path; [otherwise:] return your report as text.
 
 ## Focus
 
-Scan all LEARNINGS.md files across research projects. Extract every System Update
+Scan the LEARNINGS.md files in scope (the ones the user named, or all of them
+across research projects when the user named none). Extract every System Update
 Action Plan section. Consolidate action items into a single deduplicated backlog.
 
 ## Files to Read
 
-- Glob: `{BASE_DIR}/research/*/LEARNINGS.md`
+- [If the user named specific LEARNINGS.md file(s) or projects:] those absolute
+  paths only
+- [Otherwise:] Glob: `{BASE_DIR}/research/*/LEARNINGS.md`
 - For each file found: read the "System Update Action Plan" section (if present)
 
 ## Expected Output
@@ -204,10 +256,13 @@ of each file.
 **Subagent 2: Current State Check**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Current State of Action Item Targets
 
-You are a READ-ONLY research agent. Do NOT write or modify any files.
+Do NOT modify any existing framework or research file. [If a report path is
+named:] Write your full report to {path} and return a summary with the path;
+[otherwise:] return your report as text.
 
 ## Focus
 
@@ -233,10 +288,13 @@ Keep output under 1500 words.
 **Subagent 3: Dependency and Ordering Analysis**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Dependency and Ordering Analysis
 
-You are a READ-ONLY research agent. Do NOT write or modify any files.
+Do NOT modify any existing framework or research file. [If a report path is
+named:] Write your full report to {path} and return a summary with the path;
+[otherwise:] return your report as text.
 
 ## Focus
 
@@ -269,7 +327,7 @@ Before authoring a new framework artifact, the orchestrator proactively offers t
 
 **Why offer this.** LLM-authored specifications improve markedly when grounded in how practitioners and other frameworks have already solved the problem. Without external grounding, the author (framework-engineer) relies on ungrounded inference — the same "skill information awareness" concern raised in `CLAUDE.md` § Execution Philosophy: information an agent supplies beyond what is explicitly encoded in a skill is LLM-generated inference, not curated knowledge, and deserves verification. Pre-authoring research substitutes external evidence for that inference at the design stage, where it is cheapest to incorporate.
 
-**Trigger.** The offer fires when the work type is **New Skill**, **New Agent**, or **New Mode**. It is optional at orchestrator discretion for substantial **Modify Existing** or **Multi-Component** work (e.g., a major agent-protocol rewrite), and is skipped for trivial modifications (typo fixes, single count-word updates). The offer is **advisory, not a gate** — the user can decline it in one word and authoring proceeds without it.
+**Trigger.** The offer fires when the work type is **New Skill**, **New Agent**, or **New Mode**. It is optional at orchestrator discretion for substantial **Modify Existing** or **Multi-Component** work (e.g., a major agent-protocol rewrite), and is skipped for trivial modifications (typo fixes, single count-word updates). The offer is **advisory, not a gate** — the user can decline it in one word and authoring proceeds without it. For **New Scholarly Search Backend**, fetching the vendor's docs and terms is not part of this offer: it is a required workflow step (checklist item SB2). A wider survey of how others use the source can still be offered. For **New Framework CLI**, the offer is optional at orchestrator discretion, as for substantial Modify Existing work: a survey of candidate libraries, their licenses and known failure modes is usually worth offering when the CLI adds a dependency.
 
 **Three decisions (with defaults):**
 
@@ -281,9 +339,9 @@ Before authoring a new framework artifact, the orchestrator proactively offers t
 
 Seed the **Focus areas** recommendation from the artifact being authored — do not present it blank. A concrete, artifact-specific suggestion the user can accept or adjust is far more useful than an open prompt.
 
-**Execution path (when accepted).** The orchestrator dispatches a **`search-agent`** for the research — **not** framework-engineer. By policy, framework-engineer does not perform agent-reading web retrieval (surveying external sources); that is search-agent's role, and keeping the survey in its own read-only dispatch is what makes the research trail separate, auditable, and reviewable. The research must run *before* the Phase 3 authoring dispatch so its findings can inform the design. When the search-agent returns:
+**Execution path (when accepted).** The orchestrator dispatches a **`search-agent`** for the research — **not** framework-engineer. By policy, framework-engineer does not perform agent-reading web retrieval (surveying external sources); that is search-agent's role, and keeping the survey in its own dispatch, separate from authoring, is what makes the research trail separate, auditable, and reviewable. The research must run *before* the Phase 3 authoring dispatch so its findings can inform the design. When the search-agent returns:
 
-1. Persist the return **losslessly** to the session workspace, following the Subagent Return Processing / preliminary notes pattern (`SKILL.md` § Subagent Return Processing and § Preliminary Notes Persistence). Write the full, unmodified return under the mode's `research/YYYY-MM-DD_FrameworkDev_{Topic}/` workspace with the provenance header.
+1. Confirm the research is on disk **losslessly** in the mode's `research/YYYY-MM-DD_FrameworkDev_{Topic}/` workspace. Preferred: the dispatch names a compliant report path there (e.g. `preliminary_notes/YYYY-MM-DD_PreAuthoring_Research.md`, § Workspace Setup) and the search-agent writes its full report to it. Otherwise persist the full, unmodified return yourself with the provenance header, following the Subagent Return Processing / preliminary notes pattern (`SKILL.md` § Subagent Return Processing and § Preliminary Notes Persistence).
 2. Feed the findings into the **Phase 2** design presentation (grounding the proposed structure and design decisions in the surveyed practices).
 3. Inline or reference the findings (by path) in the **Phase 3** framework-engineer dispatch prompt, so the author works from external evidence rather than inference.
 
@@ -295,14 +353,19 @@ Seed the **Focus areas** recommendation from the artifact being authored — do 
 
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Pre-Authoring Research — [artifact type and domain]
 
-You are a READ-ONLY research agent with web access (WebSearch for discovery
-plus the DAAF fetch protocol, `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`,
-to retrieve a page — see the `web-retrieval` skill; the built-in WebFetch is
-blocked). Do NOT modify any framework files; web_fetch.sh writes only fetch
-artifacts (raw response, extract, manifest) into the session workspace.
+You have web access (WebSearch for discovery plus the DAAF fetch protocol,
+`bash /daaf/scripts/web_fetch.sh URL DEST_DIR`, to retrieve a page — see the
+`web-retrieval` skill; the built-in WebFetch is blocked). Do NOT modify any
+existing framework or research file. Write only inside the session workspace:
+web_fetch.sh fetch artifacts (raw response, extract, manifest; DEST_DIR
+{workspace}/web_fetches/) and [if a report path is named] your full report at
+{path}, then return a summary with the path. Temporary files go in
+{workspace}/scripts/scratch/, never /tmp or Claude Code's scratchpad (except
+scratchpad staging, `SKILL.md` § Scope Check > Read First).
 
 ## Focus
 
@@ -332,14 +395,18 @@ observed facts (quoted from a source) from your own synthesis. Keep output under
 1500 words.
 ```
 
-### PSU-FD1: Scope Confirmation
+### PSU-FD1: Scope Check
 
-Present after Phase 1 exploration completes. All user-facing text uses plain language — no internal terms (gate, GFD, PSU, subagent).
+Present after Phase 1 exploration completes. This is the mode's Scope Check (hard tier, § Scope Check): it embeds the standard block from `SKILL.md` § Scope Check (What I read, What changed from your original request, Decisions for you) alongside this mode's own fields, with Work Type through Complexity as the proposed scope. All user-facing text uses plain language — no internal terms (gate, GFD, PSU, subagent).
 
 ```
-**Framework Development: Scope Review**
+**Framework Development: Scope Check**
 
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
+**What I read:**
+- [Each material you pointed me to, with one line on what in it shapes the scope]
+- [If you pointed to nothing: "Nothing beyond your request; the scope below rests on the framework files mapped under Current State"]
+
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 
 **Current State:**
 - [What exists today and how it connects]
@@ -358,13 +425,19 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 - [Moderate: single framework-engineer dispatch]
 - [Complex: multiple dispatches with design review]
 
+**What changed from your original request:** [differences that what I read (your materials or the framework's current state) introduced, or "Nothing — your request and the materials agree"]
+
+**Decisions for you:**
+- [Each independent decision on its own line, with its default (e.g., a name for the new component, or which of two approaches)]
+- [When the Grounding Research block below applies: "Grounding research first: run it with the defaults below (default), adjust them, or skip it"]
+
 **What Happens Next:**
 [If Simple:] I'll make the changes directly and run a consistency and completeness review.
 [If Moderate:] I'll dispatch to the framework specialist, then run a full 3-angle review pass.
 [If Complex:] I'll present a design for your review first, then proceed with authoring and a full 3-angle review pass.
 
 [Conditional block — include ONLY when the Pre-Authoring Research Offer trigger applies
-(New Skill / New Agent / New Mode, or substantial Modify/Multi-Component work):]
+(New Skill / New Agent / New Mode, or substantial Modify/Multi-Component/New Framework CLI work):]
 
 **Optional — Grounding Research:**
 Before we design this, I can run a quick online survey of how this kind of
@@ -376,10 +449,12 @@ in prior art rather than built from scratch. My suggested defaults:
 - **Sources:** A mix of official documentation, academic work, and practitioner/engineering blogs. *You can narrow this — e.g., academic-only.*
 - **Focus:** [seeded, artifact-specific recommendation — e.g., "weighting conventions and common misuse patterns"]. *Adjust or add areas you care about.*
 
-Want me to run this first? (Accept the defaults, adjust them, or skip — your call.)
+Your answer on the grounding research goes with your answer below (it is listed under Decisions for you).
 
-**Does this scope and approach look right? Any adjustments before I proceed?**
+**Does this scope and approach look right[, including the grounding research choice], or would you like any adjustments before I proceed?**
 ```
+
+The message ends with that one closing question. The Grounding Research block explains the offer but asks nothing itself, so the user answers once.
 
 **STOP. Do not proceed to Phase 2 until the user confirms (GFD-1).**
 
@@ -392,7 +467,7 @@ Phase 2 is **adaptive** — its depth scales with the complexity of the work:
 | Complexity | Phase 2 Behavior |
 |-----------|-----------------|
 | **Simple** (updating a description, adding a table row, fixing a cross-reference) | Skip Phase 2 entirely. Proceed directly to Phase 3. |
-| **Moderate** (creating a new skill, modifying an agent's protocol) | Brief design summary in the orchestrator's CP1 response. Proceed to Phase 3 after user confirms. |
+| **Moderate** (creating a new skill, modifying an agent's protocol) | Brief design summary in the Checkpoint 1 response. Proceed to Phase 3 after user confirms. |
 | **Complex** (creating a new agent, creating a new mode, multi-component work) | Present detailed design for user review: proposed structure, key design decisions, template deviations (if any). Wait for user approval before Phase 3. |
 
 When pre-authoring research was run (see Phase 1 § Pre-Authoring Research Offer), fold its findings into the design presentation — grounding the proposed structure, design decisions, and template choices in the surveyed best practices and alternative implementations rather than in ungrounded inference.
@@ -415,7 +490,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 - Simple count word updates ("eight" → "nine")
 - Single table row additions when the row content is obvious from context
-- Brief prose edits to user_reference when the change is straightforward
+- Brief prose edits to user_reference when the change is straightforward; the edit follows `agent_reference/DOCUMENTATION_STANDARDS.md` for user-facing text (§ S3 Plain for Users, § S5 Current State)
 - Cross-reference fixes identified during review
 
 ### When to Dispatch to framework-engineer
@@ -430,16 +505,18 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 ```
 **MODE: Framework Development**
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task
 
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 **Scope:** [What to create or change, and why]
 
 ## Context
 
 [Phase 1 scoping findings summary]
 [User's confirmed scope and design decisions]
+[Materials the user pointed to (absolute paths, or the digest path), so the author reads them too]
 [Pre-authoring research findings, when they exist — inlined or referenced by path to the losslessly persisted search-agent return, so the author works from external evidence rather than inference]
 [For modifications: specific sections/content to change]
 
@@ -451,6 +528,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 [Specific instructions for this dispatch]
 Read FRAMEWORK_INTEGRATION_CHECKLIST.md and execute the applicable section.
+Read agent_reference/DOCUMENTATION_STANDARDS.md and apply it for each file's audience.
 Report all files created and modified.
 
 ## Output Format
@@ -479,13 +557,20 @@ Phase 4 review is **mandatory for all work, regardless of complexity.** Review s
 
 **Dispatch tier.** The Consistency and Quality reviewers are review-role work per the Model Selection doctrine (`SKILL.md` § Model Selection for Subagent Dispatch): dispatch them with an explicit `model: opus` override by default. The Completeness reviewer verifies registration and diffs mechanically, so it stays at the search-agent default (Sonnet). When the modified artifacts cannot be executed, the Quality reviewer is the terminal quality gate — there is no runtime check downstream — and the Opus override on it is mandatory, not a default. For Simple work (Consistency + Completeness, no Quality reviewer), the Consistency reviewer still takes the `model: opus` override and serves as the de facto judgment gate; Completeness stays Sonnet.
 
-For **Moderate** and **Complex** work, launch 3 read-only research subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
+**Scratch graduation first.** Before dispatching the review wave, run the Scratch Graduation Check (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check) on the workspace and on the framework files this session changed; cited probes go to `probes/`. Reviewers then see the final citations, and nothing a reviewer saw moves afterwards.
 
-> **Wave barrier discipline (async dispatch).** These review subagents run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+For **Moderate** and **Complex** work, launch 3 review subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
+
+> **Wave barrier discipline (async dispatch).** See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. The barrier applies however they arrive. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions.
+
+**Review records.** The review subagents are search-agents: they report problems and never fix the files under review. When a lossless review record is wanted, name a compliant path for each reviewer in its dispatch, such as `research/YYYY-MM-DD_FrameworkDev_{Topic}/reviews/NN_{angle}_review.md` (never a basename starting with `report`, `summary`, `findings` or `analysis`; CLAUDE.md § Project Conventions > Subagent File Output); the reviewer writes its full review there and returns a summary with the path. If a reviewer was given no path, or returned its review inline after a Write rejection, the orchestrator persists that return unmodified at the compliant path, with the provenance header from `SKILL.md` § Subagent Return Processing.
 
 ### Subagent 1: Consistency Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review all files created or modified during this Framework Development session
 for cross-file consistency.
 
@@ -496,6 +581,10 @@ Specific checks:
 - Table schemas: do new rows match the column structure of existing rows?
 - Escalation paths (if mode work): are they bidirectional?
 - Naming conventions: do names follow the established patterns?
+- Self-containment: no file that ships with DAAF cites a `research/` workspace,
+  scratch, or maintainer-local material (agent_reference/DOCUMENTATION_STANDARDS.md
+  § S4 Self-Contained). Run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked --family A,E`
+  and quote its hits on the files under review, or quote that there are none.
 
 Files to review: [list all created/modified files with absolute paths]
 
@@ -509,12 +598,18 @@ Evidence requirements:
   run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
 
+Do not edit the files under review. [If a review path is named:] Write your full
+review to {path} and return a summary with the path.
+
 Report: list of inconsistencies found, with file paths and line numbers.
 ```
 
 ### Subagent 2: Quality Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review all files created or modified during this Framework Development session
 for quality against canonical templates and established patterns.
 
@@ -524,8 +619,12 @@ Specific checks:
   rules for skills)
 - Content quality: are descriptions clear and specific? Are anti-patterns
   genuinely useful? Are boundaries precise?
-- Style consistency: does new content match the tone and depth of adjacent
-  existing content?
+- Documentation standard: does new or changed text meet
+  agent_reference/DOCUMENTATION_STANDARDS.md for the file's audience? Apply
+  § The Audience Test, § S5 Current State (no change narration) and § Dated
+  Stamps (no DAAF-internal dated stamps). The standard is the bar, not adjacent content:
+  when a neighboring passage has drifted from the standard, report it rather
+  than treating it as the target.
 - Spirit and intention: does the artifact capture what was intended at the
   outset? Does it serve the stated purpose effectively?
 
@@ -542,12 +641,18 @@ Evidence requirements:
   run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
 
+Do not edit the files under review. [If a review path is named:] Write your full
+review to {path} and return a summary with the path.
+
 Report: quality issues found, with specific improvement suggestions.
 ```
 
 ### Subagent 3: Completeness Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review the integration of new/modified framework components for completeness.
 
 Specific checks:
@@ -560,6 +665,10 @@ Specific checks:
   that were not followed?
 - Extensions: are there other places this component should be mentioned or
   integrated that weren't in the checklist?
+- Documentation triage: run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked` and quote
+  its count summary and every hit on the files under review (or quote that there
+  are none). The lint is a review queue, not a pass/fail gate
+  (agent_reference/DOCUMENTATION_STANDARDS.md § The Triage Lint).
 
 Files to review: [list all created/modified files with absolute paths]
 Checklist: {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
@@ -573,6 +682,9 @@ Evidence requirements:
   delete them before returning and quote a `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`
   run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
+
+Do not edit the files under review. [If a review path is named:] Write your full
+review to {path} and return a summary with the path.
 
 Report: missing registrations, orphaned components, and suggested extensions.
 ```
@@ -628,7 +740,7 @@ found issues you want addressed, let me know. Otherwise, confirm and we're done.
 
 If the user requests changes, loop back to Phase 3 for targeted fixes (respecting iteration limits from Gate Definitions).
 
-**Turn-end briefing.** The two checkpoints (Scope Review and Review Complete) are this mode's heavyweight instances of DAAF's general Turn-End Briefing standard. Every *other* substantive turn that returns control to the user — a scoping-wave synthesis, a framework specialist's return, a review-fix iteration — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+**Turn-end briefing.** The Scope Check and Review Complete checkpoints (and the design review for Complex work) are this mode's heavyweight instances of DAAF's general Turn-End Briefing standard. Every *other* substantive turn that returns control to the user — a scoping-wave synthesis, a framework specialist's return, a review-fix iteration — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 ---
 
@@ -640,7 +752,7 @@ If the user requests changes, loop back to Phase 3 for targeted fixes (respectin
 
 Additional skills (e.g., specific data source skills when the user is modifying one) are loaded by subagents when dispatched, following the standard pattern.
 
-**Context budget note:** Loading two skills at mode start consumes approximately 1,000-1,500 tokens of orchestrator context. Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
+**Context budget note:** Loading the two skills at mode start costs orchestrator context: their SKILL.md files run to several thousand words together (for the cost of a skill in general, see `SKILL.md` § Orchestrator Context Budget, "skills add 5K-20K tokens"). Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
 
 ---
 
@@ -655,6 +767,28 @@ research/YYYY-MM-DD_FrameworkDev_{Topic}/SESSION_NOTES.md
 
 Follow the same deferred creation pattern as Ad Hoc Collaboration — only create the workspace when the first milestone warrants it.
 
+**Staged materials and the workspace.** The materials the user pointed to never trigger the workspace before Checkpoint 1: their fetches, PDF ingests and digest are staged (§ Phase 1 > Read User-Referenced Materials First). Phase 1's own scoping work (an exploration record, SESSION_NOTES.md at "Phase 1 scoping completes", the vendor-doc fetch of checklist item SB2) may create the workspace before Checkpoint 1; a material read after that goes straight into the workspace rather than staging. When the user confirms Checkpoint 1 the staged items move in: `web_fetches/`, `papers/` and `user_pdfs/` to the same-named folders, the digest to `preliminary_notes/`, then any paper whose source PDF moved is re-ingested with `--reingest`. If the workspace does not exist yet, create it for them then; if any of those folders already exists (e.g. `web_fetches/` after an SB2 fetch), the whole staging tree goes in instead as one unit, the dated subfolder `{date}_scope_staging/`, digest included, so its layout and the digest's relative paths stay intact (`SKILL.md` § Scope Check > Read First).
+
+**Workspace layout.** A Framework Development workspace uses these folders, each created on first use only (the layout records the practice of the existing Framework Development workspaces):
+
+```
+research/YYYY-MM-DD_FrameworkDev_{Topic}/
+├── SESSION_NOTES.md
+├── preliminary_notes/   # lossless subagent records (agent-written, or orchestrator-persisted with provenance header)
+├── reviews/             # Phase 4 review records
+├── web_fetches/         # web_fetch.sh artifacts (DEST_DIR)
+├── papers/              # pdf_ingest.sh output (PAPERS_DIR), e.g. staged papers moved in at Checkpoint 1
+├── user_pdfs/           # copies of user PDFs from outside /daaf (pdf_ingest sources)
+├── lit_search/          # scholar_search.sh DEST_DIR (restricted/ inside)
+├── drafts/              # staged hook/settings drafts for the user to deploy
+├── probes/              # probes and outputs promoted out of scratch because something cites them
+├── scripts/             # captured scripts (run_with_capture.sh)
+│   └── scratch/         # uncited working files; never relied on
+└── logs/                # collect_session_logs.sh output
+```
+
+Working files and probes start in `scripts/scratch/`, never `/tmp` or Claude Code's scratchpad (except scratchpad staging, `SKILL.md` § Scope Check > Read First). A root-level `scratch/` is not part of the layout; older workspaces that have one keep it as history. When a note or review is about to cite a scratch file, move it to `probes/` (or the folder its kind belongs in) and cite the new path (CLAUDE.md § Project Conventions > Scratch Files). Shipped framework files never cite this workspace or its scratch: a file users need ships in a tracked home in the repository, and a finding from this session is stated in a sentence where the framework file needs it (`agent_reference/DOCUMENTATION_STANDARDS.md` § S4 Self-Contained).
+
 **Natural restart boundaries:** Checkpoint 1 completion and Phase 3 completion are both natural restart boundaries. If context pressure is building, ensure SESSION_NOTES.md is updated at these points.
 
 ---
@@ -668,7 +802,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - Phase 1 scoping completes (work type classified, exploration done)
 - A framework artifact is created or substantially modified
 - A key design decision is made
-- Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds)
+- Context utilization reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -679,7 +813,7 @@ If the session remains purely conversational with no milestones, SESSION_NOTES.m
 
 **Started:** YYYY-MM-DD
 **Workspace:** {PROJECT_DIR}
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 
 ## Accomplishments
 
@@ -721,10 +855,11 @@ The researcher directed all framework design decisions and approved all changes.
 | Event | What to Update |
 |-------|---------------|
 | Phase 1 scoping complete | Accomplishments + Key Decisions + Integration Status |
+| Scope Check presented / confirmed | In Progress (awaiting confirmation) / Key Decisions (the confirmed scope, so a resumed session does not present it again) plus the dated old → new line for any staged materials moved in |
 | Framework-engineer dispatch returns | Accomplishments + Integration Status |
 | Key design decision made | Key Decisions |
 | Review pass complete (Phase 4) | Accomplishments + In Progress |
-| Context reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | All sections (full checkpoint) |
+| Context reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 
@@ -736,7 +871,7 @@ The researcher directed all framework design decisions and approved all changes.
 
 - "The `data-scientist` skill currently has 14 reference files. Your proposed addition would bring it to 15."
 - "The closest analog agent is `source-researcher` (481 lines). I'd suggest differentiating in the Core Distinction table along the [specific] axis."
-- "Adding this mode requires updating 13 mandatory registration points across 6 files."
+- "Adding this mode requires updating 16 mandatory registration points across 7 files."
 
 If the user asks conceptual questions ("what's the difference between a skill and an agent?"), answer them — but don't volunteer foundational explanations unprompted.
 
@@ -751,6 +886,9 @@ Framework Development has variable outputs depending on the work:
 | New Skill | SKILL.md + references/ | Integration updates across framework files |
 | New Agent | Agent .md file | README.md updates, integration wiring |
 | New Mode | Mode reference .md file | SKILL.md updates, BOUNDARIES.md, user_reference, README.md, supporting references |
+| New Reference File | Reference .md file (structure from 2-3 exemplars) | Registration in the files that load it (checklist § 4) |
+| New Scholarly Search Backend | Adapter module + per-backend reference file + tests with live-wire fixtures (synthetic fixtures with the live shape for a `restricted` source; checklist SB7) | `scholarly-search` SKILL.md tables, licensing matrix, dated api-notes entry, env template and key docs (keyed sources) |
+| New Framework CLI | `.sh` wrapper + `.py` under `scripts/` + unit tests with synthetic fixtures (and the fixture generator) | Skill reference documenting the CLI, pointers from existing docs, CONTRIBUTING matrix row, README acknowledgments and Dockerfile additions when a dependency is added (checklist § 9) |
 | Modify Existing | Updated file(s) | Downstream updates if scope changed |
 | Incorporate Learnings | Updated framework file(s) per action plan items | Integration updates as needed per standard modification standards |
 | Multi-Component | Multiple of the above | Cross-component consistency verification |
@@ -765,32 +903,33 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 
 ### Always Do
 
-- Scope the existing state before modifying anything (Phase 1 is mandatory)
+- Read what the user pointed to and scope the existing state before modifying anything (Phase 1 is mandatory)
 - Follow canonical templates for all new artifacts
 - Execute the applicable FRAMEWORK_INTEGRATION_CHECKLIST.md section
+- Apply `agent_reference/DOCUMENTATION_STANDARDS.md` to every new or changed text for its audience, and run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked` over the session's changes before presenting Checkpoint 2
 - Always dispatch review subagents in Phase 4 — minimum 2 (Simple) or 3 (Moderate/Complex). The orchestrator must never self-review in lieu of subagent dispatch.
 - Present changes for user review at Checkpoint 2
 - Load `skill-authoring` and `agent-authoring` at mode start
 - Update SESSION_NOTES.md before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state. Do not commit autonomously; if git commit management is enabled, *suggest* a commit to the user at natural boundaries (Checkpoint 1, Phase 3 completion) and let the user decide
 - Set executable permissions (`chmod +x` + `git update-index --chmod=+x`) on any newly created or modified `.sh` files (hooks, utility scripts) and verify with `git ls-files -s` that the mode is `100755`
-- Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (leftover probe symlinks, and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` dir from a wrong-CWD host-tool dry-run) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
+- Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (leftover probe symlinks; repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` dir from a wrong-CWD host-tool dry-run; and leftover test fixtures with names Windows cannot create or case-only name clashes, which abort a Windows backup) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
 
 ### Ask First Before
 
 - Modifying CLAUDE.md (universal authority document)
-- Modifying settings.json or hook scripts (safety-critical configuration)
+- Modifying settings.json (safety-critical configuration), with the Edit tool only: shell writes to it are blocked (CLAUDE.md § Safety-System Integrity). Hook scripts are not an Ask First item: they are user-only (§ Never Do)
 - Changing the structure of existing templates (AGENT_TEMPLATE.md, MODE_TEMPLATE.md, etc.)
 - Deleting or renaming existing framework files
 - Making changes beyond the user's stated scope
-- Modifying Dockerfile or docker-compose.yml. **When proposing where a package or tool addition goes, recommend the user additions block near the end of the Dockerfile by default** — late layers rebuild fast because Docker layer caching spares the expensive layers above them; place an addition earlier only when functionally required (a system dependency a framework package needs at build time, or an R package that needs presence-gate coverage). **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but `docker compose up -d --build` reads the host copy. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), (2) run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder — this copies the updated files from the container to the host and rebuilds the image automatically. If they don't have the rebuild script, the manual alternative is `docker compose cp daaf-docker:/daaf/<filename> ./<filename>` (run from the `daaf-docker` folder — the service-name form works regardless of the compose project name) followed by `docker compose up -d --build`. Point them to `user_reference/04_extending_daaf.md` § "The Recommended Path: Modify the Dockerfile" for the full procedure if they want more detail.
+- Modifying Dockerfile or docker-compose.yml. **When proposing where a package or tool addition goes, recommend the user additions block near the end of the Dockerfile by default** — late layers rebuild fast because Docker layer caching spares the expensive layers above them; place an addition earlier only when functionally required (a system dependency a framework package needs at build time, or an R package that needs presence-gate coverage). A LaTeX package goes in the TinyTeX block's `TT_PKGS` list instead, which installs it from a dated archive (`user_reference/04_extending_daaf.md` § "LaTeX Packages"). **Framework-owned dependencies are the exception:** a package that a DAAF component needs (a framework CLI, skill tooling, the provider shim) goes in the categorized framework layers with the rest of the relevant installs, never in the user additions block, which is reserved for the user's own additions (see `FRAMEWORK_INTEGRATION_CHECKLIST.md` FC17). Additions resolve against the Dockerfile's frozen environment date (`UV_EXCLUDE_NEWER` for uv, `UBUNTU_SNAPSHOT` for apt, which runs through `daaf-apt-update`), so a version released after that date fails with uv's "No solution found" error (observed 2026-11-02, uv 0.9.30). Propose a per-package `--exclude-newer-package` override, or an environment-date bump. A bump is a named, recurring Ask First maintenance action: move `UV_EXCLUDE_NEWER` and `UBUNTU_SNAPSHOT` together to one instant no earlier than the current `UBUNTU_SNAPSHOT` (the snapshot may run ahead of the Python date only as a dated security exception listed in the Dockerfile banner), re-pin the base digest only if the user wants it, and follow `user_reference/04_extending_daaf.md` § "Bumping the environment date". **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but the image build reads the host copy in the user's `daaf-docker` folder. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), then (2) choose **10) Rebuild Container** in the DAAF Control Panel, or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder. Both copy the updated files from the container to the host and rebuild the image. Do not offer typed `docker compose cp` / `docker compose up -d --build` commands instead: the rebuild script loads the project name, host ports and `DAAF_DEV` from `environment_settings.txt` before it calls Compose, and plain Compose does not read that file for them, so on a second install it acts on the default `daaf` project and on a `DAAF_DEV=1` install it builds without the developer toolchain. Point them to `user_reference/04_extending_daaf.md` § "The Container-Host Boundary (Read This First)" for why the rebuild script matters, and to § "The Recommended Path: Modify the Dockerfile (Python)" (or § "R Packages", § "LaTeX Packages") for the full procedure if they want more detail.
 
 ### Never Do
 
-- Create or modify files in `.claude/hooks/` without explicit user permission
+- Create or modify files in `.claude/hooks/`, even with the user's permission: hook changes are user-only (the `Edit(.claude/hooks/*)` deny rule blocks the file-editing tools and `bash-safety.sh` blocks shell writes; CLAUDE.md § Safety-System Integrity). Draft the change in the workspace's `drafts/` folder, as a patch or a full draft file, test it there, and give the user the exact command to apply it (`agent_reference/ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks)
 - Skip Phase 1 scoping (even for "simple" changes — you might discover unexpected connections)
-- Skip Checkpoint 1 (user must confirm scope before modifications begin)
+- Skip Checkpoint 1, the Scope Check (user must confirm scope before modifications begin)
 - Skip Phase 4 review subagent dispatch for any reason, including low complexity — self-review is never a substitute
-- Create research project artifacts (scripts/, data/, output/) — escalate to appropriate mode
+- Create research project artifacts (analysis scripts, data/, output/) — escalate to appropriate mode. The session workspace's own folders (§ Workspace Setup), including its captured probe scripts, are not research project artifacts
 - Proceed with modifications when safety-critical files are involved without explicit approval
 - Assume a change is isolated — always check for downstream impacts
 
@@ -800,12 +939,14 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 
 When the user signals the session is ending, or after Checkpoint 2 approval with no further work:
 
-1. Update SESSION_NOTES.md with a final summary (all sections)
-2. If a research project workspace was created (i.e., the work involved subagent dispatches worth reviewing), collect session logs:
+1. The Scratch Graduation Check already ran before Phase 4 review (§ Phase 4). Re-run it only for scratch citations added during or after the review, and tell the user what moved; if the session ended without a review, run it now
+2. Update SESSION_NOTES.md with a final summary (all sections), including any moves from step 1
+3. If a research project workspace was created (i.e., the work involved subagent dispatches worth reviewing), collect session logs:
    ```bash
    bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
    ```
-3. Offer a brief summary to the user:
+   It copies the archived sessions that mention the workspace and records a request that should copy this session into `logs/` when it ends (if it is missing afterwards, run the script again in a later session). A workspace used only in this session therefore has an empty `logs/` until the session ends, and the script reports that nothing was copied: that is expected
+4. Offer a brief summary to the user, naming any files graduated out of scratch:
 
 > "Here's what we modified:
 > - [List of framework files created/modified]
@@ -813,9 +954,8 @@ When the user signals the session is ending, or after Checkpoint 2 approval with
 >
 > Session notes are saved in `SESSION_NOTES.md`.
 >
-> [If logs were collected:]
-> To browse the session timeline interactively, run in the Docker terminal:
-> `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`"
+> [If step 3 ran:]
+> This session's transcript should reach the workspace's `logs/` folder when the session ends. After that, to browse the session timeline in your browser, choose **3) View Session Logs** in the DAAF Control Panel and pick this workspace. (From a terminal in the container, `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}` does the same.)"
 
 ---
 

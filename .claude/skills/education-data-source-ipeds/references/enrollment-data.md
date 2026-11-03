@@ -65,7 +65,7 @@ Total students enrolled in credit-bearing courses as of the census date.
 | Dimension | Categories |
 |-----------|------------|
 | Attendance status | Full-time, Part-time |
-| Level | Undergraduate, Graduate, First-professional |
+| Level | Undergraduate, Graduate (First-professional only through 2008) |
 | Undergraduate type | First-time, Transfer, Continuing, Non-degree |
 | Race/ethnicity | 9 categories |
 | Gender | Men, Women |
@@ -122,18 +122,7 @@ FTE standardizes enrollment across institutions with different full-time/part-ti
 
 ### FTE Calculation Methods
 
-**Credit Hour Institutions (most common)**:
-
-```
-Undergraduate FTE = Full-time UG + (Part-time UG credit hours / 30)
-Graduate FTE = Full-time Grad + (Part-time Grad credit hours / 24)
-```
-
-**Clock Hour Institutions**:
-
-```
-FTE = Total contact hours / 900
-```
+**12-month FTE (E12)**: total 12-month instructional activity ÷ a standard full-time load. For semester-calendar institutions, undergraduate credit hours ÷ 30 and graduate credit hours ÷ 24 (Portal enrollment-full-time-equivalent documentation). Divisors differ for quarter-calendar and clock-hour reporting; check the E12 instructions for the reporting year. Institutions may report their own FTE instead (`rep_fte` vs derived `est_fte`).
 
 ### FTE vs Headcount
 
@@ -194,7 +183,7 @@ Note: Definition varies by institution and term type (semester vs quarter).
 |-------|------------|
 | Undergraduate | Enrolled in bachelor's or lower program |
 | Graduate | Enrolled in master's or doctoral program |
-| First-professional | Enrolled in professional degree (JD, MD, etc.) |
+| First-professional | Enrolled in professional degree (JD, MD, etc.) (through 2008 only) |
 | Unclassified | Not classified by level |
 
 ### By Enrollment Status (Undergraduates)
@@ -349,8 +338,8 @@ The `fall-enrollment-race` (yearly) dataset provides the main fall enrollment da
 | Portal Variable | Description |
 |-----------------|-------------|
 | `enrollment_fall` | Fall enrollment count |
-| `race` | Race/ethnicity (integer codes: 1-9, 99=Total) |
-| `sex` | Sex (1=Male, 2=Female, 3=Nonbinary, 4=Unknown, 99=Total) |
+| `race` | Race/ethnicity (integer codes: 1-9, 99=Total; some 1986-1997 files also carry 20=Other) |
+| `sex` | Sex (1=Male, 2=Female, 99=Total; 3=Gender Not-Identified from 2022; 9=Unknown in 2023 and 2024; the 2022 file has an undeclared 4 and no 9) |
 | `level_of_study` | 1=Undergraduate, 2=Graduate, 99=Total |
 | `ftpt` | 1=Full-time, 2=Part-time, 99=Total |
 | `class_level` | 1=First-time, 2=Transfer, 3=Continuing, 4=Other total, 99=Total |

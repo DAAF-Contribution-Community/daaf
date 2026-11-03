@@ -353,7 +353,7 @@ The most notable syntax differences:
 
 ## References
 
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly
   Econometrics Estimations: The R Package fixest." arXiv:2601.21749.
   https://arxiv.org/abs/2601.21749
 - fixest documentation: https://lrberge.github.io/fixest/

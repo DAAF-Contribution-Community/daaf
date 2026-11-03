@@ -36,7 +36,7 @@ users off guard.
 | `$global` (global macro) | `$global` | `SyntaxError` -- `$` has no meaning outside strings | `variable_name` (module-level) |
 | `&` / `|` (logical operators) | `&` / `|` | Same symbols, but require parentheses around comparisons in Python | `(pl.col("x") > 5) & (pl.col("y") < 10)` |
 | `!` (logical NOT) | `!expr` | `SyntaxError` for polars expressions | `~pl.col("x")` (expression) or `not x` (scalar) |
-| `_n` (row number) | `_n` | `NameError` -- no built-in row counter | `pl.int_range(pl.len()).over("group")` or `.cum_count()` |
+| `_n` (row number) | `_n` | `NameError` -- no built-in row counter | `pl.int_range(1, pl.len() + 1).over("group")` |
 | `_N` (group size) | `_N` | `NameError` | `pl.len().over("group")` |
 | `in 1/10` (first 10 obs) | N/A | No `in` range syntax for DataFrames | `df.head(10)` or `df.slice(0, 10)` |
 | `var[_n-1]` (lag) | `var[n-1]` | Python list indexing, not lag | `pl.col("var").shift(1).over("group")` |
@@ -318,9 +318,9 @@ robust SEs using the HC1 (small-sample adjusted) correction.
 fit = pf.feols("y ~ x", data=pdf, vcov="hetero")
 
 # statsmodels: must specify HC1 explicitly
-result = smf.ols("y ~ x", data=pdf).fit(cov_type="HC1")
+result = smf.ols("y ~ x", data=pdf).fit(cov_type="HC1", use_t=True)  # use_t=True: t p-values
 # Default .fit() uses non-robust (IID) SEs
-# .fit(cov_type="HC3") is statsmodels' default robust -- NOT HC1
+# .fit(cov_type="HC3") is a different estimator -- NOT HC1
 ```
 
 **Clustered SEs:**
@@ -376,7 +376,8 @@ predictions(result, newdata=datagrid(x1=[0, 1], model=result))
 avg_slopes(result, variables="x1", by="group")
 ```
 
-The Python `marginaleffects` package is described by its author as alpha-quality.
+When the Python `marginaleffects` port was announced in July 2023, its author
+called it an "alpha" release; it has matured since (pinned 0.5.0).
 Verify critical results against Stata for published research.
 
 ### 5. `outreg2` / `esttab` Become `pf.etable()`
@@ -552,7 +553,8 @@ range(1, 11)       # [1, 2, ..., 10] -- exclusive upper bound
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); pandas documentation, "Comparison with
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28); polars User Guide (docs.pola.rs,
 > accessed 2026-03-28); pyfixest documentation (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > statsmodels documentation (statsmodels.org, accessed 2026-03-28)

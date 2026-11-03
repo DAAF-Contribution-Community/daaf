@@ -56,7 +56,8 @@ indices, `save()` needing selenium) are documented at their point of use.
 
 - **Canonical constructor is `gt.GT(df)`.** The `GT.from_data()` classmethod is
   broken in 0.21.0 (raises `TypeError` on an internal `_tbl_data` kwarg) — do not
-  use it. Probe: `04_extras_a.py` in the R_Support sessionF scratch.
+  use it. Probe 2026-07-13, great-tables 0.21.0 (maintainer-only probe,
+  not shipped): `research/2026-07-06_FrameworkDev_R_Support/probes/sessionF/04_extras_a.py`.
 - **`grand_summary_rows(fns=...)` expects Polars expressions**, not R-style string
   aggregator names. Use `{"Total": pl.all().sum()}`, not `{"Total": "sum"}`. It also
   does **not** support the `columns=` selection argument in 0.21.0 (raises

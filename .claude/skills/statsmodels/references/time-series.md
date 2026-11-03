@@ -559,8 +559,8 @@ print(f"Critical values: {crit_values}")
 |------------|-------------|----------------|
 | Reject H0 (p < 0.05) | Fail to reject H0 (p > 0.05) | Stationary |
 | Fail to reject H0 (p > 0.05) | Reject H0 (p < 0.05) | Non-stationary (unit root) |
-| Reject H0 | Reject H0 | Trend-stationary (deterministic trend; consider detrending) |
-| Fail to reject H0 | Fail to reject H0 | Inconclusive |
+| Reject H0 | Reject H0 | Conflicting (statsmodels' ADF/KPSS example calls this "difference stationary"); check for a structural break, and re-run both tests with `regression='ct'` |
+| Fail to reject H0 | Fail to reject H0 | Inconclusive (statsmodels' ADF/KPSS example calls this "trend stationary"); re-run both tests with `regression='ct'` |
 
 ```python
 # Standard workflow: apply both tests
@@ -571,6 +571,14 @@ kp = kpss(y, regression='c', nlags='auto')
 
 print(f"ADF p-value:  {adf[1]:.4f}  (H0: unit root)")
 print(f"KPSS p-value: {kp[1]:.4f}  (H0: stationary)")
+
+# If the series may trend, re-run both tests around a trend: with 'c' only,
+# a trend-stationary series can read as a unit root
+adf_ct = adfuller(y, regression='ct', autolag='AIC')
+kp_ct = kpss(y, regression='ct', nlags='auto')
+
+print(f"ADF ('ct') p-value:  {adf_ct[1]:.4f}  (H0: unit root)")
+print(f"KPSS ('ct') p-value: {kp_ct[1]:.4f}  (H0: trend stationary)")
 ```
 
 ### Zivot-Andrews Breakpoint Unit Root Test
@@ -607,7 +615,7 @@ pacf_values, pacf_confint = pacf(y, nlags=20, method='ywm', alpha=0.05)
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `nlags` | 40 | Number of lags to compute |
+| `nlags` | `None` | `None` uses min(10·log10(nobs), nobs − 1) |
 | `fft` | `True` | Use FFT for speed (recommended for large series) |
 | `alpha` | `None` | If set, returns confidence intervals as second return value |
 | `missing` | `'none'` | How to handle NaN: `'none'`, `'raise'`, `'conservative'`, `'drop'` |
@@ -616,12 +624,12 @@ pacf_values, pacf_confint = pacf(y, nlags=20, method='ywm', alpha=0.05)
 
 | Method | Notes |
 |--------|-------|
-| `'ywm'` | Yule-Walker (modified), default |
-| `'yw'` | Yule-Walker (unbiased) |
+| `'ywm'` | Yule-Walker without sample-size adjustment (alias `'ywmle'`; `plot_pacf` default) |
+| `'yw'` | Yule-Walker with sample-size adjustment (alias `'ywadjusted'`), default |
 | `'ols'` | OLS regression at each lag |
-| `'ols-inefficient'` | OLS without heteroskedasticity correction |
-| `'ld'` | Levinson-Durbin recursion |
-| `'ldb'` | Levinson-Durbin with bias correction |
+| `'ols-inefficient'` | OLS on lags using one common sample for all lags |
+| `'ld'` | Levinson-Durbin recursion with bias correction |
+| `'ldb'` | Levinson-Durbin recursion without bias correction |
 
 ### Plotting ACF and PACF
 

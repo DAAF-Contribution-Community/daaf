@@ -6,8 +6,8 @@ DAAF's R execution mode, framed as "here is what you know from Python, here is
 how R does it."
 
 > **Versions referenced:**
-> R: R 4.5.3, Quarto 1.7.29
-> Python: marimo 0.19.11, Python 3.12
+> R: R 4.5.3, Quarto 1.10.18
+> Python: marimo 0.25.0, Python 3.12
 > See SKILL.md § Library Versions for the complete version table.
 
 ---

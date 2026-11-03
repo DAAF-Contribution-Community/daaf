@@ -75,8 +75,8 @@ df.filter((pl.col("a") > 10) & (pl.col("b") == "x"))
 
 ```python
 df.group_by("category").agg(
-    pl.col("value").sum(),       # Aggregates
-    pl.col("value").mean(),
+    pl.col("value").sum().alias("total"),       # Aggregates
+    pl.col("value").mean().alias("average"),
     pl.len()                     # Row count per group
 )
 ```
@@ -342,7 +342,7 @@ df.with_columns(
 )
 
 df.with_columns(
-    pl.all().exclude("id").round(2)
+    cs.float().round(2)
 )
 
 df.with_columns(

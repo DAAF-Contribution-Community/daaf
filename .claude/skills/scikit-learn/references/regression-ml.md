@@ -262,9 +262,9 @@ model.fit(X_train, y_train)
 | Feature | HistGradientBoosting | LightGBM | XGBoost |
 |---------|---------------------|----------|---------|
 | In Dockerfile | Yes | Yes | No (optional) |
-| SHAP TreeExplainer | Approximate | Native (fast) | Native (fast) |
+| SHAP TreeExplainer | Native (fast) | Native (fast) | Native (fast) |
 | Custom loss functions | No | Yes | Yes |
-| Categorical features | Native | Native | Requires encoding |
+| Categorical features | Native | Native | Native support via `enable_categorical=True` (1.5+); otherwise requires encoding |
 | GPU support | No | Yes | Yes |
 
-> **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use LightGBM when SHAP TreeExplainer performance matters. Use XGBoost for custom loss functions.
+> **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use XGBoost for custom loss functions.

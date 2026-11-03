@@ -44,12 +44,19 @@ TOOL_CATEGORY_MAP = {
     "Grep": "read",
     "Skill": "skill",
     "Agent": "delegate",
+    "Task": "delegate",
     "WebSearch": "search",
     "WebFetch": "search",
     "TaskCreate": "track",
     "TaskUpdate": "track",
     "NotebookEdit": "write",
 }
+
+# Tool names of a subagent dispatch. Claude Code names the tool "Agent"
+# (observed 2026-11-02, Claude Code 2.1.281); transcripts from older versions
+# name it "Task". Both carry subagent_type and description, and both are
+# rendered and linked as dispatches.
+DISPATCH_TOOL_NAMES = ("Agent", "Task")
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +192,7 @@ def tool_description(tool_name, tool_input):
     elif tool_name == "Skill":
         skill_name = inp.get('skill', '')
         return f"Loaded skill: {skill_name}"
-    elif tool_name == "Agent":
+    elif tool_name in DISPATCH_TOOL_NAMES:
         agent_type = inp.get("subagent_type", "agent")
         description = inp.get("description", "")
         return f"Dispatched {agent_type} specialist: {description}"
@@ -562,8 +569,8 @@ def extract_activities_from_content(content, line_num):
                 "_tool_use_id": block.get("id"),
             }
 
-            # For Agent tool calls, add subagent metadata
-            if tname == "Agent":
+            # For dispatch tool calls (Agent, or Task in older transcripts), add subagent metadata
+            if tname in DISPATCH_TOOL_NAMES:
                 activity["subagentType"] = tinput.get("subagent_type", "")
                 activity["subagentDescription"] = tinput.get("description", "")
 
@@ -720,7 +727,7 @@ def build_blocks(records, session_idx, file_rel):
 
             # Back-patch tool result lines and errors
             for act in activities:
-                if act["tool"] and act["tool"] != "Agent":
+                if act["tool"] and act["tool"] not in DISPATCH_TOOL_NAMES:
                     # Match by tool_use_id for precise linking
                     tuid = act.get("_tool_use_id")
                     if tuid and tuid in tool_result_index:
@@ -731,7 +738,7 @@ def build_blocks(records, session_idx, file_rel):
                         if act["tool"] in ("Glob", "Grep") and tri.get("content"):
                             act["resultContent"] = truncate(tri["content"], 3000)
 
-                elif act["tool"] == "Agent":
+                elif act["tool"] in DISPATCH_TOOL_NAMES:
                     # Use the activity's own tool_use_id for precise matching
                     tuid = act.get("_tool_use_id")
                     if tuid and tuid in tool_result_index:
@@ -739,11 +746,11 @@ def build_blocks(records, session_idx, file_rel):
                         act["resultLine"] = tri["resultLine"]
                         act["error"] = tri.get("error", False)
 
-            # Collect Agent dispatches for subagent linking
+            # Collect dispatches for subagent linking
             for block_item in (content if isinstance(content, list) else []):
                 if (isinstance(block_item, dict)
                         and block_item.get("type") == "tool_use"
-                        and block_item.get("name") == "Agent"):
+                        and block_item.get("name") in DISPATCH_TOOL_NAMES):
                     tuid = block_item.get("id")
                     tinput = block_item.get("input", {})
                     agent_dispatches[tuid] = {
@@ -803,7 +810,7 @@ def build_assistant_summary(activities):
             counts["wrote"] = counts.get("wrote", 0) + 1
         elif tool == "Bash":
             counts["ran"] = counts.get("ran", 0) + 1
-        elif tool == "Agent":
+        elif tool in DISPATCH_TOOL_NAMES:
             counts["dispatched"] = counts.get("dispatched", 0) + 1
         elif tool == "Skill":
             counts["loaded skill"] = counts.get("loaded skill", 0) + 1
@@ -1037,7 +1044,7 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
             }
 
     # Also build a map from sourceToolAssistantUUID -> dispatch info
-    # by finding which assistant record contained the Agent tool_use.
+    # by finding which assistant record contained the dispatch tool_use.
     # After streaming chunk merging, a merged record may have multiple UUIDs
     # stored in _all_uuids. The sourceToolAssistantUUID on the result record
     # may reference ANY of those chunk UUIDs, so we index all of them.
@@ -1051,7 +1058,7 @@ def link_subagents_to_dispatches(subagents, agent_dispatches, orch_records, orch
         for block in content:
             if (isinstance(block, dict)
                     and block.get("type") == "tool_use"
-                    and block.get("name") == "Agent"):
+                    and block.get("name") in DISPATCH_TOOL_NAMES):
                 tuid = block.get("id")
                 tinput = block.get("input", {})
                 dispatch_entry = {
@@ -1205,10 +1212,10 @@ def process_session(session_idx, session_prefix, session_files):
         agent_type = sa.get("agentType", "")
         sa["frontmatterSkills"] = extract_agent_frontmatter_skills(agent_type)
 
-    # Also enrich agent-type activities in blocks with subagent IDs
+    # Also enrich dispatch activities in blocks with subagent IDs
     for block in blocks:
         for act in block.get("activities", []):
-            if act.get("tool") == "Agent":
+            if act.get("tool") in DISPATCH_TOOL_NAMES:
                 # Find matching subagent by checking the line
                 for sa in subagents:
                     if sa["invocation"].get("orchestratorLine") == act.get("line"):

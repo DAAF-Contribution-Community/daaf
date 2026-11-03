@@ -72,13 +72,15 @@ NCES periodically maps state proficiency standards onto the NAEP scale:
 
 | Finding | Implication |
 |---------|-------------|
-| State cut scores vary by 40+ NAEP points | Huge differences in what "proficient" means |
-| Some state "proficient" = NAEP "Basic" | States labeling students proficient at low levels |
-| Variation persists over time | Not converging to common standard |
+| 2019 grade 4 NAEP-equivalent standards ranged 38 points in reading (Virginia 200 to Tennessee 238) | Large differences in what "proficient" means |
+| Most states' "proficient" mapped to NAEP Basic in 2019 | States labeling students proficient at NAEP Basic levels |
+| Ranges narrowed 2009→2019 but remain large | Narrowing, but no common standard |
+
+> NCES 2019 mapping study: "Overall, in 2019, most state standards for both grades and both subjects mapped at the NAEP Basic achievement level." and "In all grades and subjects, the differences were smaller in 2019 than in 2009." Reading range from NCES Table 2019a (grade 4).
 
 ### Example: Mapping Results
 
-From NCES mapping studies (illustrative):
+Hypothetical illustration, not NCES values:
 
 | State | Grade 4 Reading "Proficient" | NAEP Equivalent |
 |-------|------------------------------|-----------------|
@@ -263,7 +265,7 @@ States periodically change their assessments:
 |--------|-------|--------|
 | 2014-2017 | Common Core transition | Many states adopted new tests |
 | 2015-2017 | PARCC/SBAC implementation | Consortium assessments |
-| 2019-2020 | COVID-19 | Testing largely waived |
+| 2019-2020 | COVID-19 | Assessment requirement waived for all 50 States, DC, Puerto Rico and the BIE (85 FR 29935) |
 | 2020-2021 | Return to testing | Varied state approaches |
 
 ### Identifying Assessment Changes
@@ -441,12 +443,9 @@ ESSA requires 95% student participation in assessments:
 | Each subgroup | 95% of each reportable subgroup |
 | Consequences | States must address low participation |
 
-### Participation Data Variables
+### Participation Data
 
-| Variable | Description |
-|----------|-------------|
-| `read_test_pct_part` | Reading participation rate |
-| `math_test_pct_part` | Math participation rate |
+Participation rates are not in the Portal assessment files (no `*_pct_part` variable; varlist checked 2026-10-28). Use ED's EDFacts participation files (SY 2012-13 onward) for the 95% requirement.
 
 ### Low Participation Concerns
 
@@ -471,7 +470,7 @@ Some states/communities have significant opt-out rates:
 2. **Check for breaks**: Identify assessment system changes
 3. **Use midpoint variables**: For suppressed data
 4. **Document suppression**: Report suppression rates
-5. **Note COVID gap**: 2019-20 data largely missing
+5. **Note COVID gap**: no Portal assessment file for 2019-20 (Portal year 2019)
 
 ### Never
 

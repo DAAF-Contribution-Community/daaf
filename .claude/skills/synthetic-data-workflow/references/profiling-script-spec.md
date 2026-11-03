@@ -1,6 +1,6 @@
 # Profiling Script Specification
 
-The contract for the disclosure-controlled profiling script the user runs locally (DS-1 preparation, DS-2 user run) and the canonical JSON schema of the report it returns (DS-3 intake). The measurement inventory is derived from the Data Onboarding profiling measurement inventory (see `WORKFLOW_PHASE_DO_PROFILING.md` § Part Details — scripts 01-09), filtered per disclosure tier so that only tier-permitted, suppression-applied statistics ever leave the user's machine.
+The contract for the disclosure-controlled script the user runs locally (DS-1 preparation, DS-2 user run) and its returned report (DS-3 intake). The measurement inventory derives from `WORKFLOW_PHASE_DO_PROFILING.md` scripts 01–09, filtered by tier and support. **Current report contract: `2.0`.** This is a minimum-support/categorical-cell safeguard, not a guarantee against reconstruction or auxiliary-information attacks. Human release review remains required.
 
 ## Contents
 
@@ -14,216 +14,137 @@ The contract for the disclosure-controlled profiling script the user runs locall
 
 ## Design constraints for the outbound script
 
-This script runs where DAAF cannot reach and touches the real sensitive data. It must be trustworthy on inspection by a non-programmer researcher, and it must be incapable of emitting anything the chosen tier forbids.
-
-- **Zero DAAF dependency.** No sourcing of DAAF files, no DAAF paths, no network calls. A single self-contained file the user can read top-to-bottom and run with a standard interpreter.
-- **Flat, sequential, auditable.** DAAF code style (no function definitions; `# --- Config ---`, `# --- Load ---`, `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---` section separators; inline `stopifnot()`/`assert` validation). Every disclosure-relevant computation carries IAT comments (`# INTENT:` / `# REASONING:` / `# ASSUMES:`) so a reviewer can see *why* each statistic is safe at the chosen tier. The one sanctioned deviation from "no config at top": a clearly marked `# --- Config (EDIT THESE) ---` block, preferred over argparse/commandArgs so a non-programmer can configure it by editing obvious variables.
-- **Suppression on by default.** At T2+, the script cannot be configured to emit raw min/max, example values, sub-threshold cells, or identifier values. Suppression is structural, not a flag the user might forget.
-- **Dual output.** A machine-readable JSON report (`{dataset}_profile_report.json`) and a human-readable plain-text summary (`{dataset}_profile_report.txt`). The user reviews the `.txt` before sharing either file.
-- **Loud final review block.** The script ends by printing a prominent block instructing the user to REVIEW THE `.txt` BEFORE SHARING and enumerating what to check.
-- **Base-first dependencies.** R: base R for CSV; optional `arrow` (parquet) and `haven` (Stata/SPSS/SAS) behind graceful "install if needed" guards. Python: stdlib + pandas (ubiquitous); optional `pyarrow` for parquet, documented. Hand-rolled JSON emission is acceptable in base R to avoid a jsonlite dependency; Python uses stdlib `json`.
+- **Zero DAAF dependency:** one local file, no DAAF paths/imports, no network calls, no raw-row outputs.
+- **Flat, sequential, auditable:** inline checks and IAT comments; no helper functions or serializer package requirement. The editable Config block is for non-programmers. Python must run **without `-O`, `-OO`, or `PYTHONOPTIMIZE`**: an explicit non-assert startup guard refuses optimized mode before loading data or writing reports, because optimization removes the assertion-based release checks.
+- **Numeric precision boundary:** these standalone T2/T3 assets refuse finite numeric input with absolute magnitude **at least `2^53` (9,007,199,254,740,992)** before double conversion, with a local precision/range diagnostic and no reports. Python tests native integers exactly; R tests native `integer64` through exact decimal text before coercion. The inclusive boundary also refuses already-double values at the point where neighboring integers may have been rounded by the reader. This is a computational limitation, not suppression for large sample size or constant values. It applies to numeric-encoded IDs too; T1 stays schema-only. Use a separately reviewed precision-safe local profiling path, not a lossy cast or an altered-value report. No new package is required.
+- **Gate before calculating value summaries:** count actual usable observations first. Support means contributing **records**, not distinct values, positive outcomes, or the missing numerator. `settings.support_unit: "record"` records the implementation's unit. The researcher must establish whether one record represents one intended contributor; repeated visits are not verified distinct people. There is no identity-resolution system here.
+- **Preserve ordinary metadata:** missingness uses all rows as its denominator; cardinality/uniqueness remain metadata. A missingness rate of .002 over 1,000 records and a numeric binary mean of .003 over 1,000 usable records are permitted under this policy. Do not suppress entire columns for rare missingness/positive counts. Categorical cells retain their separate threshold rule.
+- **Suppression is structural:** below-support value summaries cannot fall back to quartiles, means, length summaries, or categorical encodings. Eligible constants are not automatically suppressed.
+- **Typed release candidate:** both assets build rounded/suppressed typed objects, validate those objects, then serialize them. R uses explicit schema-specific base-R emission, not a general serializer or jsonlite dependency. Python uses stdlib JSON with nonfinite output forbidden.
+- **Dual output and failure handling:** JSON and TXT describe the same candidate; the TXT embeds the exact candidate after plain-language review instructions. No reports are written on validation failure. Refuse existing targets before processing and use exclusive creation when writing. Announce success only after both writes finish. An I/O failure may leave a partial new pair: explicitly do not share it; retry in a fresh output folder. Existing reports are not overwritten.
+- **Base-first dependencies:** Python uses NumPy/pandas and an optional parquet reader (pyarrow). R uses base CSV input, optional arrow for parquet and haven for Stata/SPSS/SAS. Dependency-needed messages are plain text, not installation commands. These templates run outside DAAF; in-container tests use configured copies and the capture protocol.
 
 ## Config block (what the user edits)
 
-The `# --- Config (EDIT THESE) ---` block exposes exactly these knobs:
-
 | Variable | Meaning | Default |
 |----------|---------|---------|
-| `INPUT_PATH` | Path to the user's data file (CSV / parquet / Stata) | — (user sets) |
-| `DATASET_NAME` | Short slug used in output filenames and the report | — (user sets) |
-| `OUTPUT_DIR` | Where to write the JSON + txt (a local, non-shared folder) | current dir |
-| `TIER` | Disclosure tier: 1, 2, or 3 (T4 uses the synthesis template, not this one) | 2 |
-| `SUPPRESSION_THRESHOLD` | Small-cell suppression threshold | 5 |
-| `RELATIONSHIP_SPEC` | (T3 only, optional) list of `[var1, var2]` pairs. Each pair is auto-routed: both columns full-summary numeric → a named `[outcome_y, predictor_x]` relationship (OLS + correlations); otherwise → a suppressed categorical cross-tab | empty |
-| `MAX_CATEGORICAL_LEVELS` | Columns with more distinct values than this are treated as high-cardinality (identifier-like or free-text), not enumerated | 50 |
+| `INPUT_PATH` | Local input: Python CSV/parquet; R CSV/parquet/Stata/SPSS/SAS | `data.csv` |
+| `DATASET_NAME` | Filename slug: letters, digits, underscore, hyphen | `dataset` |
+| `OUTPUT_DIR` | Existing local, non-shared folder; targets must not exist | `.` |
+| `TIER` | 1, 2, or 3; T4 uses a separate template | 2 |
+| `SUPPRESSION_THRESHOLD` | Positive integer minimum usable support and categorical cell threshold | 5 |
+| `RELATIONSHIP_SPEC` | Optional pairs: numeric roles route to named `outcome ~ predictor`; categorical roles to cross-tabs; other combinations unavailable. List each pair once: a self-pair, a repeated pair, or a reversed pair (unless both columns are numeric) stops the profiler before it writes anything. Keep each column in as few pairs as possible and never list two encodings of one variable (see [Relationships](#relationships)) | empty |
+| `MAX_CATEGORICAL_LEVELS` | Larger string cardinalities are not enumerated | 50 |
 
-`TIER` and `SUPPRESSION_THRESHOLD` are recorded verbatim in the report so downstream validation applies the same rules.
+Settings also record derived `full_summary_cutoff: max(threshold,10)` and fixed `support_unit: "record"`. No additional editable knobs are required.
 
 ## Measurement inventory by tier
 
-Cumulative — each tier includes all rows marked for lower tiers.
+| Measurement | T1 | T2 | T3 | Release rule |
+|-------------|----|----|----|--------------|
+| Column names/dtypes; total row/column counts | Yes | Yes | Yes | Review schema names for sensitivity |
+| Missingness, nonmissing count, cardinality, uniqueness, identifier flag/role | No | Yes | Yes | Ordinary metadata; missingness denominator = all records |
+| Categorical levels/counts | No | Yes | Yes | Cell suppression, `__OTHER__` pooling and complementary roll-in |
+| Numeric values/moments/percentiles | No | Yes | Yes | Shapes below, based on finite usable observations |
+| String/identifier lengths and pattern flags | No | Yes | Yes | Nonmissing support at least threshold; otherwise explicit withheld block |
+| Pearson/Spearman matrices | No | No | Yes | Full nonconstant numeric marginals; every pair adequately supported and numerically defined |
+| Cramér's V | No | No | Yes | Paired nonmissing support at least threshold; nondegenerate table |
+| Named numeric relationships | No | No | Optional | Full nonconstant marginals, finite complete cases at least cutoff, each complement group (records finite in one column but not the other) empty or at least threshold, nonzero pair variances |
+| Categorical cross-tabs | No | No | Optional | Tabulated on the released categories; complete-case support at least threshold, plus primary, complementary, bridge, and missing-partner cell suppression (no hidden cell, and no below-threshold count of records whose partner value is missing, recoverable from that one cross-tab together with the released totals beyond what the released counts alone fix; several linked relationships read together are not covered, see [Relationships](#relationships)) |
 
-| Measurement | T1 | T2 | T3 | Suppression applied |
-|-------------|----|----|----|---------------------|
-| Column names | ✓ | ✓ | ✓ | — |
-| Column dtypes | ✓ | ✓ | ✓ | — |
-| Row count (grand total) | ✓ | ✓ | ✓ | — |
-| Per-column null/missingness rate | | ✓ | ✓ | rate only, never row indices |
-| Distinct-value count (cardinality) | | ✓ | ✓ | count only |
-| Uniqueness ratio + identifier flag | | ✓ | ✓ | flag only; triggers structure-only |
-| Categorical levels + counts | | ✓ | ✓ | small cells suppressed; rare→`__OTHER__` |
-| Numeric percentiles p1..p99 | | ✓ | ✓ | percentiles replace min/max |
-| Numeric mean + SD | | ✓ | ✓ | — |
-| String length stats (min/mean/max length) | | ✓ | ✓ | length, never value |
-| String pattern flags (email/phone/date/id/free-text) | | ✓ | ✓ | boolean flags, never example |
-| Pearson + Spearman correlation matrices | | | ✓ | numeric columns only |
-| Cramér's V (categorical pairs) | | | ✓ | — |
-| Named numeric~numeric summary (Pearson/Spearman + OLS slope/intercept/R²) | | | ✓* | aggregate coefficients; n<max(threshold,10) or zero-variance predictor omitted |
-| Two-way cross-tabs (categorical pairs) | | | ✓* | primary + iterative complementary suppression; suppressed cells emitted as `null` |
-
-`*` = only when `RELATIONSHIP_SPEC` is provided.
-
-**T1 columns carry only `name` and `dtype`** — no `role`, `missing_rate`, `n_distinct`, `uniqueness_ratio`, or `is_identifier`. All of those are per-column statistics T1 forbids; `role` in particular is withheld because it is *derived* from uniqueness + identifier detection, so emitting it would leak a T1-forbidden distributional fact. T1 generation needs only name + dtype (see `generation-patterns-r.md` § T1 skeleton).
-
-**Numeric columns degrade defensively** at T2+ to avoid small-n and constant-column leakage:
-
-| Condition | Emitted numeric block | Why |
-|-----------|-----------------------|-----|
-| All-missing (non-null n = 0) | `{"n": 0, "all_missing": true}` | No statistics are computable; also avoids a `quantile([])` crash |
-| Near-constant (1 distinct non-null value, or SD = 0) | `{"near_constant": true, "n": <n>}` | Mean/percentiles would disclose the exact single value |
-| Small-n (non-null n < max(threshold, 10)) | `{"small_n": true, "n": <n>, "percentiles": {p25, p50, p75}}` | p1/p99 approximate the true min/max at small n (outlier disclosure); mean/SD withheld |
-| Full (otherwise) | `{"mean", "sd", "percentiles": {p1..p99}}` | The ordinary case |
-
-Only **full-summary** numeric columns enter the correlation matrix and are eligible as named-relationship variables — degraded columns carry no usable variance/percentile grid.
+**T1 columns are exactly `{name,dtype}`.** No role, support counts, rates, cardinalities, or value summaries are included per column. Empty input still fails before profiling.
 
 ## Canonical JSON report schema
 
-Versioned via `report_version` so intake code can evolve. Current version: `"1.0"`. Structure:
+Top-level fields remain `report_version`, `dataset_name`, `generated_utc`, `generator`, `settings`, `dataset`, `columns`, `validation`, and (T3 only) `relationships`. Both `report_version` and `generator.template_version` are `"2.0"`. `dataset` carries `row_count` and `column_count`. `settings.relationship_spec` is a list of two-name arrays or `null`.
 
-```json
-{
-  "report_version": "1.0",
-  "dataset_name": "clients_2025",
-  "generated_utc": "2026-07-15T15:00:00Z",
-  "generator": {
-    "language": "R",
-    "template": "profile_data_template.R",
-    "template_version": "1.0"
-  },
-  "settings": {
-    "tier": 2,
-    "suppression_threshold": 5,
-    "max_categorical_levels": 50,
-    "relationship_spec": null
-  },
-  "_note": "The block below shows a T3 example for the relationships schema; at T1/T2 the relationships key is null or omitted, and relationship_spec is a list of pairs (not null) when set — e.g. [[\"score\", \"age\"], [\"region\", \"segment\"]].",
-  "dataset": {
-    "row_count": 4820,
-    "column_count": 11
-  },
-  "columns": [
-    {
-      "name": "age",
-      "dtype": "integer",
-      "role": "numeric",
-      "missing_rate": 0.012,
-      "n_distinct": 71,
-      "uniqueness_ratio": 0.0147,
-      "is_identifier": false,
-      "numeric": {
-        "mean": 41.3, "sd": 12.8,
-        "percentiles": {
-          "p1": 19, "p5": 22, "p10": 25, "p25": 31, "p50": 40,
-          "p75": 51, "p90": 59, "p95": 64, "p99": 71
-        }
-      }
-    },
-    {
-      "name": "region",
-      "dtype": "string",
-      "role": "categorical",
-      "missing_rate": 0.0,
-      "n_distinct": 6,
-      "uniqueness_ratio": 0.0012,
-      "is_identifier": false,
-      "categorical": {
-        "n_levels_binned": 2,
-        "levels": [
-          {"value": "North", "count": 1810},
-          {"value": "South", "count": 1502},
-          {"value": "East", "count": 980},
-          {"value": "West", "count": 521},
-          {"value": "__OTHER__", "count": 7}
-        ]
-      }
-    },
-    {
-      "name": "client_email",
-      "dtype": "string",
-      "role": "identifier",
-      "missing_rate": 0.0,
-      "n_distinct": 4820,
-      "uniqueness_ratio": 1.0,
-      "is_identifier": true,
-      "string_structure": {
-        "length_min": 11, "length_mean": 22.4, "length_max": 41,
-        "pattern_flags": {"email": true, "phone": false, "date": false,
-                          "id": false, "free_text": false}
-      }
-    }
-  ],
-  "relationships": {
-    "pearson": {"columns": ["age", "income"], "matrix": [[1.0, 0.34], [0.34, 1.0]]},
-    "spearman": {"columns": ["age", "income"], "matrix": [[1.0, 0.31], [0.31, 1.0]]},
-    "cramers_v": [{"pair": ["region", "segment"], "v": 0.22}],
-    "named": [
-      {"outcome": "score", "predictor": "age",
-       "pearson": 0.41, "spearman": 0.39,
-       "ols": {"intercept": 52.3, "slope": 0.34, "r_squared": 0.17}, "n": 4780}
-    ],
-    "crosstabs": [
-      {"pair": ["region", "segment"], "rows": 3, "cols": 3,
-       "cells": [null, null, 500, null, null, 300, 250, 180, 90],
-       "cells_suppressed": 4}
-    ]
-  },
-  "validation": {
-    "checks": [
-      {"name": "percentiles_monotone", "status": "PASS"},
-      {"name": "category_counts_le_rowcount", "status": "PASS"},
-      {"name": "missing_rate_in_unit_interval", "status": "PASS"},
-      {"name": "no_subthreshold_cells_emitted", "status": "PASS"},
-      {"name": "correlation_matrix_symmetric", "status": "PASS"}
-    ],
-    "all_passed": true
-  }
-}
-```
+**Legacy `1.0`:** retain the original file and version as historical evidence. Its old PASS does not establish compliance with this policy. Request a corrected local `2.0` rerun for new-policy acceptance; do not relabel or patch a legacy report into compliance. Unknown versions are rejected pending schema review.
 
-Schema notes:
-- **T1 columns** carry only `{"name", "dtype"}`. `role` and every statistic field appear at T2+ only.
-- `role` is one of `numeric`, `categorical`, `identifier`, `string` (non-identifier free/other text). Exactly one of the `numeric` / `categorical` / `string_structure` blocks is present per column, matching `role`.
-- The `numeric` block has four shapes (see the "Numeric columns degrade defensively" table above): full (`mean` + `sd` + `percentiles` p1..p99), `small_n` (quartiles only), `near_constant` (value withheld), and `all_missing`.
-- `settings.relationship_spec` is a **list of `[var1, var2]` pairs** when `RELATIONSHIP_SPEC` is set, else `null` — not an integer count.
-- The `relationships` block is present only at T3 (at T1/T2 it is `null` or omitted). `named` and `crosstabs` are populated only when `RELATIONSHIP_SPEC` is set.
-- **`named`** entries are numeric~numeric relationships: `{"outcome", "predictor", "pearson", "spearman", "ols": {"intercept", "slope", "r_squared"}, "n"}`. A `RELATIONSHIP_SPEC` pair is routed to `named` when both columns are full-summary numerics (pair = `[outcome_y, predictor_x]`, fitting `y ~ x`); otherwise it is routed to `crosstabs`.
-- **`crosstabs`** entries are `{"pair", "rows", "cols", "cells", "cells_suppressed"}`. `cells` is a **row-major flat array of length `rows`×`cols`**; a suppressed cell is JSON **`null`** (never `0` — a suppressed cell must be distinguishable from a true zero). `cells_suppressed` is the count of null cells. Suppression is primary (small nonzero cells) plus iterative complementary suppression; if complementary suppression cannot converge within 10 iterations the whole table is suppressed (all cells `null`) and the entry additionally carries `"collapsed": true`.
-- Correlation matrices are stored with an explicit `columns` order so the matrix indices are interpretable.
-- `__OTHER__` is the reserved binned-category label; intake and generation code treat it as an aggregate, not a real level. Its count is always ≥ the suppression threshold: a sub-threshold `__OTHER__` residual is folded further (the smallest retained levels are rolled in) until it clears the threshold, or the whole column is suppressed if it cannot.
-- Identifier columns never carry a `numeric` or `categorical` values block — only `string_structure` (or, for numeric-encoded IDs, a minimal structure block with length/uniqueness and no percentiles).
+### Column metadata
+
+At T2+, every column has `name`, `dtype` (`integer`, `double`, `string`), `role` (`numeric`, `categorical`, `identifier`, `string`), `missing_rate`, **`nonmissing_n`**, `n_distinct`, `uniqueness_ratio`, `is_identifier`, and exactly one role-specific block. `missing_rate` must agree with `(row_count - nonmissing_n)/row_count` within six-decimal rounding tolerance. Numeric support can be below `nonmissing_n` because infinities are not usable numerical observations. NaN/null are missing. Identifiers carry only `string_structure`, never a numeric/categorical values block.
+
+### Numeric shapes (branch in this order)
+
+Let `k = suppression_threshold`, `f = max(k,10)`, and `n` be **finite usable** observations. All numeric shapes include `n`.
+
+| Condition | Exact numeric keys / example | Consumer action |
+|-----------|-----------------------------|-----------------|
+| No nonmissing values | `{"n":0,"all_missing":true}` | Typed all-null column; distribution fidelity N/A |
+| No finite values, but nonmissing values exist | `{"n":0,"withheld":true,"reason":"no_finite_values"}` | Typed placeholder; finite distribution unobserved |
+| `0 < n < k` | `{"n":4,"withheld":true,"reason":"insufficient_support"}` | No value fields; typed placeholder, distribution unobserved |
+| `n >= k`, exactly constant | `{"n":5,"constant":true,"value":7,"mean":7,"sd":0}` | Generate supported shared value faithfully; no copula |
+| `k <= n < f`, nonconstant | `{"n":6,"small_n":true,"percentiles":{"p25":2,"p50":3,"p75":4}}` | Quartile interpolation only; mean/SD/tails unavailable |
+| `n >= f`, nonconstant | `{n,mean,sd,percentiles:{p1,p5,p10,p25,p50,p75,p90,p95,p99}}` | Full marginal interpolation/moment targets |
+
+The constant shape deliberately permits its supported value and mean below the full-summary cutoff; sample SD is `null` at `n=1` (possible only with `k=1`), otherwise zero. Constants have no percentile block. Four identical observations are withheld at default k; five or 5,000 identical observations are eligible constants. Equality is tested on usable values, not rounded SD. A nonconstant full summary may have SD rounded to zero: do not infer an exact constant from that alone. Numeric outputs are rounded to six decimal places.
+
+### Categorical and string structure
+
+- `categorical` is exactly `{n,n_levels_binned,levels:[{value,count},...]}`. Here `n = nonmissing_n`. Visible counts are positive integers at least k. If `n >= k`, their sum equals n; if `n < k`, `levels` is empty. `__OTHER__` is reserved for pooled levels. If the input contains that literal label, its records join the pool (even if its own count is at least k), and the source level is included in `n_levels_binned`; it is never emitted as a second literal level. For A×20, literal `__OTHER__`×10, and two rare levels×3, release A×20 and one `__OTHER__`×16 with `n_levels_binned:3`. Emitted labels must be unique. Levels are ordered by count, descending, with ties broken by label in code-point order (Python `sorted` on `str`; R `order(..., method = "radix")`, which is C-locale byte order, never the session's locale collation). A sub-threshold residual rolls in the smallest retained levels, last in that order first, until eligible, or all levels are suppressed. So when two levels tie, the one later in code-point order is pooled, identically in both languages. `__OTHER__` is emitted last. Do not invent the hidden labels.
+- `string_structure` with `n >= k` is `{n,length_min,length_mean,length_max,pattern_flags:{email,phone,date,id,free_text}}`; length mean is rounded to three decimals, flags are booleans. With `n < k` it is exactly `{n,withheld:true,reason}` with reason `all_missing` at zero or `insufficient_support` otherwise. Lengths/flags are absent, not zeros. Metadata identifier heuristics do not certify that every identifier was found.
+
+### Relationships
+
+T3 always includes `pearson`, `spearman`, `cramers_v`, `named`, `crosstabs`. The last three are arrays (possibly empty). Numeric pairs are never rerouted to cross-tabs merely because their summaries were withheld. Mixed-role/identifier/string requested pairs are explicitly unavailable cross-tab entries rather than value-enumeration fallbacks.
+
+**`RELATIONSHIP_SPEC` refusal.** The profilers stop, before writing either report, when the spec contains a pair that names one column twice (`[a, a]`), a pair listed twice in the same order, or a pair listed again in reverse order (`[b, a]` after `[a, b]`). The one exception is a reversed pair of two numeric columns: `y ~ x` and `x ~ y` are two different regressions, and named entries release no cells. They do release fitted lines, which is why each regression is gated on the size of its complement groups (see **Named available** below); that gate applies to both orders alike. The reason is disclosure, not tidiness. The same pair tabulated twice can be suppressed differently each time, and the visible cells of the two tables combined can recover cells that each one hides. Self-pairs and exact repeats are refused as soon as the data loads; reversed repeats are refused once column roles are known, still before any output. The message names pair positions only (1-based, in spec order), never values, and is identical in both languages: `Invalid relationship spec: pair 2 repeats pair 1`, `Invalid relationship spec: pair 1 names one column twice`, or `Invalid relationship spec: pair 2 reverses pair 1; only two numeric columns may be listed in both orders` (several findings are joined with `; `). This check applies at every tier. It compares column **names** only: it cannot tell that two differently named columns hold the same variable (a code column and its label column, say), so pairing each of them with one partner is not refused (see **Linked-release residuals** below).
+
+- **Correlation available block:** `{available:true,columns:[...],pair_n:[[...]],matrix:[[...]]}`. `columns` lists only full-summary nonconstant marginals in report order. `pair_n` is a square symmetric matrix of finite paired support, with marginal finite n on its diagonal. Every pair needs at least `max(k,2)` and nonzero variances on that pair's complete cases. The released matrix must be square, finite, symmetric, bounded in [-1,1], and unit-diagonal.
+- **Correlation unavailable block:** `{available:false,columns:[...],pair_n:[[...]],matrix:[],reason}`. `pair_n` retains the candidate column order/support (empty if no eligible columns). Reasons: `fewer_than_two_eligible_columns`, `insufficient_pair_support`, `zero_pair_variance`, `nonfinite_correlation`. One ineligible pair makes the entire matrix unavailable; this intentionally avoids nullable-cell imputation complexity or fabricated zero correlations. Other marginal/relationship blocks remain usable. No raw pair values or row membership is emitted.
+- **Cramér's V available:** `{pair:[a,b],n,available:true,v}`. n counts nonmissing pairs. V is computed on the full table of source levels (unpooled, unsuppressed), not on the released cross-tab categories. R removes zero margins left by unused factor levels after complete-case filtering, before checking dimensions/calculating the statistic. No contributing records are removed. Below k: unavailable with `insufficient_support`; a one-level table: `degenerate_table`. No v is emitted in either case. Existing method convention is retained: Python uses uncorrected Pearson chi-square; R's `chisq.test` retains its default continuity correction for 2×2 tables. This pre-existing numerical difference is not a support-policy difference.
+- **Accepted residual risk at tier 3 (Cramér's V).** The released V is computed on the full table and rounded to six decimals. A V value constrains the table it came from. Combined with the released category counts (the row and column totals), it can sometimes leave only one table consistent with both. A determined analyst can then reconstruct small cross-tab cells, including cells the cross-tab suppression hid, and cells of pairs that have no cross-tab at all. Because V is computed on the unpooled source levels, it can also undo `__OTHER__` pooling: the counts of the rare source levels inside the pool, and how each one spreads across the partner column, can sometimes be recovered (their labels stay unknown, since the report never names them). Cell suppression does not cover this channel: it guarantees only that no hidden cell is recoverable from that one cross-tab together with the released row and column totals. Researchers choosing T3 should weigh this risk, especially when categorical columns have small cells. Choosing T2 avoids it, because T2 releases no relationships.
+- **Named available:** `{outcome,predictor,n,available:true,pearson,spearman,ols:{intercept,slope,r_squared}}`. Require full nonconstant marginals, `n >= f`, finite complete pairs, complement groups that are empty or at least k, and nonzero pair variances for both variables. **Complement groups:** for outcome y and predictor x, `g_y = n_y - n` and `g_x = n_x - n`, where `n_y` and `n_x` are the `n` of each column's numeric block (its finite values, the population its released mean and percentiles describe) and `n` is the entry's pair-complete count. Each must be 0 or at least k. The reason is disclosure: the fitted line pins the mean of x over the n pair-complete records (through the released mean of y, or through the reversed regression), and `n_x × mean_x − n × that mean` is the total of x over the `g_x` records that lack y. A group of 1 to k−1 records would release a small-group mean. Every quantity in the gate is a released count, so the gate itself reveals nothing new. The gate protects each regression on its own, read with the released marginal summaries; several regressions that share a column are not compared with each other (see **Linked-release residuals** below). Unavailable entry contains only `{outcome,predictor,n,available:false,reason}`; reasons, in the order they are tested: `insufficient_support` (n below f), `ineligible_marginal` (a column lacks a full nonconstant summary), `small_complement_group` (a complement group holds 1 to k−1 records), `zero_pair_variance` (constant on the pair-complete records). The three count-based gates come before the value-dependent one, so an entry blocked on support never reports anything about its values.
+- **Cross-tab available:** `{pair,n,available:true,rows,cols,cells,cells_suppressed}`; optional `collapsed:true`. `cells` is row-major, length rows×cols. A hidden cell is **null**, never zero. **Categories:** a cross-tab is tabulated on the *released* categories of its two columns, not on their raw source levels. Each column's categories are exactly the `levels` of its categorical block, computed on the full column. Every source level that block pools into `__OTHER__`, including a literal `__OTHER__` label in the data, maps to one pooled category. Rows (first column of `pair`) and columns (second column) are ordered as the kept labels in code-point order, then the pooled category last when the block releases `__OTHER__`. R sorts with `method = "radix"` so its order matches Python's `sorted`, whatever the session locale. The table is reindexed to that full category set. A released level with no pair-complete record is therefore a row or column of structural zeros, and `rows` and `cols` always equal the number of released levels of the pair's first and second column. This is what stops differencing across blocks: if a pooled source level kept a fully visible row of its own, subtracting it from the released `__OTHER__` count could isolate a rare level's count. With one pooled row, there is nothing to subtract. The suppression steps below then run on this pooled table. Keep primary suppression of positive cells below k and iterative complementary suppression; if a lone hidden cell remains after ten iterations, hide the whole table and mark `collapsed:true`. Then apply **bridge suppression**: read the hidden cells as edges of a graph whose vertices are the table's rows and columns, and treat every row and column total as known (the worst case, since categorical blocks release margins). Differencing the totals recovers a hidden cell exactly iff its edge is a *bridge* — it lies on no cycle of hidden cells. A lone hidden cell is the degree-1 case; two hidden cycles joined by one hidden cell are the case the lone-cell rule misses. While a bridge exists, take the first bridge in row-major order, split the hidden-cell graph without it into the bridge row's side and the bridge column's side, and hide the smallest visible **non-zero** cell joining the two sides (ties: first in row-major order), which puts the bridge on a cycle. Structural zeros are never chosen. If no joining non-zero cell exists (or the step bound is reached), hide the whole table and mark `collapsed:true`. Python and R apply the same rule and release identical cross-tab blocks on identical data.
+
+**Missing-partner suppression.** A record whose value in one pair column is missing (null/NA, exactly as `nonmissing_n` counts it) is outside the cross-tab but inside the other column's categorical counts. So the cross-tab is read as part of an *extended table*: one extra column for "column variable missing" (records with this row's category and the column variable missing), one extra row for "row variable missing", and the both-missing corner. Every total of the extended table is released: the categorical level counts, and `row_count − nonmissing_n` for each missing line. The corner is known too, because `corner = row_missing + col_missing − (row_count − n)`. The extended table's hidden cells are the hidden core cells plus the missing-partner cells; they are edges of the same row/column graph with one extra vertex for the missing row and one for the missing column (the corner is known, so it is not an edge). A missing line whose cells sum to zero (the missing column sums to `nonmissing_n − n` of the pair's first column, the missing row to that of its second column) is a line of known zeros and adds no edge, so **when neither pair column has a missing value nothing changes**: the released block is identical to what the bridge rule alone produces. A missing-partner cell is *sensitive* when its count is between 1 and k−1. A sensitive cell that is a bridge of the extended graph is recoverable from this cross-tab together with the released totals, so it must lie on a cycle, unless it belongs to the baseline described below, which no cell suppression can reach: the cells of the missing column of a one-row table and of the missing row of a one-column table are exempt.
+
+The repair is one deterministic loop shared with the bridge rule. Each step takes the first violation: a core bridge in row-major order first (the core rule above, unchanged), otherwise the first non-exempt sensitive missing-partner cell that is a bridge of the extended graph, in extended row-major order (the missing-column cells for rows 0, 1, …, then the missing-row cells for columns 0, 1, …). It splits the graph without that bridge into the bridge row's side and the bridge column's side, and hides the smallest visible non-zero core cell joining the two sides (ties: first in row-major order), which puts the bridge on a cycle. When the violation is a missing-partner cell and no joining cell exists (typically because its core row or column has no hidden cell yet), the cell is treated like a primary cell instead: the loop hides the smallest visible non-zero core cell on the exposed line (the cell's own core row for a missing-column cell, its own core column for a missing-row cell; ties: first index), then re-runs complementary suppression for up to ten passes, each pass taking rows and then columns, so that a hidden cell alone in its row or column gets the smallest visible non-zero partner in that line (ties: first index). The loop then re-checks both rules from the start. Zeros stay visible throughout. The whole table collapses (all cells null, `collapsed:true`) when a core bridge has no joining non-zero cell, when a lone hidden cell remains (after the initial complementary suppression or after a fallback's re-run), when an exposed missing-partner cell's line has no visible non-zero core cell left to hide, or when the step bound is reached. Every step hides at least one more core cell, and the loop is bounded at rows × cols + rows + cols + 2 iterations. A collapsed table satisfies the rule automatically, because with every core cell hidden only the baseline below remains. **Utility cost:** when a pair column has a low rate of missing values, its missing-partner counts are often below k, so expect some cross-tabs to release more suppressed cells than the bridge rule alone would, and a few to collapse.
+
+**Residuals the released counts expose on their own (baseline).** Some missing-partner counts are fixed by released counts with no help from any cell, so no cell suppression can protect them. These are out of scope and are never a validation failure: (1) when a column releases a single category, its cross-tab has one row (or one column), and the number of records with that category and the partner missing is `nonmissing_n − n` of that column, read directly from released counts; (2) the number of records missing *both* pair columns is always derivable from released counts, as the corner formula above shows. Formally, the baseline is the set of missing-partner cells that are bridges when every core cell is hidden. There the core rows and columns form one connected block, so a missing-partner cell is a bridge only in case (1). Researchers for whom these counts are sensitive should drop or recode the column before profiling, or not request that cross-tab. `cells_suppressed` counts every null. Interval (non-exact) inference from non-negativity is out of scope. Unavailable entries contain only `{pair,n,available:false,reason}`, with `ineligible_roles` or `insufficient_support`. No dimensions/cells accompany unavailable entries. Visible totals may be below n with suppression; they must equal n with no hidden cells.
+
+**What the relationship protections cover.** Each protection above is stated for one release at a time: no hidden cell and no below-threshold missing-partner count (outside the baseline) is recoverable from **one cross-tab together with the released totals**; no named regression has a small complement group, judged for **one regression together with the released marginal summaries**; and `RELATIONSHIP_SPEC` refusal compares column **names**. Neither the profilers' embedded validation nor CPS-INTAKE compares related releases with each other.
+
+**Linked-release residuals (accepted at tier 3).** Three combinations of releases can disclose what each release protects on its own. No validator detects them, and they are an accepted, documented limitation of tier 3, not a defect:
+
+1. **Cross-tabs that share a column.** When one column is paired with several partners, and those partners are missing on the same records (or largely the same records), each cross-tab leaves the shared column's missing-partner counts hidden on its own, but the cross-tabs read together can pin one of them: a small count of records with a given category whose partner is missing.
+2. **Named regressions that share a column.** When one column appears in several named regressions whose pair-complete record sets differ by only a few records, each regression passes the complement-group gate, but the fitted lines read together reveal that column's mean over the few records that are in one set and not the other. When they differ by one record, that is one record's value.
+3. **Two encodings of one variable.** When a code column and its label column (or any two columns that hold the same variable under different names) are each paired with the same partner, the report carries two differently suppressed tables of what is really one table. Their visible cells read together can recover cells that each one hides, which is exactly what refusing a repeated pair prevents when the names match.
+
+**Guidance for the researcher writing `RELATIONSHIP_SPEC`.** List each column in as few relationship pairs as the code being developed needs. Never profile two encodings of the same variable: drop or rename one before profiling, so the data holds each variable once. When the work needs many overlapping relationships, prefer tier 2, which releases none.
+
+No new group-mean family is introduced. Any future group summary would need its own actual group support gate. These controls do not implement a general privacy-composition solver.
 
 ## The plain-text review summary
 
-`{dataset}_profile_report.txt` is the human disclosure-review artifact — the thing the user actually reads before sharing. It restates the JSON in prose and tables a non-programmer can scan, and it foregrounds anything disclosure-relevant:
-
-- Header: dataset name, tier, suppression threshold, row/column counts, generation timestamp.
-- A per-column section: name, type, role, missingness, and the tier-permitted statistics — formatted, not raw JSON.
-- An explicit **"What was suppressed"** section: how many categorical levels were binned, which columns were flagged as identifiers and given structure-only treatment, confirmation that no min/max or example values appear.
-- The embedded validation results (all checks and pass/fail).
-- A closing **REVIEW BEFORE SHARING** block enumerating: confirm no column *name* itself is disclosive; confirm the identifier flags caught every real identifier; confirm the tier matches what you intend to share; the JSON and this txt are the only files to share — nothing else.
+`{dataset}_profile_report.txt` contains plain-language guidance followed by the **exact release candidate** as readable JSON. This intentionally replaces an independently calculated prose summary: human and machine copies cannot silently disagree about withheld values, category labels, or relationship availability. Review the entire candidate, including names, actual surviving category labels, identifiers, relationships, tier/threshold, and every check. Share only authorized reports; neither automated PASS nor a supported constant is a universal assurance against individual disclosure.
 
 ## Embedded validation checks
 
-The script validates its own output before writing, and embeds the results in both outputs (`validation` block in JSON; a section in txt). These are the same internal-consistency checks the DS-3 intake re-verifies (`validation-checks.md` QA(b)) — embedding them lets the user see pass/fail locally and lets intake confirm they were run:
+Exactly these seven named checks are required. Each emits `{name,status,applicable,reason}`; `validation.checks[].status` is one of `PASS`, `FAIL`, `NOT_APPLICABLE`, or `NOT_VERIFIED` — the last meaning the check could not run because a required input was absent, empty, `None`/`NULL`/`NA`, or of the wrong type. On **stdout** (never in the JSON) each check prints one outcome line whose token is `[PASS]`, `[FAIL]`, `[SKIPPED]` (the token for `NOT_APPLICABLE`, printed with the profiler's own fixed reason) or `[NOT VERIFIED]`, followed by a count line `Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped` and the derived verdict `PROFILE VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. The verdict is **derived from the counters**, never asserted: `FAILED` when `failed > 0` or `not_verified > 0` or the required-check set is incomplete; otherwise `PASSED WITH WARNINGS` when `warning > 0`; otherwise `PASSED`. `PROFILE VALIDATION: FAILED` whenever `all_passed` is false. The profilers take **no researcher declarations**: there is no `not_applicable` setting, so a check is `NOT_APPLICABLE` only where the profiler itself finds no target. The disclosure sweep `no_subthreshold_cells_emitted` is never N/A — a report with zero categorical and zero crosstab blocks yields an evidence-bearing `[PASS] … 0 of 0 declared blocks, 0 visible cells` rather than N/A. Evidence on disclosure lines stays aggregate: counts of blocks and cells examined plus the threshold, never a cell value, a minimum, or a per-level count.
 
-- `percentiles_monotone` — for every numeric column, p1 ≤ p5 ≤ ... ≤ p99.
-- `category_counts_le_rowcount` — every categorical level count (and their sum, including `__OTHER__`) ≤ row count.
-- `missing_rate_in_unit_interval` — every missingness rate in [0,1].
-- `no_subthreshold_cells_emitted` — no emitted categorical/cross-tab cell has count in (0, threshold).
-- `correlation_matrix_symmetric` — (T3) matrices square, symmetric, unit diagonal.
+| Check | Scope |
+|-------|-------|
+| `column_shapes_and_support` | Always applicable: version/settings, schema, T1 restrictions, numeric/string shape and support, finite values and valid constant/reduced/full branches |
+| `percentiles_monotone` | Every released reduced/full percentile grid, in probability order; N/A if none |
+| `category_counts_le_rowcount` | Candidate category levels, integer counts, supported totals; N/A if no categorical blocks |
+| `missing_rate_in_unit_interval` | T2+ finite rates and nonmissing-count agreement; T1 N/A |
+| `no_subthreshold_cells_emitted` | All visible categorical/cross-tab candidate counts, plus the bridge sweep: no hidden cell of a non-collapsed cross-tab is recoverable from that cross-tab together with the released row and column totals (FAIL names the row/column index only), plus the missing-partner sweep: rebuilt from released facts only (level counts, `nonmissing_n`, `row_count`, entry `n`, visible cells), no missing-partner cell outside the baseline is a bridge of the extended graph whose count, solved from the cut it alone crosses, lies between 1 and k−1 (FAIL: `missing-partner cell at row index i` or `… at column index j … is recoverable from the released totals`, never the count). Never N/A — zero blocks is an evidence-bearing `0 of 0` PASS. Each cross-tab is swept on its own: the sweep does not cover the Cramér's V residual risk or the linked-release residuals described under [Relationships](#relationships) |
+| `correlation_matrix_symmetric` | Actual released matrices: shape, finiteness, symmetry, diagonal, bounds; N/A if no available matrix |
+| `relationship_support_and_shape` | T3 availability markers, paired support, dimensions, named/association fields (an available named entry's complement groups are 0 or at least k; `small_complement_group` is an accepted unavailable reason), cross-tab totals/null/complementary suppression. Every cross-tab entry is on its own pair: no pair names one column twice and no two entries share an unordered pair. Every available entry's `rows`/`cols` equal the released level counts of its pair's first/second column (FAIL names the entry index, 0-based as in the JSON, and the column names only); T1/T2 N/A |
 
-`all_passed` is the AND of every check. If it is false, the txt tells the user not to share and to report the failure back to DAAF.
+Every emitted percentile must have a unique expected key and exactly one finite, nonmissing real numeric scalar value before checking order. Aggregate `unlist()` length is not sufficient: a NULL field plus a two-element neighbor can compensate. The same scalar principle applies to string length summaries, model coefficients, and visible cross-tab cells. N/A uses an explicit no-target/tier/unavailable reason in one of the profiler's fixed forms, not a claim that absent statistics passed inspection; no reason is free text, and CPS-INTAKE fails any reason outside those forms. Block-level unavailable reasons provide the specific cause. `all_passed` requires the **complete required set**, every applicable check PASS, and every inapplicable check explicitly N/A with a reason. Missing checks and exceptions fail; no output is approved/written on validation failure. Validation examines the rounded candidate, never fresh raw statistics as a stand-in. DS-3 additionally evaluates PSD tolerance before generation; indefinite but otherwise valid pairwise matrices may require a documented approximation.
+
+Intake can verify reported support and fields agree; it cannot independently verify the underlying raw support or pair variances from a report alone. Independent fabricated-data execution tests must exercise both assets, mutate candidates before validation, parse R JSON independently, and verify both output files and failure behavior.
 
 ## Derivation from Data Onboarding scripts 01-09
 
-The measurement inventory is the mechanical (non-LLM) subset of Data Onboarding profiling, filtered for disclosure (derived from the Data Onboarding profiling measurement inventory — see `WORKFLOW_PHASE_DO_PROFILING.md` § Part Details):
+| Onboarding script | Contributes | Disclosure filter |
+|-------------------|-------------|-------------------|
+| 02 structural-profile | row/column counts, dtypes, order | T1 schema |
+| 03 column-profile | nulls, uniques, numeric summaries, string lengths/patterns, identifiers | Support-gated value summaries; cell suppression; identifier structure only |
+| 04 distribution-analysis | percentile shapes | Supported grids, no raw numeric extremes |
+| 08 correlation-dependency | Pearson/Spearman, Cramér's V | T3, actual paired support and numerical validity |
+| 09 quality-anomaly | missingness | Rates only, no row-level anomaly listings |
 
-| Onboarding script | Contributes | Disclosure filter applied |
-|-------------------|-------------|---------------------------|
-| 02 structural-profile | row/col counts, dtypes, column order | kept as-is (T1) |
-| 03 column-profile | nulls, uniques, uniqueness ratio, numeric summaries, string lengths, pattern detection, identifier flags | min/max dropped → percentiles; top-N value counts → suppressed levels; identifier flag → structure-only |
-| 04 distribution-analysis | percentiles, skew/kurtosis | percentiles kept; raw extremes dropped |
-| 08 correlation-dependency | Pearson/Spearman, Cramér's V | kept at T3 only |
-| 09 quality-anomaly | missingness summary | rate kept; row-level anomaly listings dropped |
-
-Scripts 10-11 (semantic interpretation, doc reconciliation) are **interpretive** and are performed *inside* DAAF at DS-4 against the returned report — not by the outbound script. The outbound script emits only mechanical measurements; interpretation happens on this side of the boundary.
+Scripts 10–11 (semantic interpretation/doc reconciliation) remain interpretive DS-4 work inside DAAF against the report, not raw data.

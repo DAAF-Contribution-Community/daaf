@@ -3,12 +3,13 @@
 ## Format Selection
 
 The `format` key in YAML frontmatter controls output. Quarto supports many formats;
-these three are relevant for DAAF:
+these four are relevant for DAAF:
 
 | Format | Use Case | Requirements |
 |--------|----------|--------------|
 | `html` | Default, interactive, self-contained | None |
-| `pdf` | Print-ready, formal reports | LaTeX (TinyTeX) or Typst |
+| `pdf` | PDF through LaTeX, the default PDF path: journal or LaTeX templates, kableExtra, LaTeX-only options | None (the image ships TinyTeX); set `latex-auto-install: false` |
+| `typst` | Quick, simple PDF, or when the user asks for Typst | None (Typst is bundled with Quarto) |
 | `docx` | Collaboration, Word users | None |
 
 ## HTML Format
@@ -103,20 +104,43 @@ Both work, but `embed-resources` is preferred in Quarto 1.7+.
 
 ## PDF Format
 
-### Basic PDF
+The DAAF image renders PDF two ways: through LaTeX (`format: pdf`) and through
+Typst (`format: typst`). Both work out of the box.
+
+### Choosing a PDF Path
+
+| Choose | When |
+|--------|------|
+| LaTeX (`format: pdf`) | **The default PDF path in DAAF.** Use it unless the user asks for Typst or the case below applies. Required for a journal or LaTeX template or document class, kableExtra tables, LaTeX-only options such as `fig-pos` or natbib/biblatex citations (`cite-method`), and raw LaTeX in the source |
+| Typst (`format: typst`) | The user asks for it, or a quick, simple PDF (a draft or a one-off) where none of the LaTeX needs apply. Typst compiles quickly, needs no font-database step on first use, and its default font covers Greek and Cyrillic, which LaTeX's default font does not unless `mainfont` is set (`./gotchas.md` § Unicode Characters in LaTeX PDF) |
+
+DAAF's researchers usually expect LaTeX output (journal conventions, LaTeX
+typography and templates), so a PDF deliverable defaults to `format: pdf`.
+
+### Basic PDF (LaTeX)
 
 ```yaml
 ---
 title: "Analysis Report"
 format: pdf
+latex-auto-install: false
 ---
 ```
 
-Requires LaTeX. Install TinyTeX:
+LaTeX comes from a pinned TinyTeX bundle (TeX Live 2026) installed in the image
+at `/opt/TinyTeX`, with `lualatex`, `xelatex`, `pdflatex` and `tlmgr` on the
+PATH. The default `pdf-engine` is `lualatex` (Quarto 1.8 and later; earlier
+Quarto versions defaulted to `xelatex`); `pdf-engine: xelatex` also renders in
+the image, and `--to latex` writes the `.tex` source without compiling it.
 
-```bash
-quarto install tinytex
-```
+Set `latex-auto-install: false` in every LaTeX document, or once in a Quarto
+project's `_quarto.yml` (there is no install-wide switch). The TinyTeX tree is
+root-owned and read-only for the user DAAF runs as, so no
+package can be added at runtime; with the setting, a missing package stops the
+render with a clear error naming the `.sty` file instead of Quarto trying a
+`tlmgr` install. Adding a package is a Dockerfile change and a rebuild, never
+`tlmgr install`, `quarto install tinytex` or `tinytex::install_tinytex()`
+(`./gotchas.md` § Missing LaTeX Packages).
 
 ### PDF with Options
 
@@ -133,6 +157,7 @@ format:
     geometry:
       - margin=1in
     fontsize: 11pt
+latex-auto-install: false
 ---
 ```
 
@@ -140,17 +165,19 @@ format:
 
 | Option | Default | Values | Purpose |
 |--------|---------|--------|---------|
-| `documentclass` | `article` | `article`, `report`, `book` | LaTeX class |
+| `documentclass` | `scrartcl` (KOMA-Script) | `scrartcl`, `article`, `report`, `book` | LaTeX class |
 | `papersize` | `letter` | `letter`, `a4` | Paper size |
 | `geometry` | (default) | LaTeX geometry strings | Margins, layout |
 | `fontsize` | `11pt` | `10pt`, `11pt`, `12pt` | Base font size |
-| `colorlinks` | `false` | `true`/`false` | Colored hyperlinks |
+| `colorlinks` | `true` (not for `book`/`scrbook`) | `true`/`false` | Colored hyperlinks |
 | `lof` | `false` | `true`/`false` | List of figures |
 | `lot` | `false` | `true`/`false` | List of tables |
-| `mainfont` | (system) | font name | Main text font |
+| `mainfont` | Latin Modern | font name | Main text font; set it for text beyond Latin script (`./gotchas.md` § Unicode Characters in LaTeX PDF) |
 | `monofont` | (system) | font name | Code font |
+| `pdf-standard` | (none) | e.g. `ua-2` | PDF/A or PDF/UA conformance. Applied (a `ua-2` render is a tagged PDF 2.0), but not validated in the image, which has no veraPDF (`./gotchas.md` § PDF Standard Not Validated) |
+| `latex-auto-install` | `true` | `true`/`false` | Set `false`: the image cannot install packages at runtime |
 
-### PDF via Typst (Alternative)
+### PDF via Typst
 
 Typst is a modern alternative to LaTeX with faster compilation:
 
@@ -215,7 +242,7 @@ format:
 format:
   html:
     toc: true
-  pdf:
+  typst:
     toc: true
   docx: default
 ---
@@ -226,7 +253,7 @@ format:
 quarto render doc.qmd
 
 # Render specific format
-quarto render doc.qmd --to pdf
+quarto render doc.qmd --to typst
 ```
 
 ### Format-Specific Content
@@ -238,10 +265,14 @@ Use conditional content blocks:
 This only appears in HTML output.
 :::
 
-::: {.content-visible when-format="pdf"}
-This only appears in PDF output.
+::: {.content-visible when-format="typst"}
+This only appears in Typst (PDF) output.
 :::
 ```
+
+`when-format="pdf"` matches LaTeX output only (a LaTeX PDF or `.tex`), so
+content gated on it does not appear in a Typst PDF. Gate PDF-only content on
+the format you render: `pdf` for a LaTeX PDF, `typst` for a Typst PDF.
 
 ## Common YAML Patterns
 

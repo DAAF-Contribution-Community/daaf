@@ -8,11 +8,43 @@ adjacent header cell, commented source archive cell, and matching execution-log
 accordion cell. The complete notebook and extraction plan are validated before
 the requested output root is created.
 
+The execution-log accordion value is one literal ``mo.md`` string holding one
+plain fenced body. The canonical form is a raw triple-quoted literal,
+``mo.md(r'''<fence>\\n<log>\\n<fence>''')`` where ``<fence>`` is N backticks
+(usually three, as in ``mo.md(r'''```\\n<log>\\n```''')``; see below for N),
+or ``r\"\"\"...\"\"\"`` when the log contains
+``'''``: a raw literal's value equals its source text, so a log with backslashes
+(Windows paths, regexes, ``\\U``) is archived verbatim. The log is read from the
+parsed literal's value, so raw and non-raw literals both decompile.
+
+The outer fence is a run of N >= 3 backticks, and the closing fence must be the
+same N backticks. N is 3 for most logs; the notebook-assembler makes it one
+longer than the longest backtick run anywhere in the log, so no log line can
+close the fence (CommonMark closes a backtick fence at a line of N or more
+backticks indented at most three spaces; marimo's pymdownx.superfences at a line
+of exactly N). A log line that could still close its fence early is reported as
+a warning (stderr plus the MANIFEST.md "Execution-Log Fence Warnings" section),
+because the notebook display may cut the log off at that line; the decompiled
+log itself is unaffected, and the exit code is unchanged.
+
+Notebook lines are split the way the Python parser splits source: at ``\\n``,
+with ``\\r\\n`` and a lone ``\\r`` read as ``\\n``. Form feed, vertical tab,
+U+0085, U+2028 and similar characters are ordinary characters inside a string
+literal, so a log holding them decompiles unchanged.
+
 A bounded set of legacy DAAF details remains supported: ``####`` step headings,
 ``**Final Script:**`` metadata, SOURCE values without the canonical ``scripts/``
-prefix, wrapped ``mo.accordion`` calls, and pre-commented execution logs.
-Arbitrary marimo applications are not accepted merely because they import
-marimo.
+prefix, wrapped ``mo.accordion`` calls, pre-commented execution logs (every
+nonblank log line starts with ``#`` and the first one is a ``# ====`` banner,
+``# EXECUTION LOG``, a bare ``#`` or ``# Executed: ...``), and non-raw
+execution-log literals. Python decodes backslash escapes in a non-raw
+literal (``\\n`` becomes a line break, ``\\t`` a tab), so when a non-raw log
+literal's source text contains a backslash, the log it yields may differ from
+what the script printed. Such a script is still decompiled (exit code
+unchanged), but it gets a warning on stderr and a row in the MANIFEST.md
+"Execution-Log Literal Warnings" section: compare that log with the original
+script's execution log. Arbitrary marimo applications are not accepted merely
+because they import marimo.
 
 Usage:
     python scripts/decompile_notebook.py <notebook_path> <output_dir>
@@ -90,6 +122,23 @@ PLACEHOLDER_INSTRUCTION_WORDS = {
     "todo",
     "verbatim",
 }
+LEGACY_LOG_LITERAL_WARNING = (
+    "legacy non-raw execution-log literal contains backslashes; archived log "
+    "may not be verbatim — compare with the original script"
+)
+# The outer fence: N >= 3 backticks, closed by the same N backticks.
+EXECUTION_LOG_FENCE_RE = re.compile(r"(`{3,})\n(.*)\n\1", re.DOTALL)
+EARLY_FENCE_CLOSE_WARNING = (
+    "execution-log line can close its code fence early; the notebook display "
+    "may cut the log off there — re-archive the log inside a longer fence"
+)
+# The legacy pre-commented log form starts with the banner, the marker, or,
+# when the banner and marker were dropped, a bare "#" or "# Executed: ...".
+# A canonical log never matches: its first nonblank line is the uncommented
+# "Executed: ..." line, and it has lines without "#".
+PRECOMMENTED_FIRST_LINE_RE = re.compile(
+    r"#|#[ \t]*(?:={4,}|EXECUTION LOG|Executed: .*)"
+)
 
 
 class DecompileError(Exception):
@@ -102,8 +151,16 @@ def fail(message):
 
 
 def split_cells(notebook_text):
-    """Split a marimo source file at exact canonical ``@app.cell`` lines."""
-    lines = notebook_text.splitlines()
+    """Split a marimo source file at exact canonical ``@app.cell`` lines.
+
+    The text must already have ``\\r\\n`` and lone ``\\r`` turned into ``\\n``
+    (``decompile`` does this, as the Python parser does). Lines are split at
+    ``\\n`` only: ``str.splitlines()`` would also split at form feed, vertical
+    tab, U+0085, U+2028 and similar characters, which Python keeps as ordinary
+    characters inside a string literal, so a log holding one would be cut into
+    lines the notebook does not have.
+    """
+    lines = notebook_text.split("\n")
     decorator_indices = [
         index for index, line in enumerate(lines) if CELL_DECORATOR_RE.fullmatch(line)
     ]
@@ -263,7 +320,7 @@ def extract_source_code(cell):
     if not marker_tokens:
         return None
 
-    lines = cell["text"].splitlines()
+    lines = cell["text"].split("\n")
     nonblank_indices = [index for index, line in enumerate(lines) if line.strip()]
     if len(nonblank_indices) < 2 or lines[nonblank_indices[0]] != "def _():":
         fail(
@@ -452,6 +509,7 @@ def has_accordion_syntax(cell):
 def is_placeholder_execution_log(log_text):
     """Recognize only whole-payload assembler placeholder signals."""
     normalized_lines = []
+    # splitlines() kept on purpose: extra splits only make this whole-log test stricter.
     for line in log_text.splitlines():
         normalized_line = re.sub(r"^\s*#\s?", "", line).strip()
         if normalized_line and not LOG_DECORATION_RE.fullmatch(normalized_line):
@@ -495,6 +553,63 @@ def is_placeholder_execution_log(log_text):
             return True
 
     return False
+
+
+def is_legacy_nonraw_log_literal(cell_text, literal_node):
+    """Return whether a log literal is non-raw source text containing a backslash.
+
+    Only the warning depends on this check; acceptance does not. Each string
+    token of the literal (implicit concatenation yields several) is inspected:
+    its prefix letters before the first quote decide raw (``r``/``R``) or not.
+    When the source cannot be recovered or tokenized, any backslash in the
+    recovered text counts, erring toward a warning rather than silence.
+    """
+    segment = ast.get_source_segment(cell_text, literal_node)
+    if segment is None:
+        return True
+    try:
+        string_tokens = [
+            token
+            for token in tokenize.generate_tokens(io.StringIO(segment).readline)
+            if token.type == tokenize.STRING
+        ]
+    except (IndentationError, SyntaxError, tokenize.TokenError):
+        return "\\" in segment
+    if not string_tokens:
+        return "\\" in segment
+    for token in string_tokens:
+        quote_positions = [
+            position
+            for position in (token.string.find("'"), token.string.find('"'))
+            if position >= 0
+        ]
+        prefix = token.string[: min(quote_positions)] if quote_positions else ""
+        if "r" not in prefix.lower() and "\\" in token.string:
+            return True
+    return False
+
+
+def early_fence_close_lines(log_text, fence):
+    """Return 1-based log line numbers that could close the outer fence early.
+
+    Only the warning depends on this check; acceptance does not. A line counts
+    when CommonMark would read it as a closing fence: at most three spaces,
+    then at least as many backticks as the opening fence, then only spaces or
+    tabs. This includes marimo's pymdownx.superfences rule (a line of exactly
+    the opening fence), so a flagged line cuts the displayed log off under one
+    renderer or the other; the decompiled log is unaffected.
+
+    Display lines are split at ``\\r\\n``, ``\\r`` and ``\\n``: a legacy
+    non-raw literal with a ``\\r`` escape holds a carriage return, which
+    Python-Markdown reads as a line break. Only this warning uses that split;
+    the recovered log is not changed.
+    """
+    closing_fence_re = re.compile(r" {0,3}`{%d,}[ \t]*" % len(fence))
+    return [
+        number
+        for number, line in enumerate(re.split(r"\r\n|\r|\n", log_text), start=1)
+        if closing_fence_re.fullmatch(line)
+    ]
 
 
 def extract_execution_log(cell):
@@ -577,13 +692,18 @@ def extract_execution_log(cell):
             f"notebook line {cell['line']}"
         )
     fenced_text = value.args[0].value
-    fence_match = re.fullmatch(r"```\n(.*)\n```", fenced_text, re.DOTALL)
+    # INTENT: one fenced body: an opening run of N >= 3 backticks on its own
+    # line, the log, and a closing run of the same N backticks; a closing run
+    # of another length is rejected.
+    fence_match = EXECUTION_LOG_FENCE_RE.fullmatch(fenced_text)
     if fence_match is None:
         fail(
             "execution-log markdown must contain exactly one complete plain fenced "
-            f"body near notebook line {cell['line']}"
+            "body (an opening and a closing fence of the same three or more "
+            f"backticks) near notebook line {cell['line']}"
         )
-    log_text = fence_match.group(1)
+    fence = fence_match.group(1)
+    log_text = fence_match.group(2)
     if not log_text.strip():
         fail(f"execution log is empty near notebook line {cell['line']}")
     if is_placeholder_execution_log(log_text):
@@ -595,6 +715,10 @@ def extract_execution_log(cell):
     return {
         "script_name": name_match.group(1),
         "log_text": log_text,
+        "legacy_nonraw_backslash": is_legacy_nonraw_log_literal(
+            cell["text"], value.args[0]
+        ),
+        "early_fence_close_lines": early_fence_close_lines(log_text, fence),
         "line": cell["line"] + accordion_expressions[0].lineno - 1,
     }
 
@@ -671,6 +795,8 @@ def build_archive_plan(classified):
             {
                 **content,
                 "log_text": log["log_text"],
+                "legacy_nonraw_backslash": log["legacy_nonraw_backslash"],
+                "early_fence_close_lines": log["early_fence_close_lines"],
                 "header_metadata": header,
                 "log_line": log["line"],
             }
@@ -691,12 +817,23 @@ def build_archive_plan(classified):
 
 
 def reconstruct_script(code, log_text):
-    """Rebuild an executed script with a single comment-prefixed log section."""
+    """Rebuild an executed script with a single comment-prefixed log section.
+
+    The legacy pre-commented form is the log block copied with its ``# ``
+    prefixes: every nonblank line starts with ``#`` and the first one is the
+    ``# ====`` banner, ``# EXECUTION LOG``, or (banner dropped) a bare ``#``
+    or ``# Executed: ...``. A canonical log is uncommented and
+    always carries lines without ``#`` (``Executed: ...`` and the other
+    run_with_capture.sh header lines), so printed lines such as ``# ====`` in
+    a canonical log never make it look pre-commented.
+    """
     log_lines = log_text.split("\n")
-    is_precommented = any(
-        line.strip() in {"# EXECUTION LOG", "# ====", "# ====="}
-        or (line.strip().startswith("# ===") and "=" * 10 in line.strip())
-        for line in log_lines[:10]
+    nonblank_log_lines = [line for line in log_lines if line.strip()]
+    is_precommented = (
+        bool(nonblank_log_lines)
+        and PRECOMMENTED_FIRST_LINE_RE.fullmatch(nonblank_log_lines[0].strip())
+        is not None
+        and all(line.lstrip().startswith("#") for line in nonblank_log_lines)
     )
 
     if is_precommented:
@@ -715,7 +852,10 @@ def reconstruct_script(code, log_text):
         "# " + line if line else "#" for line in cleaned_lines
     )
     script = code.rstrip() + "\n\n\n"
-    if "# EXECUTION LOG" not in commented_log:
+    # INTENT: add the banner unless the log already carries the marker LINE.
+    # REASONING: a substring test would also match a printed line such as
+    # "# EXECUTION LOG" (archived as "# # EXECUTION LOG") and drop the banner.
+    if "# EXECUTION LOG" not in commented_log.split("\n"):
         script += (
             "# =============================================================================\n"
             "# EXECUTION LOG\n"
@@ -849,7 +989,7 @@ def build_extraction_plan(scripts, output_dir):
 
         dangling = validate_references(script["code"])
         script["dangling_refs"] = dangling
-        code_lines = len(script["code"].splitlines())
+        code_lines = len(script["code"].split("\n"))
         extraction_plan.append(
             {
                 "source_path": script["source_path"],
@@ -928,6 +1068,55 @@ def build_manifest(notebook_path, scripts, manifest_rows):
             lines = ", ".join(str(line_number) for _, line_number in dangling)
             manifest_lines.append(f"| `{source_path}` | {names} | {lines} |")
 
+    scripts_with_log_literal_warnings = [
+        script["source_path"]
+        for script in scripts
+        if script["legacy_nonraw_backslash"]
+    ]
+    if scripts_with_log_literal_warnings:
+        manifest_lines.extend(
+            [
+                "",
+                "## Execution-Log Literal Warnings",
+                "",
+                "These execution logs sit in a legacy non-raw string literal whose source text contains backslashes.",
+                "Python decodes backslash escapes in such a literal (for example `\\n` in a Windows path becomes a line break),",
+                "so the decompiled log may differ from what the script printed. Compare each with the original script's execution log.",
+                "",
+                "| Script | Warning |",
+                "|--------|---------|",
+            ]
+        )
+        for source_path in scripts_with_log_literal_warnings:
+            manifest_lines.append(
+                f"| `{source_path}` | {LEGACY_LOG_LITERAL_WARNING} |"
+            )
+
+    scripts_with_fence_warnings = [
+        (script["source_path"], script["early_fence_close_lines"])
+        for script in scripts
+        if script["early_fence_close_lines"]
+    ]
+    if scripts_with_fence_warnings:
+        manifest_lines.extend(
+            [
+                "",
+                "## Execution-Log Fence Warnings",
+                "",
+                "These execution logs contain a line that can close the log's code fence early (a line of at least as many",
+                "backticks as the opening fence, indented at most three spaces). The notebook display may cut the log off",
+                "at that line; the decompiled log is unaffected. Re-archive the log inside a longer fence.",
+                "",
+                "| Script | Log Lines | Warning |",
+                "|--------|-----------|---------|",
+            ]
+        )
+        for source_path, line_numbers in scripts_with_fence_warnings:
+            numbers = ", ".join(str(number) for number in line_numbers)
+            manifest_lines.append(
+                f"| `{source_path}` | {numbers} | {EARLY_FENCE_CLOSE_WARNING} |"
+            )
+
     canonical_count = sum(
         row["path_form"] == "canonical"
         and row["heading_form"] == "canonical"
@@ -944,6 +1133,10 @@ def build_manifest(notebook_path, scripts, manifest_rows):
             f"- **Validated source/log associations:** {len(scripts)}",
             f"- **Canonical bundles:** {canonical_count}",
             f"- **Bundles using bounded legacy metadata/path forms:** {legacy_count}",
+            "- **Legacy non-raw execution-log literals with backslashes:** "
+            f"{len(scripts_with_log_literal_warnings)}",
+            "- **Execution logs with a line that can close their code fence early:** "
+            f"{len(scripts_with_fence_warnings)}",
             "- **Output policy:** New output root only; no merge or overwrite",
         ]
     )
@@ -972,6 +1165,12 @@ def decompile(notebook_path, output_dir):
         fail(f"notebook is not valid UTF-8: {error}")
     if not notebook_text.strip():
         fail("notebook is empty")
+    # INTENT: read line breaks exactly as the Python parser reads source.
+    # REASONING: Python turns CRLF and a lone CR into LF (also inside string
+    # literals) and treats no other character as a line break; doing the same
+    # keeps CRLF notebooks decompiling as before and keeps form feed, U+2028
+    # and similar characters inside the log lines that hold them.
+    notebook_text = notebook_text.replace("\r\n", "\n").replace("\r", "\n")
 
     preamble, cells = split_cells(notebook_text)
     validate_notebook_identity(notebook_text, preamble)
@@ -1005,6 +1204,22 @@ def decompile(notebook_path, output_dir):
         print("  Review these scripts before re-execution in Reproducibility Verification.")
     else:
         print("  Reference validation: all scripts are self-contained (no dangling references detected).")
+
+    for script in scripts:
+        if script["legacy_nonraw_backslash"]:
+            print(
+                f"  WARNING: {script['source_path']} — {LEGACY_LOG_LITERAL_WARNING}",
+                file=sys.stderr,
+            )
+        if script["early_fence_close_lines"]:
+            numbers = ", ".join(
+                str(number) for number in script["early_fence_close_lines"]
+            )
+            print(
+                f"  WARNING: {script['source_path']} (log line {numbers}) — "
+                f"{EARLY_FENCE_CLOSE_WARNING}",
+                file=sys.stderr,
+            )
 
     try:
         requested_root.mkdir(parents=True, exist_ok=False)

@@ -1,0 +1,162 @@
+{
+  "schema_version": "lit-review-manifest-v1",
+  "contract_version": "0.6.0",
+  "round": 1,
+  "created_at": "2026-11-03T13:30:30Z",
+  "protocol": {
+    "file": "Protocol.md",
+    "sha256": "cc6b9f6ef2d1057227f293946e331867db58bcffaf94c5338c02e3a68791a75c"
+  },
+  "tool_versions": {
+    "lit_corpus": "1.9.0-daaf",
+    "lit_verify": "1.17.0-daaf",
+    "pdf_ingest": "1.2.2-daaf",
+    "scholar_search": "1.10.0-daaf"
+  },
+  "rule_versions": {
+    "paperkey": "paperkey-v1",
+    "citekey": "citekey-v2",
+    "dedup": "dedup-v3",
+    "bibtex": "bibtex-v2",
+    "ris": "ris-v1",
+    "claimid": "claimid-v1",
+    "dsum": "dsum-v1",
+    "signtest": "signtest-v1",
+    "absence": "absence-v1",
+    "counts": "counts-v1",
+    "edges": "edges-v1",
+    "verify_regrade": "verify-regrade-v3",
+    "retraction": "retraction-rederive-v3",
+    "abstract_claim": "abstract-claim-v1",
+    "gap_words": "gap-words-v1",
+    "abstract_fill": "abstract-fill-v1",
+    "adjudication": "adjudication-v2",
+    "adj_selector": "adj-selector-v2",
+    "glance_words": "glance-words-v4",
+    "adj_model_check": "adj-model-check-v2"
+  },
+  "artifacts": [
+    {
+      "kind": "corpus",
+      "path": "data/corpus_v9.parquet",
+      "version": 9,
+      "sha256": "8a074d5d6b98051332f47efe5c137be9075dcd286d7c2c6e0f82f31e9645e2cb",
+      "bytes": 18896,
+      "schema": "lit-corpus-v1",
+      "rows": 5
+    },
+    {
+      "kind": "paper_aliases",
+      "path": "data/paper_aliases_v9.parquet",
+      "version": 9,
+      "sha256": "835c41e1175a173fcaf8f5f8a1fc41e2b5bb9c8897923045dcbd8c2e54bb9a35",
+      "bytes": 3098,
+      "schema": "lit-aliases-v1",
+      "rows": 14
+    },
+    {
+      "kind": "search_log",
+      "path": "data/search_log_v1.parquet",
+      "version": 1,
+      "sha256": "e76a2b97f62df04be7dae20a4d63afec3f994527bbe098858cf933ef156d4369",
+      "bytes": 8937,
+      "schema": "lit-search-log-v1",
+      "rows": 4
+    },
+    {
+      "kind": "screening",
+      "path": "data/screening_v1.parquet",
+      "version": 1,
+      "sha256": "98c171a447354b3963e022a4f4b1ba59dc0cb06c6b8fbf8151a297e9bdc5a263",
+      "bytes": 4693,
+      "schema": "lit-screening-v1",
+      "rows": 11
+    },
+    {
+      "kind": "claims",
+      "path": "data/claims_v2.parquet",
+      "version": 2,
+      "sha256": "151a21befcdcfb3b9c8d35da766f90bac62aeb5a7a7c90cf4b53fa68615659b9",
+      "bytes": 20268,
+      "schema": "lit-claims-v1",
+      "rows": 12
+    },
+    {
+      "kind": "paper_notes",
+      "path": "data/paper_notes_v2.parquet",
+      "version": 2,
+      "sha256": "17a7deaaaf34935e781276018d74f7d5c64fc57d6baba4766edbfe059210fb27",
+      "bytes": 10663,
+      "schema": "lit-paper-notes-v1",
+      "rows": 4
+    },
+    {
+      "kind": "findings",
+      "path": "data/findings_v1.parquet",
+      "version": 1,
+      "sha256": "b8d7728dc43235aafce8e9222d93855213cc3ce8be043174057db9edd6cad19f",
+      "bytes": 15856,
+      "schema": "lit-findings-v1",
+      "rows": 2
+    },
+    {
+      "kind": "gap_register",
+      "path": "data/gap_register_v1.parquet",
+      "version": 1,
+      "sha256": "5ceb036491b9514940bbf4869e14aac2e1b757a2f4f373df22c570adb0e1a457",
+      "bytes": 7807,
+      "schema": "lit-gaps-v1",
+      "rows": 2
+    },
+    {
+      "kind": "citation_edges",
+      "path": "data/citation_edges_v1.parquet",
+      "version": 1,
+      "sha256": "84f13206c2365b771f8df16aaa33a5731b9fb3fa0b9870e6b7b13b211dfa0211",
+      "bytes": 7959,
+      "schema": "lit-edges-v1",
+      "rows": 1
+    },
+    {
+      "kind": "citation_adjudications",
+      "path": "data/citation_adjudications_v2.parquet",
+      "version": 2,
+      "sha256": "a269cf2403cb6ca66c1c602a29faff2e410611ac6690abe18cb71079cf0b319d",
+      "bytes": 31212,
+      "schema": "lit-adjudications-v1",
+      "rows": 8
+    },
+    {
+      "kind": "references_bib",
+      "path": "output/references_v1.bib",
+      "version": 1,
+      "sha256": "56a5c89b1a873839d4277b6c317c0fd01362bb368c9b66ecb70b5899856412b6",
+      "bytes": 2114,
+      "schema": null
+    },
+    {
+      "kind": "references_ris",
+      "path": "output/references_v1.ris",
+      "version": 1,
+      "sha256": "6d60af1dc7f0799b0dfba3b9bbc4c903f4b01a320db80d1a5d9ddd3be73c08c0",
+      "bytes": 1774,
+      "schema": null
+    },
+    {
+      "kind": "counts",
+      "path": "output/counts_v1.json",
+      "version": 1,
+      "sha256": "9494c959087a30fc7756997afa20c8194792141698bdacb20dfa8b0889c1e612",
+      "bytes": 540,
+      "schema": "lit-counts-v1"
+    },
+    {
+      "kind": "gap_register_md",
+      "path": "output/gap_register_v1.md",
+      "version": 1,
+      "sha256": "d63cb7a0f2e8c9bc03b101b74452a3802093ac5eef5222a3b9a90707a545cdc1",
+      "bytes": 1225,
+      "schema": null
+    }
+  ]
+}

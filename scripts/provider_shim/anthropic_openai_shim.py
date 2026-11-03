@@ -3,10 +3,9 @@
 # anthropic_openai_shim.py
 #
 # Hardened Anthropic Messages API -> OpenAI Responses API (/v1/responses)
-# translation shim for Claude Code. Productionized from the validated PoC
-# (research/2026-07-09_FrameworkDev_OpenAI_Provider/poc/shim_anthropic_openai.py),
-# then migrated from the OpenAI Chat Completions wire format to the Responses
-# API in v1.2.0 (see Changelog).
+# translation shim for Claude Code. Productionized from a validated proof of
+# concept, then migrated from the OpenAI Chat Completions wire format to the
+# Responses API in v1.2.0 (see Changelog).
 #
 # Claude Code speaks the Anthropic Messages API. When ANTHROPIC_BASE_URL points
 # at this shim, Claude Code POSTs Anthropic-format requests to /v1/messages
@@ -41,16 +40,18 @@
 #   ordering, and routing streamed argument deltas by internal item_id (fc_...)
 #   rather than public call_id — are ported (logic, NOT code) from two
 #   MIT-licensed reference implementations: raine/claude-code-proxy (Rust) and
-#   AmazingAng/auth2api (TypeScript). See
+#   AmazingAng/auth2api (TypeScript). See the prior-art note (maintainer-only
+#   record, not shipped:
 #   research/2026-07-11_FrameworkDev_ShimDiagnostics_AuthOptions/output/
-#   preliminary_notes/05_prior_art_responses_translators.md. The reasoning-cache
+#   preliminary_notes/05_prior_art_responses_translators.md). The reasoning-cache
 #   re-injection design (below) is NOVEL: neither reference implements reasoning
 #   re-injection on the request/replay path — this shim closes that gap.
 #
 # Hardening (preserved from the chat-lane shim; see § HARDENING tags inline):
 #   * Retry with exponential backoff + jitter on backend 429/500/502/503/529,
 #     max 3 retries, honoring Retry-After. Never retries once streaming has
-#     begun emitting to the client (fails the stream cleanly instead).
+#     begun emitting to the client (fails the stream cleanly instead), except the
+#     single v1.4.8 whitespace-guard retry, allowed only before any tool_use is sent.
 #   * Client-disconnect handling: aborts the backend request on ASGI disconnect.
 #   * Usage robustness: reads usage from response.completed; if the backend omits
 #     it, estimates and flags the estimate in a log line.
@@ -60,9 +61,348 @@
 #     bodies). The manager script (start_shim.sh) redirects stderr to the log.
 #   * Backend-error diagnostics on every non-2xx: status, exact structured
 #     type/code, mapped Anthropic type, and allowlisted headers — never body prose.
+#   * Log contract (metadata only) covers response headers too: on backend-error and
+#     retry lines a header reaches the log only if its exact lowercased name is in
+#     DIAG_HEADER_ALLOWLIST (request IDs, retry-after, rate-limit numerics). There is
+#     no prefix rule (removed in v1.4.9), so opaque session tokens
+#     (x-codex-turn-state), cookies/set-cookie, auth-like headers and account credit
+#     fields are never written there. The separate 2xx quota_snapshot event still
+#     records plan and credit numerics (no tokens).
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.13 (2026-10-15): login-failure sends write a backend_error line.
+#     GAP: three 401 authentication_error sends on a token-refresh RuntimeError
+#       never called _record_backend_error, so they logged no backend_error line
+#       and no failure_reason: the header-build failure before any backend call
+#       (auth store missing or a permanent refresh failure), the search non-stream
+#       lazy-401 refresh failure, and the ChatGPT non-stream lazy-401 refresh
+#       failure.
+#     FIX: each now records authentication_error, backend_type token_refresh,
+#       failure_phase backend_authentication and the fixed category "backend
+#       token refresh failed (RuntimeError)", like the streaming whitespace-retry
+#       site; never the RuntimeError text. The two lazy-401 sites record only
+#       while the client is still connected, so a disconnect stays a disconnect.
+#     ALSO: hosted-search responses no longer feed the count_tokens calibration.
+#       All 10 "count_tokens calibration rejected" lines in a live shim.log
+#       (2026-10-15) were hosted-search sub-requests at 9.6-16 tokens/byte (vs
+#       ~0.2 accepted): their usage counts server-fetched content len(body) cannot
+#       represent. The two search call sites (non-stream search branch, streaming
+#       search block) skip it with a DEBUG line; the ordinary sites are unchanged.
+#     UNCHANGED: client-visible bytes and statuses (401, same message); the
+#       existing human-readable error lines; /health schema. SHIM_VERSION -> 1.4.13.
+#   v1.4.12 (2026-10-15): shim.log records why a failure happened.
+#     EVIDENCE: UM-GPT gateway, openai lane, 2026-10-15: two streaming web-search
+#       requests failed (shim.log lines 26995 at 16:13:24 and 27257 at 16:26:06).
+#       Their terminal lines read outcome=error failure_phase=upstream_stream
+#       backend_type=- backend_code=-, and the backend_error line only
+#       anthropic_type=api_error. The reason was sent to Claude Code but never
+#       written to the log: _finalize_stream_failure passed only the type to
+#       _record_backend_error, and the non-stream error sends did the same.
+#     FIXES: the backend_error lifecycle line gains one field, failure_reason (always
+#       present; "-" when no reason is known). It holds the shim's own short reason:
+#       the fixed message the client got (a local constant, a _ProtocolError literal
+#       such as "search inventory missing completed items or index coverage", or a
+#       classifier message such as "Prompt is too long (backend context length
+#       exceeded)"). Where the source text is not guaranteed shim-authored, a fixed
+#       category with the exception class is logged instead: "backend token refresh
+#       failed (RuntimeError)", "backend SSE framing error (ValueError)" (ChatGPT
+#       non-stream accumulator) and "backend search transport or framing error
+#       (<class>)" (search non-stream). Scrubbed (_scrub_metadata), capped at 160
+#       characters and percent-encoded like every lifecycle value, so it stays one
+#       token on one line. Every _record_backend_error site now passes a reason, so the
+#       first backend_error line carries the first cause; a later hop's reason is not
+#       written again (same first-cause rule as backend_type and failure_phase). The
+#       non-stream search error branch now writes a backend_error line for
+#       unclassified failures (protocol, framing, transport), which it never did.
+#       Privacy tightening (review fix, same version): the streaming
+#       "stream failure after response start" error line logged the scrubbed text of
+#       ANY caught exception since v1.2.8; a TypeError/KeyError/AttributeError/
+#       ValueError or httpx message can quote a backend value, so only a
+#       _ProtocolError's (literal) text is logged now and the others log the constant
+#       failure kind ("backend SSE framing error", "backend transport error",
+#       "backend stream translation error"). The accumulator's category record is
+#       skipped once the client has disconnected, so it cannot turn a disconnect
+#       outcome into error.
+#     WHY: the privacy rule (v1.2.11: no prompts, tool inputs, backend prose or
+#       credentials in the log) stands; only shim-authored text is logged, so the log
+#       can now say why a request failed without carrying anything new from the
+#       backend.
+#     UNCHANGED: client-visible bytes, statuses, headers and retry behaviour; every
+#       other lifecycle line; /health schema. SHIM_VERSION -> 1.4.12.
+#   v1.4.11 (2026-10-14): Retry hints, a recognizable context-overflow message, failed
+#     JSON bodies and OpenAI's billing codes (four follow-ups from the F32 work).
+#     SOURCE EVIDENCE (installed Claude Code 2.1.281, binary
+#       ~/.local/share/claude/versions/2.1.281, read 2026-10-14 with grep -a -o -P):
+#       the retry predicate reads `let r=e.headers?.get("x-should-retry")` and
+#       `if(r==="false"){...return!1}` BEFORE `if(e.status===429)...` and
+#       `if(e.status&&e.status>=500)return!0`; earlier checks win over the header:
+#       `if(S6()&&ZPt(e))return!0` (S6 = CLAUDE_CODE_RETRY_WATCHDOG, retries a 429),
+#       the `"type":"overloaded_error"` message check and the max_tokens overflow
+#       parser nMt. The official TS SDK (client.ts:1606-1611) also obeys
+#       x-should-retry. Context overflow is recognized by text only:
+#       `function yHn(e){let n=e.toLowerCase();return n.includes("prompt is too
+#       long")||n.includes("input is too long for requested model")}`, with no
+#       status check, so it applies to non-stream errors and streamed SSE `error`
+#       events. Docs: OpenAI error-codes guide, fetched 2026-10-14
+#       (https://developers.openai.com/api/docs/guides/error-codes): four 429
+#       billing codes and "Retrying billing, spend, or quota errors won't restore
+#       API access"; openai-python response.py (status "failed",
+#       `error: Optional[ResponseError]`) and response_error.py (code literals incl.
+#       server_error, rate_limit_exceeded, invalid_prompt), fetched 2026-10-14 from
+#       https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response.py
+#       and
+#       https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response_error.py;
+#       OpenRouter HTTP 200 + status "failed" + code server_error (inspect-robots
+#       #448, fetched 2026-10-14:
+#       https://api.github.com/repos/robocurve/inspect-robots/issues/448).
+#     FIXES:
+#       (A) A NON-STREAM error whose client-facing type is invalid_request_error now
+#         carries the header `x-should-retry: false` (_no_retry_headers_for). The
+#         case it is for: a backend 429 with code insufficient_quota /
+#         usage_not_included keeps its real 429 (v1.2.14 R2) but is not a throttle,
+#         and Claude Code retried it. Applied at the ChatGPT non-stream passthrough
+#         and in-band branches, the OpenAI-lane non-stream passthrough and (C)
+#         branch, both non-stream search branches, and (for uniformity) the local
+#         400s: request validation, translation and the claude-slug fast-fail. No
+#         header for api_error (code server_error is a transient 5xx the client
+#         should retry), rate_limit_error, overloaded_error or authentication_error
+#         (the 401 retry clears the client's credential cache and reaches the
+#         lazy-401 refresh). No header on a 408 or 409 either, whatever the type
+#         (review fix, same version): the status fallback types a bare 409 as
+#         invalid_request_error, but the client retries both statuses
+#         (`if(e.status===408)return!0;if(e.status===409)return!0;`) and reads the
+#         header first, so the header would have removed that retry. The helper
+#         takes the outgoing status for this reason. Streaming: a streamed
+#         response's HTTP 200 and headers go out before the outcome is known, so the
+#         header cannot ride on it. On the streaming main loop it still applies one
+#         step later (read from the 2.1.281 client source, not observed live): the
+#         SDK turns an SSE `error` event into an error with no status
+#         (`throw new vt(void 0,h,void 0,e.headers,g)`), so no status-based retry
+#         applies, and the main loop falls back once to a NON-streaming request
+#         ("Error streaming, falling back to non-streaming mode"; `stream:!1` inside
+#         the `_ne` retry wrapper, whose loop calls `Wpo`) unless
+#         CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK is set (DAAF does not set it) or
+#         a server-side flag turns the fallback off.
+#         That re-send carries this header and the v1.4.10 status, so a pre-content
+#         failure costs one streamed attempt plus one non-streamed re-send.
+#       (B) The fixed message for context_length_exceeded is now "Prompt is too long
+#         (backend context length exceeded)" (no digits: the client's gap parser
+#         /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i would read them).
+#         Shared by streaming and non-stream paths. Claude Code now shows its own
+#         context-limit notice ("Context limit reached · /compact or /clear to
+#         continue") instead of a generic error, and replaces the message with its
+#         constant `cO="Prompt is too long"` (`if(oE(e)||sA(e))return Lo({content:cO,
+#         ...errorDetails:e.message})`), so the shim's text survives only as the error
+#         details (read from the 2.1.281 source). The Anthropic max_tokens wording is
+#         deliberately not imitated. DAAF ships auto-compaction off
+#         (.claude/settings.json `autoCompactEnabled: false`); a user who turns it on
+#         may see the client start a compaction on this error, which sends a
+#         summarization request to the same capped backend (unverified whether it fits).
+#       (C) OpenAI lane, HTTP 200 whose Responses object has status "failed": the
+#         ordinary non-stream path and the search JSON transport now classify the
+#         body's `error` (_normalize_backend_error, status=None, phase upstream_stream)
+#         and send the matching status (+ A's header): server_error -> 502 api_error,
+#         rate_limit_exceeded -> 429, invalid_prompt -> 400, context_length_exceeded
+#         -> 400 "Prompt is too long (...)". A failed body with no usable error stays
+#         502 api_error. Fixed messages only (v1.2.11).
+#       (D) credit_balance_exhausted, organization_spend_limit_exceeded,
+#         project_spend_limit_exceeded and organization_usage_limit_exceeded join
+#         _BACKEND_SIGNAL_CLASSIFICATION as invalid_request_error "backend quota or
+#         plan limit reached", non-retryable (as insufficient_quota). _plan_retry
+#         then stops the shim's own retry of such a 429 (one backend request), and
+#         (A) stops the client's.
+#     WHY: before 1.4.11 a quota 429 was retried by Claude Code as a throttle; a
+#       context overflow showed a generic "backend context length exceeded" error
+#       the client did not treat as context-related; and a failed 200 body on the
+#       OpenAI lane always became 502 "conversion failed", so a deterministic
+#       rejection was retried. (D) matters when error.type is not insufficient_quota:
+#       the guide says the type "can still be insufficient_quota", which the
+#       classifier has caught through its code-then-type lookup since v1.2.14 R2.
+#     UNOBSERVED LIVE: the D codes have never appeared in shim.log; (C) has never
+#       been seen on api.openai.com (fixture-tested only); (A)'s client behavior is
+#       read from the 2.1.281 source, not observed; (B)'s client rendering likewise.
+#     UNCHANGED: streaming status and headers (always HTTP 200; errors as SSE events);
+#       the v1.2.10 real-status passthrough and v1.4.10 in-band status mapping;
+#       retry policy for every other code; request translation; /health schema.
+#       SHIM_VERSION -> 1.4.11.
+#   v1.4.10 (2026-10-13): Non-streaming in-band failures get a matching HTTP status.
+#     LIVE EVIDENCE: probe_context_ceiling.py --model gpt-6.1-sol (2026-10-13 20:52)
+#       got HTTP 502 with "backend context length exceeded"; shim.log recorded
+#       phase=terminal outcome=error stream=n attempts=1
+#       backend_type=invalid_request_error backend_code=context_length_exceeded. The
+#       ChatGPT backend had answered HTTP 200 and then sent the failure inside the SSE
+#       stream (response.failed / error), so there was no backend status to pass
+#       through: the v1.2.10 passthrough never fired, and the classified type went out
+#       under a hard-coded 502. Claude Code retries server errors "up to 10 times with
+#       exponential backoff" when they "arrive before any of Claude's response has
+#       streamed" (Claude Code error reference, fetched 2026-10-12:
+#       https://code.claude.com/docs/en/errors), so one unsatisfiable request could be
+#       retried up to 10 times (up to 11 requests). CLIENT SOURCE (installed Claude
+#       Code 2.1.281, read 2026-10-14 with grep -a): the main-loop retry predicate ends
+#       `if(e.status===408)return!0;if(e.status===409)return!0;if(e.status===401)
+#       return bKe(),!0;...if(e.status&&e.status>=500)return!0;return!1`, after an
+#       `x-should-retry` header check ("false" -> no retry). A plain 400 matches no
+#       retry branch. Its context-limit special cases match only Anthropic wordings
+#       ("input length and `max_tokens` exceed context limit: N + N > N" for the
+#       max_tokens reduction; "prompt is too long" / "input is too long for requested
+#       model" for prompt-too-long), so this shim's fixed message triggers neither
+#       (superseded by 1.4.11 B).
+#     FIXES: a new helper, _client_status_for_anthropic_error_type, derives the client
+#       status from the recorded type. It is the exact inverse of
+#       _ANTHROPIC_ERROR_TYPE_BY_STATUS (invalid_request_error->400,
+#       authentication_error->401, permission_error->403, not_found_error->404,
+#       rate_limit_error->429, overloaded_error->529); api_error, "-" and anything else
+#       stay 502. It is applied at two sites: (a) the ChatGPT-lane non-stream adapter
+#       when no backend status was recorded (the in-band case); (b) the non-stream
+#       search path's error branch (search-bearing requests, both lanes; in practice
+#       the ChatGPT lane, because the OpenAI lane's JSON transport rejects a "failed"
+#       body before classification (until 1.4.11 C)). The body type and message are
+#       unchanged.
+#     WHY: an in-band failure has no backend status, so its status is derived from
+#       the recorded type. (On the v1.2.10 passthrough branch the real backend status
+#       still wins and can disagree with the classifier type, e.g. a 429
+#       insufficient_quota goes out as 429 invalid_request_error since v1.2.14 R2.) A
+#       context overflow now reaches the client as 400 invalid_request_error, which the
+#       2.1.281 retry predicate does not retry (see CLIENT SOURCE above). The shim
+#       side was confirmed live 2026-10-14 16:01 (a direct probe on gpt-6.1-sol,
+#       non-stream: upstream status=200, client got HTTP 400, attempts=1;
+#       maintainer-only record, not shipped:
+#       research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/
+#       RESULTS_05a_confirm_1.4.10.md); Claude Code's handling of that 400 was not
+#       exercised (as for v1.2.10). 429 rate_limit_error and
+#       529 overloaded_error stay client-retryable by design, matching what the same
+#       failure gets as a real backend status. The shim's own retry loop never retries
+#       an in-band failure (it arrives after the 200), so the shim adds no attempt for
+#       an in-band failure (pre-200 retries still count).
+#     401 (user decision 2026-10-14): an in-band token_invalidated goes out as 401
+#       authentication_error "backend authentication failed", not _RELOGIN_MSG (that
+#       text says a refresh was attempted; none is on this path). Claude Code 2.1.281
+#       retries a 401 (`if(e.status===401)return bKe(),!0`; bKe clears its credential
+#       cache), as it retried the old 502, so the retry can still reach the pre-stream
+#       lazy-401 refresh in _open_backend_stream. Review-time inference that a 401 is
+#       not retried (the error reference mentions only the apiKeyHelper case) was
+#       contradicted by the client source. The in-band case is unobserved
+#       live: the only recorded token_invalidated arrived as a pre-stream HTTP 401
+#       (maintainer-only record, not shipped:
+#       research/2026-07-20_FrameworkDev_ShimRoadmap/output/preliminary_notes/
+#       04_tier0_ground_truth_findings.md:57,63). To spot one in shim.log: an
+#       upstream_headers line with status=200, then a terminal line with stream=n,
+#       outcome=error and backend_code=token_invalidated (a pre-stream rejection
+#       shows status=401 and a retry_reason=auth_401 refresh instead).
+#     UNCHANGED: streaming paths (HTTP 200 is already sent; the in-band event already
+#       carries the classified type); the v1.2.10 real-status passthrough; the
+#       OpenAI-lane ordinary (non-search) non-stream path (until 1.4.11 C); and 502 api_error for
+#       refusals, framing, protocol and recovery-validation failures, conversion
+#       failures and transport errors (none records a classifier type). Request
+#       translation and the /health schema are unchanged. SHIM_VERSION -> 1.4.10.
+#   v1.4.9 (2026-10-13): Follow-ups from live verification of 1.4.8.
+#     (1) Effort floor extended: GPT-6.1 Sol also rejects effort:"none" (live: a
+#     "gpt-6.1-sol#none" request got backend 400 invalid_request_error /
+#     unsupported_value). The Astra-only set is renamed _NO_NONE_EFFORT_SLUGS and now
+#     also holds gpt-6.1-sol, gpt-6.1-sol-pro and their "[1m]" forms; a resolved
+#     "none" for any member is sent as "low". The -pro members are an inference from
+#     the shared model family, not a live observation. gpt-6-sol and every other
+#     model are unchanged. (2) Log hygiene: backend-error and retry log lines
+#     ("| headers: ...") no longer include every x-codex-* response header. That
+#     prefix rule let an opaque backend session token (x-codex-turn-state) and
+#     account credit fields into shim.log. Headers now pass an exact-name allowlist
+#     only (DIAG_HEADER_ALLOWLIST: request IDs, retry-after, x-ratelimit-* numerics,
+#     and the x-codex primary/secondary used-percent and reset-after-seconds
+#     numerics); everything else, including cookies, auth-like headers, credit
+#     balances and turn-state tokens, is never written. The 2xx quota_snapshot event
+#     is unchanged. Request translation and the /health schema are unchanged.
+#   v1.4.8 (2026-10-12): PDF document blocks, WebSearch edge cases and the whitespace
+#     guard no longer fail hard. (1) PDF/document blocks, in user content and inside tool_result content,
+#     are translated. Correction (v1.4.9, from live testing): Claude Code 2.1.281's
+#     Read tool on a PDF already worked before 1.4.8, because it renders pages and
+#     returns text plus images. Raw document blocks come from other paths, such as a
+#     PDF attached or @-mentioned directly in a message, or a client that sends
+#     document blocks; the shim used to reject those with a 400, and the block stayed
+#     in the history. Mapping: base64 PDF -> input_file (file_data data URL), URL PDF
+#     -> input_file (file_url, accepted only when it passes the same strict URL check
+#     as consulted search sources), text documents -> input_text. Any other document
+#     variant becomes a short text note instead of a 400 (logged once per variant at INFO,
+#     never the content). Base64 is checked with one flat character-class scan, so
+#     multi-megabyte PDFs validate quickly. SHIM_PDF_MODE=omit turns PDFs into a note
+#     that says they were omitted by configuration; an unrecognized SHIM_PDF_MODE
+#     value logs one startup WARNING and uses "file". (2) WebSearch tolerance: any
+#     web_search_YYYYMMDD tool version is accepted (unknown options still fail
+#     closed); disable_parallel_tool_use with search maps to parallel_tool_calls.
+#     blocked_domains: the openai lane forwards the valid bare domains (deduplicated,
+#     max 100) to filters.blocked_domains and WARNs about invalid entries only; the
+#     chatgpt lane cannot send the exclusion upstream, so it WARNs and removes
+#     sources and citations whose host is a blocked domain (or a subdomain of one)
+#     from the projected result, adding a one-line note saying so. Unrecognized
+#     hosted-action shapes, sources and citations are skipped with a WARNING instead
+#     of failing the turn; a search whose listed sources are ALL unusable is skipped
+#     (outcome=malformed) rather than shown as zero results. An overlong citation or
+#     source title falls back to a "URL: ..." label. Identity, status and coverage
+#     checks still fail closed. (3) Runaway whitespace in a streamed tool call (the
+#     v1.4.4 guard; seen on GPT-6 Astra) no longer hands Claude Code an empty tool
+#     call: with SHIM_SANITIZE_TOOLS on (default), the tool_use header is held until
+#     its arguments are complete, and on a guard trip before any tool_use was sent the
+#     shim re-sends the request once inside the same reply (terminal line: attempts=2
+#     or more, since ordinary transport/status retries of that re-send still apply;
+#     retry_reason=tool_argument_whitespace). Text already shown before the trip stays
+#     on screen, so a short preamble can appear twice. A second trip, or a trip after
+#     a tool was already sent, ends the reply with the usual error, without an empty
+#     tool call; if the re-send itself fails (rate limit, server error, expired login,
+#     transport), the client sees that failure's own error type and message. At the
+#     end of a completed response a still-held tool takes its arguments from the
+#     final output item or the buffered deltas (never an empty {}); on an incomplete
+#     response a tool whose arguments never completed is dropped with a WARNING.
+#   v1.4.7 (2026-10-12): Institutional-gateway robustness. SHIM_BACKEND_BASE_URL is
+#     trimmed, an empty value falls back to the lane default, trailing "/" is dropped,
+#     and a pasted ".../responses" suffix is stripped with one startup WARNING (the
+#     shim appends /responses itself). /health "backend" reports the normalized URL;
+#     the API key is still never logged. The permissive GET .../models listing
+#     (_handle_models) also advertises openai/gpt-6-sol, openai/gpt-6-luna and
+#     openai/gpt-6.1-sol. No other behavior change.
+#   v1.4.6 (2026-09-21): Worker-aware conversation routing (stable per session and
+#     worker routing hints for concurrent Claude Code workers).
+#   v1.4.5 (2026-09-20): Non-streaming recovery: completed output items are no longer
+#     lost, and explicit refusal evidence is preserved through validation.
+#   v1.4.4 (2026-09-17): Fail-fast guard on runaway whitespace outside JSON strings in
+#     streamed tool arguments (256-character limit).
+#   v1.4.3 (2026-09-17): Live stream-interruption diagnostics revision.
+#     Details for 1.4.3-1.4.6 are in maintainer-only research notes (not shipped:
+#     research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/, STATE_2026-09-17_*,
+#     STATE_2026-09-20_*, STATE_2026-09-21_*).
+#   v1.4.2 (isolated draft, 2026-09-15): Support documented hosted search,
+#     open_page and find_in_page sequences without inventing ranked page results.
+#     Page actions retain typed inputs and explicit provenance text; optional absent
+#     open URLs are disclosed, required find evidence fails closed. Raw replay stays
+#     intact. Lifecycle action diagnostics contain fixed buckets/counts only.
+#     Schema-derived page fixtures are offline compatibility evidence, not proof of
+#     the action subtype responsible for the reported live 502s.
+#   v1.4.1 (2026-09-13): Accept the installed client's explicitly empty native
+#     allowed_domains/blocked_domains lists as omitted filters. Nonempty blocklists
+#     remain explicitly unsupported; malformed controls and unknown keys still fail
+#     closed. Nonempty allowlists retain their upstream mapping. This repairs the
+#     local unsupported-option rejection observed in the 1.4.0 live WebSearch check.
+#   v1.4.0 (isolated draft, 2026-09-11): Typed native web_search_20250305
+#     translation, bounded hosted-response collection and process-local replay.
+#     Real consulted-source URLs/titles and answer attribution are projected without
+#     invented source quotations or proprietary encrypted citation fields. Ordinary
+#     incomplete answers preserve observed partial text after search history, even
+#     when another output item has completed. Subscription max_uses is an observed
+#     call ceiling, NOT an upstream execution/billing/quota guarantee. Replay expires
+#     or is lost on eviction/restart; open_page/find_in_page remain unsupported.
+#     Installed extracted SDK/parser contracts are tested, not full CLI/live API
+#     certification. Shared promotion/deployment requires separate approval.
+#   v1.3.19 (2026-09-05): GPT-6 Astra onboarding — model-aware effort floor + model
+#     listing. _handle_models now advertises openai/gpt-6-astra alongside the
+#     existing gpt-5.6-sol/gpt-5.5 entries (additive). A single model-conditional
+#     clamp in _anthropic_to_responses_request rewrites a resolved reasoning.effort
+#     of "none" to "low" for the Astra family (_ASTRA_FAMILY_SLUGS = {gpt-6-astra,
+#     gpt-6-astra[1m]}, matched on the provider-prefix- and effort-suffix-stripped
+#     terminal slug), because Astra's supported effort enum is
+#     {low,medium,high,xhigh,max} and REJECTS "none"
+#     (developers.openai.com/api/docs/models/gpt-6-astra, primary source
+#     2026-09-05). Every other model keeps prior behavior exactly; the general
+#     four-tier effort resolver and the /health schema are unchanged.
+#     SHIM_VERSION -> 1.3.19.
 #   v1.3.18 (2026-08-09): Bind stream-member cleanup to captured identities.
 #     Cleanup atomically quarantines `.owner` and `output.fifo`, revalidates each
 #     quarantined inode, and unlinks only a match. A one-time same-UID substitution
@@ -563,6 +903,10 @@
 #           non-stream inbound requests, carrying an actionable remap instruction
 #           (ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL /
 #           CLAUDE_CODE_SUBAGENT_MODEL). One scrubbed WARNING per rejection.
+#           [2026-10-12 text-only amendment, no logic change: the instruction now
+#           names all four tier aliases (OPUS/SONNET/HAIKU/FABLE) and no longer
+#           offers CLAUDE_CODE_SUBAGENT_MODEL, which Claude Code >= 2.1.251 treats
+#           only as a fallback for subagents without their own model.]
 #     WHY: deterministic backend rejections must not look retryable. The intended
 #       effect is that Claude Code stops the retry storm on context_length_exceeded
 #       once it sees invalid_request_error; that suppression is EXPECTED but pending
@@ -807,8 +1151,9 @@
 #     sessions, same rationale as the SHIM_REASONING_EFFORT default "high".
 #     WHY the field is always sent: text.verbosity is LIVE-CONFIRMED accepted by
 #       gpt-5.6-sol on /v1/responses (HTTP 200 for both "high" and "low", probe
+#       2026-07-12; maintainer-only probe, not shipped:
 #       research/2026-07-11_FrameworkDev_ShimDiagnostics_AuthOptions/scripts/
-#       live_tests/18_diag-verbosity-compare.py, 2026-07-12) — reclassifying the
+#       live_tests/18_diag-verbosity-compare.py) — reclassifying the
 #       notes-04 §5/confidence-table "verbosity: LOW/not confirmed" claim to
 #       CONFIRMED. "medium" is the documented middle value; NOT independently
 #       live-probed here (the 18-probe exercised default/high/low only) — asserted
@@ -1011,6 +1356,8 @@
 #                           https://chatgpt.com/backend-api/codex. An explicit env
 #                           value overrides the mode default in either lane. The
 #                           Responses endpoint is always {base}/responses.
+#                           v1.4.7: trimmed; empty = default; a trailing "/" or
+#                           pasted "/responses" suffix is stripped.
 #   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY. Used only in openai
 #                           mode; ignored in chatgpt mode (the OAuth access_token
 #                           is the Bearer there).
@@ -1043,7 +1390,12 @@
 #                           models — the benchmark measures raw model
 #                           behavior. Read once at startup: that means
 #                           RESTARTING the shim with the opt-out set.
-#   SHIM_REASONING_EFFORT   TIER 3 of the reasoning-effort precedence chain
+#                           (v1.4.8) While ON, a streamed tool_use header is sent
+#                           only once its arguments are complete, which is what
+#                           lets the whitespace-guard retry stay invisible. With
+#                           it OFF, headers stream immediately and a guard trip
+#                           is never retried (pre-1.4.8 behavior).
+#   SHIM_REASONING_EFFORT  TIER 3 of the reasoning-effort precedence chain
 #                           (v1.2.2). Read once at startup like the other flags.
 #                           Precedence, first present wins:
 #                             1. inbound output_config.effort (per-request),
@@ -1060,11 +1412,21 @@
 #                           slugs the real steering surfaces are the "#<effort>"
 #                           slug suffix (tier 2) and this env var (tier 3).
 #                           Valid values: none | low | medium | high | xhigh |
-#                           max ("max" is gpt-5.6-specific). "none" disables
-#                           reasoning (and, per the API, re-enables temperature —
-#                           but this shim never sends temperature regardless). An
+#                           max. ("max"/"xhigh" are supported by both the gpt-5.6
+#                           family and gpt-6-astra. NOTE: gpt-6-astra and gpt-6.1-sol
+#                           do NOT accept "none" — such a request resolving to
+#                           "none" is clamped to "low" at request build; see
+#                           _NO_NONE_EFFORT_SLUGS.) "none" disables reasoning on the
+#                           gpt-5.6 family (and, per the API, re-enables temperature
+#                           — but this shim never sends temperature regardless). An
 #                           unrecognized value here is ignored with a WARNING and
 #                           the default applies.
+#   SHIM_PDF_MODE           (v1.4.8) file | omit, default file. "file" sends
+#                           Anthropic PDF document blocks as Responses input_file
+#                           parts; "omit" replaces each with a short text note.
+#                           Escape hatch if a backend rejects input_file. Read once
+#                           at startup; an unrecognized value logs one WARNING and
+#                           "file" applies.
 #   SHIM_TEXT_VERBOSITY     Response verbosity (v1.2.4). Read once at startup like
 #                           the other flags. The outbound payload ALWAYS carries
 #                           text:{"verbosity": <value>}. Valid values: low | medium
@@ -1108,7 +1470,13 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.18"
+# v1.4.0 ISOLATED DRAFT (2026-09-08): typed hosted-search bridge, bounded
+# completed-item collection, truthful URL projection and process-local group replay.
+# Subscription max_uses is an observed-call ceiling ONLY; upstream work may precede
+# cancellation. Replay expires after 30 minutes or cache eviction/process restart.
+# Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
+# No new health fields, env controls, backend lanes or persistent search caches.
+SHIM_VERSION = "1.4.13"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1180,9 +1548,23 @@ _BACKEND_BASE_URL_DEFAULTS = {
     "openai": "https://api.openai.com/v1",
     "chatgpt": "https://chatgpt.com/backend-api/codex",
 }
-SHIM_BACKEND_BASE_URL = os.environ.get(
-    "SHIM_BACKEND_BASE_URL", _BACKEND_BASE_URL_DEFAULTS[SHIM_BACKEND_MODE]
+# v1.4.7: normalize a user-pasted gateway URL. INTENT: accept the forms people copy
+#   from a provider's docs. REASONING: env_file values keep stray whitespace, a
+#   trailing "/" would yield "//responses", and a pasted ".../v1/responses" would
+#   yield ".../responses/responses"; an empty value now means "use the default".
+# ASSUMES: no OpenAI-compatible base URL legitimately ends in "/responses".
+SHIM_BACKEND_BASE_URL = (
+    os.environ.get("SHIM_BACKEND_BASE_URL", "").strip()
+    or _BACKEND_BASE_URL_DEFAULTS[SHIM_BACKEND_MODE]
 ).rstrip("/")
+_backend_base_url_warn = None
+if SHIM_BACKEND_BASE_URL.lower().endswith("/responses"):
+    SHIM_BACKEND_BASE_URL = SHIM_BACKEND_BASE_URL[: -len("/responses")].rstrip("/")
+    # Deferred like _backend_mode_warn: `log` is configured further down.
+    _backend_base_url_warn = (
+        "SHIM_BACKEND_BASE_URL ended in /responses; stripped that suffix because "
+        "the shim appends /responses itself (using backend=%s)" % SHIM_BACKEND_BASE_URL
+    )
 # API key is read from env and never logged. Default to OPENAI_API_KEY. Used only
 # in openai mode; in chatgpt mode the OAuth access_token (from auth.json) is the
 # Bearer and this value is ignored.
@@ -1211,6 +1593,20 @@ SHIM_SANITIZE_TOOLS = os.environ.get(
 # unrecognized env value degrades to the default with a WARNING rather than being
 # blindly forwarded.
 SHIM_REASONING_EFFORT = os.environ.get("SHIM_REASONING_EFFORT", "").strip() or None
+# v1.4.8: PDF document escape hatch. "file" (default) forwards PDFs as Responses
+# input_file parts; "omit" replaces them with a short text note. Exists because
+# input_file acceptance on the ChatGPT/Codex backend is not yet live-confirmed.
+# Empty/unset means "file"; any other unrecognized value also means "file" and logs
+# one startup WARNING (deferred like _backend_mode_warn: `log` is configured below),
+# mirroring how an unrecognized SHIM_REASONING_EFFORT degrades. Read once at startup.
+_PDF_MODE_RAW = os.environ.get("SHIM_PDF_MODE", "").strip().lower()
+SHIM_PDF_MODE = "omit" if _PDF_MODE_RAW == "omit" else "file"
+_pdf_mode_warn = None
+if _PDF_MODE_RAW not in ("", "file", "omit"):
+    _pdf_mode_warn = (
+        "SHIM_PDF_MODE=%r is not recognized (expected file or omit); using file"
+        % _PDF_MODE_RAW[:40]
+    )
 
 # v1.2.4: response verbosity. The outbound Responses payload ALWAYS carries
 # text:{"verbosity": <value>}. Resolved ONCE here at startup (parallel to
@@ -1262,7 +1658,12 @@ def _resolve_startup_verbosity():
 #   returns both (the source is logged in the per-request line for observability).
 # REASONING: the accepted set is the gpt-5.6 family's documented effort enum
 #   (notes file 04 §5: none|low|medium|high|xhigh|max). A value in this set maps
-#   through IDENTITY. A value NOT in the set is "unknown" for the tier that carried
+#   through IDENTITY. gpt-6-astra shares low|medium|high|xhigh|max but REJECTS
+#   "none" (primary source 2026-09-05); that one model-specific difference is not
+#   encoded in this generic value-set — it is handled by the Astra floor applied at
+#   request build (see _NO_NONE_EFFORT_SLUGS; v1.4.9 adds gpt-6.1-sol). A value NOT
+#   in the set is "unknown"
+#   for the tier that carried
 #   it: we log ONE warning and IGNORE that tier (fall through) — never forward a
 #   value OpenAI would reject. The one deliberate exception is a known-but-LOW-
 #   confidence-for-gpt-5.6 alias ("minimal"), which we CLAMP to the nearest
@@ -1293,6 +1694,26 @@ _EFFORT_DISABLED = "none"
 # ASSUMES: "minimal" is LOW-confidence for gpt-5.6 specifically (notes file 04
 #   §5) — clamp to "low" rather than forward-and-risk-a-400.
 _EFFORT_CLAMP = {"minimal": "low"}
+# GPT-6 Astra onboarding (2026-09-05): the Astra family's reasoning.effort enum is
+# {low, medium, high, xhigh, max} — it does NOT accept "none" (OpenAI Astra model
+# page, developers.openai.com/api/docs/models/gpt-6-astra, primary-source). The
+# general resolver above still treats "none" as valid because it IS valid for the
+# gpt-5.6 family; the Astra-specific floor is applied model-conditionally at the
+# single interception point in _anthropic_to_responses_request (below), so every
+# non-Astra model keeps current behavior exactly. Membership is matched on the
+# terminal slug (provider prefix + "#<effort>" suffix already stripped by the
+# caller); the "[1m]" window-hint form is included defensively even though it is
+# consumed client-side and normally never reaches the shim.
+# v1.4.9: renamed from _ASTRA_FAMILY_SLUGS because it is no longer Astra-only.
+# GPT-6.1 Sol also rejects "none" (live 2026-10-13: "gpt-6.1-sol#none[1m]" ->
+# backend 400 invalid_request_error / unsupported_value). The gpt-6.1-sol-pro forms
+# are included by family inference (not live-observed). gpt-6-sol is deliberately
+# NOT a member: there is no evidence either way, so it keeps prior behavior.
+_NO_NONE_EFFORT_SLUGS = frozenset({
+    "gpt-6-astra", "gpt-6-astra[1m]",
+    "gpt-6.1-sol", "gpt-6.1-sol[1m]",
+    "gpt-6.1-sol-pro", "gpt-6.1-sol-pro[1m]",
+})
 
 # HARDENING: retry policy. Retry only on transient backend failures, and only
 # before any bytes have been emitted to the client (a partially-streamed
@@ -1354,6 +1775,8 @@ _UPSTREAM_REQUEST_ID_HEADERS = (
 _UPSTREAM_REQUEST_ID_MAXLEN = 200
 _CLIENT_ERROR_MESSAGE_MAXLEN = 200
 _MACHINE_FIELD_VALUE_MAXLEN = 1000
+# v1.4.12: cap (decoded characters) for the backend_error failure_reason field.
+_FAILURE_REASON_MAXLEN = 160
 _WIRE_DIVERGENCE_SUMMARY_INTERVAL = 100
 _WIRE_DIVERGENCE_COUNTS = {}
 _WIRE_DIVERGENCE_LAST_EMITTED = {}
@@ -1487,11 +1910,76 @@ def _collapse_inbound_json(value, *, root=False):
     return value
 
 
-def _decode_anthropic_request_json(body):
+def _conversation_session_id(preserved, scope_headers=()):
+    # Claude Code 2.1.261 m9() JSON-encodes device_id/account_uuid/session_id in
+    # metadata.user_id. Generic API user IDs are not session IDs; only the
+    # verified worker header below refines the session routing namespace.
+    # INTENT: forward only the session UUID; never retain account/device metadata.
+    # REASONING: inspect preserved pairs so ambiguous duplicate keys omit the hint
+    # without changing existing request decoding or rejecting otherwise valid calls.
+    # ASSUMES: this untrusted routing hint grants no authority or cache isolation.
+    if not isinstance(preserved, _JSONObjectPairs):
+        return None
+    metadata = [value for key, value in preserved if key == "metadata"]
+    if len(metadata) != 1 or not isinstance(metadata[0], _JSONObjectPairs):
+        return None
+    user_ids = [value for key, value in metadata[0] if key == "user_id"]
+    if len(user_ids) != 1 or not isinstance(user_ids[0], str):
+        return None
+    # Defensive parser bound, not a claimed Anthropic schema limit.
+    if len(user_ids[0]) > 4096:
+        return None
+    try:
+        pairs = json.loads(user_ids[0], object_pairs_hook=_preserve_json_object_pairs)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(pairs, _JSONObjectPairs):
+        return None
+    fields = dict(pairs)
+    if len(fields) != len(pairs):
+        return None
+    if not all(isinstance(fields.get(key), str)
+               for key in ("device_id", "account_uuid", "session_id")):
+        return None
+    session_id = fields["session_id"]
+    if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", session_id) is None:
+        return None
+    session_id = session_id.lower()
+    worker_ids = []
+    parent_header_present = False
+    for name, value in scope_headers or ():
+        if name.lower() == b"x-claude-code-parent-agent-id":
+            parent_header_present = True
+        if name.lower() == b"x-claude-code-agent-id":
+            worker_ids.append(value)
+    if not worker_ids:
+        # Main contexts omit both worker headers. A parent-only header indicates
+        # incomplete worker identity: do not collapse it into the parent's route.
+        return None if parent_header_present else session_id
+    if len(worker_ids) != 1 or len(worker_ids[0]) > 81:
+        return None
+    try:
+        worker_id = worker_ids[0].decode("ascii")
+    except (AttributeError, UnicodeDecodeError):
+        return None
+    # Exact installed Claude Code DS()/bh() generated-worker grammar; other forms
+    # (including unverified teammate/custom IDs) omit the hint, never use parent.
+    if re.fullmatch(r"a(?:[A-Za-z0-9_-]{1,63}-)?[0-9a-f]{16}", worker_id) is None:
+        return None
+    # Stable, domain-separated worker UUID; no device/account data or raw worker
+    # ID goes upstream. This is our routing derivation, not a native client schema.
+    return str(uuid.uuid5(uuid.UUID(session_id), "daaf-claude-worker-v1:" + worker_id))
+
+
+def _decode_anthropic_request_json(body, scope_headers=()):
     preserved = json.loads(
         body.decode("utf-8"), object_pairs_hook=_preserve_json_object_pairs
     )
-    return _collapse_inbound_json(preserved, root=True)
+    request = _collapse_inbound_json(preserved, root=True)
+    state = _request_state()
+    if state is not None and SHIM_BACKEND_MODE == "chatgpt":
+        state.conversation_session_id = _conversation_session_id(preserved, scope_headers)
+    return request
 
 
 def _anthropic_beta_tokens(scope_headers):
@@ -1650,6 +2138,8 @@ class _RequestLifecycleState:
         # beyond the rate-limit cap it records the advertised source that triggered it.
         self.retry_delay_source = "-"
         self.client_request_id = self.req_id
+        # Private routing state only: never included in lifecycle logs or health.
+        self.conversation_session_id = None
         self.transport_exception = "-"
         self.upstream_request_id = "-"
         self.upstream_request_id_header = "-"
@@ -1660,6 +2150,9 @@ class _RequestLifecycleState:
         self.backend_type = "-"
         self.backend_code = "-"
         self.anthropic_error_type = "-"
+        # v1.4.12: the shim's own short reason for the first recorded failure
+        # (shim-authored text or a fixed category; never backend prose).
+        self.failure_reason = "-"
         self.backend_error_logged = False
         self.outcome = None
         self.disconnect_observed = False
@@ -1677,6 +2170,51 @@ class _RequestLifecycleState:
 
 
 _REQUEST_STATE = ContextVar("shim_request_state", default=None)
+_DIAGNOSTICS = None
+_DIAGNOSTICS_STARTUP_ERROR = (
+    "SHIM_DEV_DIAGNOSTICS_MODULE could not initialize private developer diagnostics; "
+    "set it to an absolute readable module file with a working Recorder, "
+    "or unset it to disable diagnostics."
+)
+
+
+def _trace_event(event, content=None, **fields):
+    # Observational only: recorder failure cannot alter a model response.
+    if _DIAGNOSTICS is None:
+        return
+    try:
+        state = _request_state()
+        if state is not None:
+            _DIAGNOSTICS.record(state.req_id, event, content, **fields)
+    except Exception:
+        pass
+
+
+def _start_diagnostics():
+    global _DIAGNOSTICS
+    # Optional absolute path to a private developer tool; normal installs leave unset.
+    module_path = os.environ.get("SHIM_DEV_DIAGNOSTICS_MODULE", "")
+    if not module_path:
+        return
+    try:
+        import hashlib
+        import importlib.util
+        if not os.path.isabs(module_path) or not os.path.isfile(module_path):
+            raise ValueError()
+        spec = importlib.util.spec_from_file_location("_shim_dev_diagnostics", module_path)
+        if spec is None or spec.loader is None:
+            raise ValueError()
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source = os.path.abspath(__file__)
+        with open(source, "rb") as handle:
+            source_hash = hashlib.sha256(handle.read()).hexdigest()
+        _DIAGNOSTICS = module.Recorder(
+            os.path.join(os.path.dirname(source), "logs", "diagnostics"),
+            source_hash, SHIM_VERSION)
+    except (Exception, SystemExit):
+        raise RuntimeError(_DIAGNOSTICS_STARTUP_ERROR) from None
+
 
 
 def _request_state():
@@ -1724,6 +2262,7 @@ def _lifecycle_event(name, _fields_before_elapsed=False, **fields):
     state = _request_state()
     if state is None:
         return
+    _trace_event(name, **fields)
     parts = ["event=%s" % name]
     if not _fields_before_elapsed:
         parts.append("elapsed_ms=%d" % _elapsed_ms(state))
@@ -1825,6 +2364,14 @@ def _record_upstream_headers(response):
             state.upstream_request_id_header = name
             state.upstream_request_id = _scrub_metadata(value)
             break
+    _trace_event("upstream_headers_detail", status=response.status_code,
+                 http_version=state.upstream_http_version,
+                 upstream_request_id=state.upstream_request_id)
+    if response.is_closed:
+        try:
+            _trace_event("upstream_json", response.content)
+        except Exception:
+            pass
     _lifecycle_event(
         "upstream_headers", status=response.status_code,
         http_version=state.upstream_http_version,
@@ -1944,7 +2491,23 @@ def _record_disconnect(phase):
 
 
 def _record_backend_error(error_type="api_error", backend_type="-", backend_code="-",
-                          phase=None):
+                          phase=None, failure_reason=None):
+    # v1.4.12: failure_reason is the shim's own short account of WHY the request
+    # failed, written as one more field on the backend_error line.
+    # INTENT: put the reason the client was told into shim.log as well, so a failure
+    #   such as "search inventory missing completed items or index coverage" can be
+    #   read from the log, not only from the client's screen.
+    # REASONING: callers pass ONLY shim-authored text: a local constant, a
+    #   _ProtocolError message (every raise site is a literal), a classifier fixed
+    #   message, or a fixed category with an exception class name where the source
+    #   text is not constant. Backend prose never reaches this parameter (v1.2.11
+    #   no-prose rule). The value is still scrubbed and capped at
+    #   _FAILURE_REASON_MAXLEN characters, and the lifecycle serializer percent-encodes
+    #   it, so it stays one token on one line. Like backend_type and failure_phase,
+    #   the reason belongs to the FIRST record: every recording site supplies one, so
+    #   the first backend_error line carries the first cause; a later hop's reason is
+    #   a consequence of that cause and is not written again.
+    # ASSUMES: the field is always present ("-" when a caller supplies no reason).
     state = _request_state()
     if state is None:
         return
@@ -1956,12 +2519,14 @@ def _record_backend_error(error_type="api_error", backend_type="-", backend_code
         state.backend_type = _scrub_metadata(backend_type)
         state.backend_code = _scrub_metadata(backend_code)
         state.anthropic_error_type = error_type
+        state.failure_reason = _scrub_metadata(failure_reason, _FAILURE_REASON_MAXLEN)
         state.phase = "backend_error"
         state.backend_error_logged = True
         _lifecycle_event(
             "backend_error", backend_type=state.backend_type,
             backend_code=state.backend_code, anthropic_type=error_type,
             failure_phase=state.failure_phase,
+            failure_reason=state.failure_reason,
         )
     # v1.2.14 (D5): a backend-classified invalid_request_error gets one
     # request-correlated shape line to aid 400 diagnosis. Guarded by its own flag
@@ -2277,18 +2842,27 @@ DIAG_HEADER_ALLOWLIST = (
     "x-ratelimit-limit-tokens",
     "x-ratelimit-remaining-tokens",
     "x-ratelimit-reset-tokens",
-    # v1.2.14 (D1): the chatgpt lane's request-id header (openai lane uses the
-    # x-*request-id family already captured for upstream correlation).
+    # v1.2.14 (D1): the chatgpt lane's request-id header.
     "x-oai-request-id",
+    # v1.4.9: the request-ID headers used for upstream correlation
+    # (_UPSTREAM_REQUEST_ID_HEADERS), so error lines carry them too.
+    "x-request-id",
+    "request-id",
+    "x-openai-request-id",
+    "openai-request-id",
+    # v1.4.9: chatgpt-lane rate-limit numerics only (percent used and seconds until
+    # reset). Plan, limit names, credit fields and window sizes stay in the 2xx
+    # quota_snapshot event and are not repeated here.
+    "x-codex-primary-used-percent",
+    "x-codex-primary-reset-after-seconds",
+    "x-codex-secondary-used-percent",
+    "x-codex-secondary-reset-after-seconds",
 )
-# v1.2.14 (D1): prefix-allowlisted diagnostic header families. The live chatgpt lane
-# emits a broad, evolving x-codex-* quota surface (used-percent, window-minutes,
-# reset-after, plan-type, credits, per-model-family buckets) that a fixed name list
-# cannot track, so it is matched by prefix. Authorization and any credential-bearing
-# header remain structurally unreachable — a prefix here is never "authorization".
-DIAG_HEADER_PREFIX_ALLOWLIST = (
-    "x-codex-",
-)
+# v1.4.9: the v1.2.14 prefix rule (DIAG_HEADER_PREFIX_ALLOWLIST = ("x-codex-",)) is
+# REMOVED. It matched every x-codex-* header, which on the live chatgpt lane includes
+# x-codex-turn-state (an opaque encrypted backend session token) and the credit
+# fields (has-credits, balance, unlimited), so those reached shim.log on error lines.
+# Exact names only now: a new upstream header is excluded until someone adds it here.
 # v1.2.14 (D1): the compact chatgpt-lane subscription quota snapshot. ONLY numeric and
 # enum x-codex-* fields are surfaced — never a free-text header such as a promo message
 # or limit name. Each pair maps one header to one stable grep-line key; an absent header
@@ -2792,6 +3366,12 @@ log = logging.getLogger("shim")
 # invalid value; silent for a valid one.
 if _backend_mode_warn is not None:
     log.warning(_backend_mode_warn)
+# v1.4.7: one-time notice for a base URL pasted with a trailing /responses.
+if _backend_base_url_warn is not None:
+    log.warning(_backend_base_url_warn)
+# v1.4.8: one-time notice for an unrecognized SHIM_PDF_MODE value.
+if _pdf_mode_warn is not None:
+    log.warning(_pdf_mode_warn)
 
 # v1.3.3 (A2-R3): emit the deferred reasoning-cache restore line now that `log` exists.
 # The restore itself ran at import above (before logging was configured). Silent when
@@ -3245,9 +3825,10 @@ def _system_to_text(system):
 _IMAGE_MEDIA_TYPES = frozenset({
     "image/jpeg", "image/png", "image/gif", "image/webp",
 })
-_BASE64_IMAGE_RE = re.compile(
-    r"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\Z"
-)
+# v1.4.8: one flat character class plus at most two trailing "=" (callers also
+# require len % 4 == 0, which together equal strict RFC 4648 padding). The earlier
+# repeated 4-character group was slow on multi-megabyte PDF payloads.
+_BASE64_IMAGE_RE = re.compile(r"[A-Za-z0-9+/]*={0,2}")
 _CONTENT_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -3343,9 +3924,91 @@ def _image_to_responses_part(block, message_index, block_index, role):
     )
 
 
+# v1.4.8: variants already reported, so each omitted-document kind logs once.
+_DOCUMENT_OMIT_LOGGED = set()
+_WARNED_ONCE = set()
+
+
+def _warn_once(key, message, *args):
+    # v1.4.8: one WARNING per process per degradation kind (search tolerance), so a
+    # long session that repeats the same request shape does not flood shim.log.
+    if key not in _WARNED_ONCE:
+        _WARNED_ONCE.add(key)
+        log.warning(message, *args)
+
+
+def _document_to_responses_parts(block, role):
+    # INTENT: translate an Anthropic `document` block into Responses content parts.
+    #   These arrive when a PDF is attached directly to a message or a client sends
+    #   document blocks (Claude Code's Read tool renders PDF pages as text + images
+    #   instead). The block stays in history, so a hard 400 here would break every
+    #   later turn of the session.
+    # REASONING: Responses accepts PDFs as input_file with either a base64 data URL
+    #   in file_data (plus a filename) or a file_url, per
+    #   https://developers.openai.com/api/docs/guides/file-inputs (fetched
+    #   2026-10-12). Text documents become plain text. Anything else degrades to a
+    #   short note rather than an error. Title/context are optional Anthropic
+    #   fields; citations has no Responses equivalent and is dropped.
+    # ASSUMES: content is never logged; only a bounded source-type label is.
+    text_type = "output_text" if role == "assistant" else "input_text"
+    source = block.get("source")
+    source_type = source.get("type") if isinstance(source, dict) else None
+    header = []
+    for key, label in (("title", "Document title"), ("context", "Document context")):
+        if isinstance(block.get(key), str) and block[key]:
+            header.append("%s: %s" % (label, block[key]))
+    header = "\n".join(header)
+
+    if source_type == "text" and isinstance(source.get("data"), str):
+        text = (header + "\n\n" if header else "") + source["data"]
+        return [{"type": text_type, "text": text}]
+    if (source_type == "content" and isinstance(source.get("content"), list)
+            and all(isinstance(c, dict) and c.get("type") == "text"
+                    and isinstance(c.get("text"), str) for c in source["content"])):
+        text = "\n".join(c["text"] for c in source["content"])
+        return [{"type": text_type, "text": (header + "\n\n" if header else "") + text}]
+
+    file_part = None
+    if role != "assistant" and SHIM_PDF_MODE == "file":
+        if source_type == "base64" and source.get("media_type") == "application/pdf":
+            data = source.get("data")
+            if (isinstance(data, str) and data and len(data) % 4 == 0
+                    and _BASE64_IMAGE_RE.fullmatch(data) is not None):
+                file_part = {"type": "input_file", "filename": "document.pdf",
+                             "file_data": "data:application/pdf;base64," + data}
+        elif source_type == "url":
+            # Same strict check as consulted search URLs: http(s) with a host, no
+            # userinfo, a valid port, no whitespace/control characters. Anything else
+            # degrades to the note below instead of a backend 400.
+            try:
+                file_part = {"type": "input_file", "file_url": _search_url(source.get("url"))}
+            except _ProtocolError:
+                file_part = None
+    if file_part is not None:
+        return ([{"type": text_type, "text": header}] if header else []) + [file_part]
+
+    variant = "%s/%s" % (
+        _content_label(source_type),
+        _content_label(source.get("media_type")) if isinstance(source, dict) else "none",
+    )
+    if variant not in _DOCUMENT_OMIT_LOGGED:
+        _DOCUMENT_OMIT_LOGGED.add(variant)
+        log.info("document block omitted (variant=%s, pdf_mode=%s); content not forwarded",
+                 variant, SHIM_PDF_MODE)
+    if (SHIM_PDF_MODE == "omit" and role != "assistant" and source_type in ("base64", "url")
+            and (source_type == "url" or source.get("media_type") == "application/pdf")):
+        note = ("[A PDF attachment was omitted by shim configuration "
+                "(SHIM_PDF_MODE=omit) and was not sent to this model.]")
+    else:
+        note = ("[A document attachment (type %s) could not be passed to this model "
+                "and was omitted.]" % variant)
+    return [{"type": text_type, "text": (header + "\n" if header else "") + note}]
+
+
 def _tool_result_output(tr_content, message_index, block_index, role):
     # Preserve the historical string output for text-only results. The Responses
-    # function-call output item-list form is used only when an image is present.
+    # function-call output item-list form is used only when an image or (v1.4.8) a
+    # PDF input_file is present.
     # Other container/scalar types are malformed Anthropic history, not values to
     # serialize opportunistically into a backend function-call output.
     if isinstance(tr_content, str):
@@ -3386,6 +4049,19 @@ def _tool_result_output(tr_content, message_index, block_index, role):
             parts.append(_image_to_responses_part(
                 sub, message_index, nested_index, role,
             ))
+        elif sub_type == "document":
+            # v1.4.8: a PDF input_file needs the item-list output form, exactly
+            # like an image: function_call_output.output may be "an array of content
+            # outputs (text, image, file)", per
+            # https://developers.openai.com/api/reference/python/resources/responses
+            # (fetched 2026-10-12).
+            # Text-only translations stay in the historical flat string.
+            for part in _document_to_responses_parts(sub, role):
+                parts.append(part)
+                if part["type"] == "input_text":
+                    flat_text.append(part["text"])
+                else:
+                    saw_image = True
         else:
             raise _content_error(
                 message_index, nested_index, role, sub_type,
@@ -3397,6 +4073,8 @@ def _tool_result_output(tr_content, message_index, block_index, role):
 def _messages_to_input(messages):
     # Translate in source order. User text/images remain adjacent content parts;
     # assistant tool replay keeps reasoning-cache injection immediately before calls.
+    # Prevalidate complete groups before emitting any input, once per occurrence.
+    replay_plan, replay_covered = _SEARCH_REPLAY.plan(messages)
     input_items = []
     injected_reasoning_ids = set()
     missing_reasoning = 0
@@ -3451,6 +4129,12 @@ def _messages_to_input(messages):
             pending_parts.clear()
 
         for block_index, block in enumerate(content):
+            key = (message_index, block_index)
+            if key in replay_plan:
+                flush_message_parts()
+                input_items.extend(replay_plan[key])
+            if key in replay_covered:
+                continue
             if not isinstance(block, dict):
                 raise _content_error(
                     message_index, block_index, role, "non_object",
@@ -3471,6 +4155,9 @@ def _messages_to_input(messages):
                 pending_parts.append(_image_to_responses_part(
                     block, message_index, block_index, role,
                 ))
+            elif block_type == "document":
+                # v1.4.8: PDFs/text documents (e.g. a directly attached PDF). Never 400s.
+                pending_parts.extend(_document_to_responses_parts(block, role))
             elif block_type in {"thinking", "redacted_thinking"}:
                 # Known Claude continuity blocks are intentionally consumed rather
                 # than forwarded. Encrypted Responses reasoning cache entries, not
@@ -3542,33 +4229,203 @@ def _messages_to_input(messages):
     )
 
 
+class _ToolRegistry:
+    """Request-local declaration types; names alone never imply hosted execution.
+
+    Source-backed controls: allowed_domains and approximate location (pinned
+    Codex ToolSpec / OpenAI SDK, 2026-09-06). Fixtures do not live-certify these
+    controls. Subscription max_uses is ONLY a shim-observed call ceiling, not an
+    upstream execution, billing, internal-query or quota guarantee. OpenAI's
+    max_tool_calls separately bounds total built-in calls, not exact searches.
+    """
+
+    def __init__(self, tools, choice=None):
+        self.tools = []
+        self.declared = tools is not None
+        self.kinds = {}
+        self.search_name = None
+        self.max_uses = None
+        self.forced_search = False
+        # v1.4.8: lowercase bare domains to remove from projected search results on a
+        # lane that cannot exclude them upstream (ChatGPT/Codex). Empty = no filter.
+        self.blocked_domains = []
+        self.choice = None
+        self.parallel = None
+        if tools is None:
+            tools = []
+        if not isinstance(tools, list):
+            raise _InvalidRequestError("tools must be a list")
+        for tool in tools:
+            if not isinstance(tool, dict):
+                raise _InvalidRequestError("tool declaration must be an object")
+            name = tool.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", name):
+                raise _InvalidRequestError("tool declaration has an invalid name")
+            if name in self.kinds:
+                raise _InvalidRequestError("duplicate or ambiguous tool names")
+            kind = tool.get("type", "custom")
+            # v1.4.8: accept every dated server-search version (web_search_YYYYMMDD),
+            # so a Claude Code update that bumps the tool version keeps working.
+            if isinstance(kind, str) and re.fullmatch(r"web_search_[0-9]{8}", kind):
+                if name != "web_search" or self.search_name is not None:
+                    raise _InvalidRequestError("server search requires the unique name web_search")
+                allowed = {"type", "name", "max_uses", "allowed_domains", "blocked_domains", "user_location"}
+                # Unknown options still fail closed: an unrecognized key could be a
+                # restriction we would otherwise silently widen.
+                if set(tool) - allowed:
+                    raise _InvalidRequestError("unsupported server search option")
+                limit = tool.get("max_uses")
+                if "max_uses" in tool and (type(limit) is not int or not 1 <= limit <= 100):
+                    raise _InvalidRequestError("server search max_uses must be an integer from 1 to 100")
+                self.max_uses = limit
+                self.search_name = name
+                hosted = {"type": "web_search", "external_web_access": True}
+                domain_re = (r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+                             r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+                if "allowed_domains" in tool:
+                    domains = tool["allowed_domains"]
+                    # Reject paths/schemes/wildcards rather than silently widening a restriction.
+                    if (not isinstance(domains, list) or len(domains) > 100
+                            or any(not isinstance(d, str) or len(d) > 253
+                                   or not re.fullmatch(domain_re, d) for d in domains)):
+                        raise _InvalidRequestError("allowed_domains requires bare DNS domains; paths are unsupported")
+                    if len({d.lower() for d in domains}) != len(domains):
+                        raise _InvalidRequestError("duplicate allowed_domains")
+                    # An empty allowlist is the client's no-filter representation;
+                    # omit the upstream filter rather than sending an ambiguous [].
+                    if domains:
+                        hosted["filters"] = {"allowed_domains": list(domains)}
+                if "blocked_domains" in tool:
+                    blocked = tool["blocked_domains"]
+                    if not isinstance(blocked, list) or any(not isinstance(d, str) or not d for d in blocked):
+                        raise _InvalidRequestError("blocked_domains must be a list of domains")
+                    # v1.4.8: the OpenAI web-search guide documents filters.blocked_domains
+                    # (up to 100 bare domains; https://developers.openai.com/api/docs/guides/
+                    # tools-web-search, fetched 2026-10-12), so the openai lane maps it.
+                    # The ChatGPT/Codex backend's support is unestablished (its pinned
+                    # ToolSpec has allowed_domains only), and an unknown filter key could
+                    # 400 upstream, so that lane, or any list that is not bare domains,
+                    # drops the exclusion with a WARNING instead of failing the turn.
+                    # An empty list stays a silent no-op (v1.4.1).
+                    if blocked:
+                        # Valid bare domains, deduplicated case-insensitively (first
+                        # spelling kept, in order); everything else counts as invalid.
+                        well_formed = [d for d in blocked
+                                       if len(d) <= 253 and re.fullmatch(domain_re, d)]
+                        invalid = len(blocked) - len(well_formed)
+                        valid, seen_domains = [], set()
+                        for d in well_formed:
+                            if d.lower() not in seen_domains:
+                                seen_domains.add(d.lower())
+                                valid.append(d)
+                        if SHIM_BACKEND_MODE == "openai":
+                            # Partial lists still forward their valid part (max 100).
+                            forwarded = valid[:100]
+                            if forwarded:
+                                hosted.setdefault("filters", {})["blocked_domains"] = forwarded
+                            dropped = invalid + len(valid) - len(forwarded)
+                            if dropped:
+                                # Logged per request (not once): each drop widens that
+                                # search. Count only; domains are never logged.
+                                log.warning("server search: dropped %d blocked_domains "
+                                            "entries (not bare domains, or over the 100 "
+                                            "limit); the remaining %d are applied",
+                                            dropped, len(forwarded))
+                        else:
+                            # The ChatGPT/Codex backend cannot take the exclusion, so
+                            # honour it after the search: sources and citations on a
+                            # blocked host are removed from the projected result.
+                            self.blocked_domains = [d.lower() for d in valid]
+                            log.warning("server search: backend=%s cannot exclude domains "
+                                        "during search; %d blocked_domains entries are "
+                                        "filtered from results afterwards%s",
+                                        SHIM_BACKEND_MODE, len(valid),
+                                        " (%d invalid entries ignored)" % invalid
+                                        if invalid else "")
+                if "user_location" in tool:
+                    location = tool["user_location"]
+                    if (not isinstance(location, dict)
+                            or location.get("type") != "approximate"
+                            or set(location) - {"type", "city", "region", "country", "timezone"}):
+                        raise _InvalidRequestError("unsupported server search user_location")
+                    for key, value in location.items():
+                        if (not isinstance(value, str) or not 1 <= len(value) <= 200
+                                or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+                            raise _InvalidRequestError("invalid server search location field")
+                    if "country" in location and not re.fullmatch(r"[A-Z]{2}", location["country"]):
+                        raise _InvalidRequestError("location country requires a two-letter uppercase code")
+                    if "timezone" in location:
+                        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+                        try:
+                            ZoneInfo(location["timezone"])
+                        except (ValueError, ZoneInfoNotFoundError):
+                            raise _InvalidRequestError("location timezone requires an IANA zone") from None
+                    hosted["user_location"] = dict(location)
+                self.kinds[name] = "server_search"
+                self.tools.append(hosted)
+            elif kind == "custom":
+                schema = tool.get("input_schema", {"type": "object", "properties": {}})
+                if not isinstance(schema, dict) or not isinstance(tool.get("description", ""), str):
+                    raise _InvalidRequestError("invalid function tool schema or description")
+                self.kinds[name] = "function"
+                self.tools.append({"type": "function", "name": name,
+                                   "description": tool.get("description", ""),
+                                   "parameters": schema})
+            else:
+                raise _InvalidRequestError("unsupported tool declaration type or version")
+        if choice is None:
+            return
+        if (not isinstance(choice, dict)
+                or set(choice) - {"type", "name", "disable_parallel_tool_use"}):
+            raise _InvalidRequestError("unsupported tool_choice")
+        if "disable_parallel_tool_use" in choice:
+            if type(choice["disable_parallel_tool_use"]) is not bool:
+                raise _InvalidRequestError("disable_parallel_tool_use must be boolean")
+            # v1.4.8: map the same way with or without hosted search. The flag
+            # governs parallel tool calls in general; how it interacts with hosted
+            # search calls is the provider's documented parallel_tool_calls behavior.
+            self.parallel = not choice["disable_parallel_tool_use"]
+        choice_type = choice.get("type")
+        if choice_type not in ("auto", "any", "none", "tool"):
+            raise _InvalidRequestError("unsupported tool_choice type")
+        if choice_type != "tool" and "name" in choice:
+            raise _InvalidRequestError("tool_choice name requires type tool")
+        if choice_type == "tool":
+            name = choice.get("name")
+            if not isinstance(name, str) or name not in self.kinds:
+                raise _InvalidRequestError("tool_choice names an undeclared tool")
+            if self.kinds[name] == "server_search":
+                if len(self.tools) != 1:
+                    raise _InvalidRequestError("forced server search with mixed tools is not established")
+                self.choice = "required"
+                self.forced_search = True
+            else:
+                self.choice = {"type": "function", "name": name}
+        else:
+            if choice_type == "any" and not self.tools:
+                raise _InvalidRequestError("required tool_choice needs a declaration")
+            self.choice = "required" if choice_type == "any" else choice_type
+            self.forced_search = bool(self.search_name and len(self.tools) == 1 and choice_type == "any")
+
+    def apply(self, payload):
+        if self.tools or self.declared:
+            payload["tools"] = self.tools
+        if self.choice is not None:
+            payload["tool_choice"] = self.choice
+        if self.parallel is not None:
+            payload["parallel_tool_calls"] = self.parallel
+        if self.search_name:
+            payload["include"].append("web_search_call.action.sources")
+            if self.max_uses is not None and SHIM_BACKEND_MODE == "openai":
+                payload["max_tool_calls"] = self.max_uses
+
+
 def _tools_to_responses(tools):
-    # Anthropic tool: {name, description, input_schema}
-    # Responses tool (FLAT / internally-tagged):
-    #   {type:"function", name, description, parameters}
-    # INTENT: emit the flat internally-tagged function-tool shape.
-    # REASONING: the Responses API uses INTERNAL tagging — name/description/
-    #   parameters are SIBLINGS of "type", NOT nested under a "function" key.
-    #   The nested {"type":"function","function":{...}} shape is Chat Completions
-    #   (external tagging) and is the #1 silent-failure trap in this migration
-    #   (spec file 04 §1). Verified HIGH confidence, quoted from migration docs.
-    if not tools:
-        return None
-    out = []
-    for t in tools:
-        if not isinstance(t, dict):
-            continue
-        out.append({
-            "type": "function",
-            "name": t.get("name", ""),
-            "description": t.get("description", ""),
-            "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
-        })
-    return out
+    return _ToolRegistry(tools).tools or None
 
 
 def _anthropic_to_responses_request(
-        body, bare_model, slug_effort_raw, requested_service_tier=None):
+        body, bare_model, slug_effort_raw, requested_service_tier=None, registry=None):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
     # Returns (payload, missing_reasoning_count, reasoning_cache_hits, effort_value,
     #   effort_source, injected_restored_reasoning_ids, injected_restored_call_ids).
@@ -3580,6 +4437,8 @@ def _anthropic_to_responses_request(
     # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
     # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
     # the backend — a "#"-bearing model is never forwarded.
+    if registry is None:
+        registry = _ToolRegistry(body.get("tools"), body.get("tool_choice"))
     input_items, missing_reasoning, reasoning_cache_hits, \
         injected_restored_reasoning_ids, injected_restored_call_ids = \
         _messages_to_input(body.get("messages", []))
@@ -3656,6 +4515,26 @@ def _anthropic_to_responses_request(
     #   any effort level (raine requests summary:"auto" only when effort is set,
     #   notes file 05 §3e; we are stricter for reliable thinking surfacing).
     effort_value, effort_source = _resolve_effort(body, slug_effort_raw)
+    # Effort floor: GPT-6 Astra and (v1.4.9) GPT-6.1 Sol reject effort:"none" (see
+    # the _NO_NONE_EFFORT_SLUGS note). Comments below say "Astra"; the same rule
+    # applies to every member of that set.
+    # INTENT: for an Astra-family request whose resolved effort is "none" (e.g. an
+    #   inbound thinking:{"type":"disabled"} or a "#none" slug suffix), rewrite to
+    #   "low" — the lowest Astra-supported level — so the backend does not 400.
+    # REASONING: this is the ONLY model-conditional branch in the effort path; it
+    #   runs after the general four-tier resolver and touches Astra alone. Every
+    #   other model forwards its resolved effort unchanged. `bare_model` already has
+    #   the "#<effort>" suffix stripped (by _split_effort_suffix in the caller); we
+    #   additionally drop any provider prefix (e.g. "openai/") to compare the
+    #   terminal slug. The effort_source is left as-is so the per-request log still
+    #   reports which tier supplied the (pre-clamp) value.
+    # ASSUMES: Astra's supported enum is {low, medium, high, xhigh, max} (primary
+    #   source, 2026-09-05). If Astra later accepts "none", delete this branch.
+    _terminal_slug = bare_model.rsplit("/", 1)[-1].strip().lower()
+    if _terminal_slug in _NO_NONE_EFFORT_SLUGS and effort_value == "none":
+        log.warning("reasoning effort 'none' not supported for %s; clamped to 'low'",
+                    _terminal_slug)
+        effort_value = "low"
     reasoning_obj = {"summary": "auto", "effort": effort_value}
     payload["reasoning"] = reasoning_obj
 
@@ -3668,20 +4547,7 @@ def _anthropic_to_responses_request(
     #   for the same reason effort is: posture parity with DAAF Claude sessions.
     payload["text"] = {"verbosity": SHIM_TEXT_VERBOSITY}
 
-    ot = _tools_to_responses(body.get("tools"))
-    if ot:
-        payload["tools"] = ot
-        # Map Anthropic tool_choice -> Responses tool_choice where present.
-        tc = body.get("tool_choice")
-        if isinstance(tc, dict):
-            ttype = tc.get("type")
-            if ttype == "auto":
-                payload["tool_choice"] = "auto"
-            elif ttype == "any":
-                payload["tool_choice"] = "required"
-            elif ttype == "tool" and tc.get("name"):
-                # FLAT name (sibling of type), not nested — spec file 04 §1.
-                payload["tool_choice"] = {"type": "function", "name": tc["name"]}
+    registry.apply(payload)
 
     # `thinking`, `output_config`, `metadata`, `stream` (handled by transport),
     # and any unknown fields are intentionally dropped — output_config is an
@@ -3693,12 +4559,823 @@ def _anthropic_to_responses_request(
     )
 
 
+# --- Native search: bounded completed-item inventory and process-local replay ---
+# Fixed bounds, not new environment/configuration contracts. The cache is intentionally
+# process-local: eviction, age expiry and restart cause explicit continuity errors.
+_SEARCH_MAX_BYTES = 2 * 1024 * 1024
+_SEARCH_MAX_ITEMS = 128
+_SEARCH_MAX_EVENTS = 4096
+_SEARCH_MAX_ERROR_BYTES = 64 * 1024
+# Separate raw-input and projected-content budgets: citation titles may be reused
+# across many consulted sources. Never silently truncate evidence to fit these caps.
+_SEARCH_MAX_PROJECTED_BYTES = 2 * 1024 * 1024
+_SEARCH_MAX_SOURCES = 1024
+_SEARCH_MAX_TITLE_CHARS = 4096
+_SEARCH_REPLAY_MAX_BYTES = 8 * 1024 * 1024
+_SEARCH_REPLAY_MAX_GROUPS = 128
+_SEARCH_REPLAY_TTL = 1800
+# A bounded resident cache alone does not bound expansion of repeated historical
+# occurrences. These per-request ceilings are checked before decoding any group.
+_SEARCH_REPLAY_REQUEST_MAX_BYTES = 8 * 1024 * 1024
+_SEARCH_REPLAY_REQUEST_MAX_ITEMS = 1024
+_SEARCH_REPLAY_REQUEST_MAX_GROUPS = 128
+
+
+def _search_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def _search_json_size(value, limit):
+    """Count canonical ASCII JSON bytes without serializing amplified objects.
+
+    The iterator stack visits shared values once per occurrence (the wire will
+    repeat them too), but never builds a flattened traversal or encoded string.
+    This matches _search_json's separators/ensure_ascii policy, not provider units.
+    """
+    size = 0
+    stack = [iter((value,))]
+    while stack:
+        try:
+            part = next(stack[-1])
+        except StopIteration:
+            stack.pop()
+            continue
+        if isinstance(part, str):
+            size += 2
+            for char in part:
+                point = ord(char)
+                size += (2 if char in '\"\\\\\b\f\n\r\t' else
+                         6 if point < 32 or 126 < point <= 65535 else
+                         12 if point > 65535 else 1)
+                if size > limit:
+                    raise _ProtocolError("search projected content exceeded byte limit")
+        elif isinstance(part, dict):
+            size += 2 + max(0, len(part) - 1) + len(part)
+            if any(not isinstance(key, str) for key in part):
+                raise _ProtocolError("search projection contains invalid object keys")
+            stack.append(iter(component for pair in part.items() for component in pair))
+        elif isinstance(part, (list, tuple)):
+            size += 2 + max(0, len(part) - 1)
+            stack.append(iter(part))
+        elif part is None:
+            size += 4
+        elif isinstance(part, bool):
+            size += 4 if part else 5
+        elif isinstance(part, (int, float)):
+            size += len(json.dumps(part))
+        else:
+            raise _ProtocolError("search projection contains invalid JSON values")
+        if size > limit:
+            raise _ProtocolError("search projected content exceeded byte limit")
+    return size
+
+
+class _SearchProjectionList(list):
+    """Budget a growing projected array before any full JSON serialization."""
+    def __init__(self):
+        super().__init__()
+        self.json_bytes = 2
+
+    def append(self, value):
+        remaining = _SEARCH_MAX_PROJECTED_BYTES - self.json_bytes - bool(self)
+        size = _search_json_size(value, remaining)
+        self.json_bytes += size + bool(self)
+        super().append(value)
+
+
+class _SearchReplayCache:
+    def __init__(self):
+        self.groups = OrderedDict()
+        self.bytes = 0
+        self.lock = threading.RLock()
+
+    def _prune(self):
+        now = time.monotonic()
+        for key in list(self.groups):
+            entry = self.groups[key]
+            if now - entry[0] > _SEARCH_REPLAY_TTL:
+                self.bytes -= entry[3]
+                del self.groups[key]
+
+    def put(self, token, raw_items, blocks):
+        import hashlib
+        _search_json_size(blocks, _SEARCH_MAX_PROJECTED_BYTES)
+        raw = _search_json(raw_items)
+        fingerprints = tuple(hashlib.sha256(_search_json(b)).digest() for b in blocks)
+        size = len(raw) + len(fingerprints) * 32
+        if size > _SEARCH_MAX_BYTES:
+            raise _ProtocolError("search replay group exceeded byte limit")
+        # The first hosted reference anchors the whole emitted sequence, including
+        # any preceding thinking blocks. Later results/citations never re-inject it.
+        first = next(i for i, b in enumerate(blocks) if b["type"] == "server_tool_use")
+        refs = frozenset(b["id"] for b in blocks if b["type"] == "server_tool_use")
+        with self.lock:
+            self._prune()
+            while self.groups and (len(self.groups) >= _SEARCH_REPLAY_MAX_GROUPS
+                                   or self.bytes + size > _SEARCH_REPLAY_MAX_BYTES):
+                _, old = self.groups.popitem(last=False)
+                self.bytes -= old[3]
+            if size > _SEARCH_REPLAY_MAX_BYTES or _SEARCH_REPLAY_MAX_GROUPS < 1:
+                raise _ProtocolError("search replay cache capacity exceeded")
+            self.groups[token] = (time.monotonic(), raw, fingerprints, size, first, refs, len(raw_items))
+            self.bytes += size
+
+    def plan(self, messages):
+        import hashlib
+        planned, covered = {}, set()
+        # Snapshot immutable entry references at request start, under a short lock.
+        # Expiry/eviction after this snapshot applies to the next request. Hashing
+        # and JSON decoding must not monopolize the shared cache's critical section.
+        with self.lock:
+            self._prune()
+            available = dict(self.groups)
+        expanded_bytes = expanded_items = 0
+        for mi, message in enumerate(messages):
+            blocks = message.get("content")
+            if not isinstance(blocks, list):
+                continue
+            for bi, block in enumerate(blocks):
+                if (mi, bi) in covered or not isinstance(block, dict):
+                    continue
+                kind = block.get("type")
+                if kind not in ("server_tool_use", "web_search_tool_result"):
+                    continue
+                if message.get("role") != "assistant":
+                    raise _InvalidRequestError("search replay blocks require assistant role")
+                ref = block.get("id") if kind == "server_tool_use" else block.get("tool_use_id")
+                match = re.fullmatch(r"srvtoolu_shim_([0-9a-f]{32})_[0-9]+", ref or "") if isinstance(ref, str) else None
+                entry = available.get(match[1]) if match else None
+                if entry is None:
+                    raise _InvalidRequestError("search replay missing or expired; restart/eviction requires a fresh search")
+                if ref not in entry[5] or kind != "server_tool_use":
+                    raise _InvalidRequestError("search replay sequence is incomplete or modified")
+                start = bi - entry[4]
+                end = start + len(entry[2])
+                if (start < 0 or end > len(blocks)
+                        or any((mi, i) in covered for i in range(start, end))):
+                    raise _InvalidRequestError("search replay sequence is incomplete or modified")
+                expanded_bytes += len(entry[1])
+                expanded_items += entry[6]
+                if (expanded_bytes > _SEARCH_REPLAY_REQUEST_MAX_BYTES
+                        or expanded_items > _SEARCH_REPLAY_REQUEST_MAX_ITEMS
+                        or len(planned) >= _SEARCH_REPLAY_REQUEST_MAX_GROUPS):
+                    raise _InvalidRequestError("search replay request expansion exceeded limit")
+                planned[(mi, start)] = entry
+                covered.update((mi, i) for i in range(start, end))
+        # All occurrence budgets pass before any decoding. Then validate every
+        # complete emitted sequence before constructing independent raw occurrences.
+        for (mi, start), entry in planned.items():
+            blocks = messages[mi]["content"]
+            end = start + len(entry[2])
+            observed = tuple(hashlib.sha256(_search_json(blocks[i])).digest() for i in range(start, end))
+            if observed != entry[2]:
+                raise _InvalidRequestError("search replay sequence is incomplete or modified")
+        plan = {key: json.loads(entry[1]) for key, entry in planned.items()}
+        return plan, covered
+
+
+_SEARCH_REPLAY = _SearchReplayCache()
+
+
+class _SearchCollector:
+    """Strict search-only inventory. Completed items, not deltas, are replay evidence."""
+    def __init__(self, registry):
+        self.registry = registry
+        self.ids = {}
+        self.indexes = {}
+        self.types = {}
+        self.function_calls = {}  # index -> (call_id, name); never alters raw items
+        self.call_indexes = {}
+        self.added = {}
+        self.completed = {}
+        # Display-only fallback for ordinary truncation after search history.
+        # These deltas never enter completed inventory or hosted-search replay.
+        self.partial_text = {}
+        self.search_ids = set()
+        self.events = 0
+        self.retained_bytes = 0
+        self.terminal = None
+
+    def _identity(self, index, item_id, item_type=None, call_id=None):
+        if type(index) is not int or not 0 <= index < _SEARCH_MAX_ITEMS:
+            raise _ProtocolError("search output index missing or out of bounds")
+        if item_id is None and item_type == "function_call":
+            # Internal tagged identity cannot collide with a provider string id.
+            # A done-only/JSON function may expose only call_id. The caller first
+            # validates uniqueness and consistency; raw replay objects stay intact.
+            _require_protocol_string(call_id, "function call id")
+            item_id = self.indexes.get(index, ("function_call", call_id))
+        else:
+            _require_protocol_string(item_id, "search inventory item id")
+        if ((index in self.indexes and self.indexes[index] != item_id)
+                or (item_id in self.ids and self.ids[item_id] != index)):
+            raise _ProtocolError("search inventory identity conflict")
+        if item_type is not None:
+            if item_id in self.types and self.types[item_id] != item_type:
+                raise _ProtocolError("search inventory item type changed")
+            self.types[item_id] = item_type
+        self.ids[item_id] = index
+        self.indexes[index] = item_id
+        if item_type == "web_search_call":
+            self.search_ids.add(item_id)
+            if self.registry.choice == "none":
+                raise _ProtocolError("backend searched despite tool_choice none")
+            if self.registry.max_uses is not None and len(self.search_ids) > self.registry.max_uses:
+                raise _ProtocolError("shim-observed search-call ceiling exceeded; upstream work may already have occurred")
+
+    def event(self, event):
+        self.events += 1
+        if self.events > _SEARCH_MAX_EVENTS:
+            raise _ProtocolError("search event count exceeded limit")
+        kind = _validate_stream_event_fields(event)
+        if kind in ("response.output_item.added", "response.output_item.done"):
+            item = event["item"]
+            index = event.get("output_index")
+            if item.get("type") == "function_call":
+                # INTENT: preserve optional-id wire compatibility without ambiguous
+                # matching. REASONING: index, call_id and name are one association.
+                # ASSUMES: shared validation already checked function string fields.
+                call_id = item["call_id"]
+                identity = (call_id, item["name"])
+                registered = self.call_indexes.get(call_id)
+                if index is None and registered is not None:
+                    index = registered
+                if (type(index) is not int or not 0 <= index < _SEARCH_MAX_ITEMS
+                        or (registered is not None and registered != index)
+                        or (index in self.function_calls and self.function_calls[index] != identity)):
+                    raise _ProtocolError("search function identity conflict")
+                self.function_calls[index] = identity
+                self.call_indexes[call_id] = index
+            if kind.endswith("done") and item.get("type") == "web_search_call":
+                # Validate/log each unique completed inventory item before generic
+                # status rejection. Repeated identical done events do not double-count.
+                if type(index) is not int or index not in self.completed:
+                    _validate_hosted_action(item, observe=True)
+            self._identity(index, item.get("id"), item.get("type"), item.get("call_id"))
+            if kind.endswith("done"):
+                # Defer ordinary partial-item status to the terminal boundary.
+                # Historical search replay is not evidence of a search this turn.
+                allowed_statuses = ("completed", "incomplete") if not self.registry.search_name else ("completed",)
+                if "status" in item and item["status"] not in allowed_statuses:
+                    raise _ProtocolError("search inventory item was not completed")
+                if item.get("type") == "message" and (item.get("role") != "assistant" or item.get("status") not in allowed_statuses):
+                    raise _ProtocolError("search message role/status is invalid")
+                if index in self.added and json.loads(self.added[index])["type"] != item["type"]:
+                    raise _ProtocolError("search inventory item type changed")
+            destination = self.added if kind.endswith("added") else self.completed
+            raw = _search_json(item)
+            if index in destination:
+                if destination[index] != raw:
+                    raise _ProtocolError("search completed/added item conflict")
+            else:
+                self.retained_bytes += len(raw)
+                if self.retained_bytes > _SEARCH_MAX_BYTES:
+                    raise _ProtocolError("search retained inventory exceeded byte limit")
+                destination[index] = raw
+        elif "item_id" in event:
+            self._identity(event.get("output_index"), event["item_id"],
+                           "web_search_call" if kind.startswith("response.web_search_call.") else None)
+        if kind == "response.output_text.delta" and not self.registry.search_name:
+            # INTENT: retain ordinary text for an incomplete terminal lacking items.
+            # REASONING: replay history selects this collector even without a new
+            # search. Completed/terminal output remains authoritative when present.
+            # ASSUMES: explicit item/part identities associate the observed deltas;
+            # ambiguous identities fail closed rather than manufacture attribution.
+            index = event.get("output_index")
+            part = event.get("content_index")
+            self._identity(index, event.get("item_id"), "message")
+            if type(part) is not int or not 0 <= part < _SEARCH_MAX_ITEMS:
+                raise _ProtocolError("ordinary partial text index missing or out of bounds")
+            self.retained_bytes += len(_search_json(event["delta"]))
+            if self.retained_bytes > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search retained inventory exceeded byte limit")
+            self.partial_text.setdefault((index, part), []).append(event["delta"])
+        if kind in ("response.failed", "error"):
+            details = event.get("response") or event.get("error") or event
+            _, message, _, _ = _normalize_backend_error(details, phase="upstream_stream")
+            raise _ProtocolError(message)
+        if kind in ("response.completed", "response.incomplete"):
+            terminal = _validate_terminal_response(kind, event.get("response"))
+            if (kind == "response.incomplete" and not self.registry.search_name
+                    and not self.search_ids and terminal.get("error") is None):
+                # Ordinary continuation after replay: terminal partial output is
+                # authoritative; no hosted success or replay group is manufactured.
+                # Existing ordinary conversion maps incomplete to max_tokens.
+                if terminal.get("output"):
+                    indexed_partial = dict(enumerate(terminal["output"]))
+                else:
+                    indexed_partial = {i: json.loads(raw) for i, raw in self.completed.items()}
+                    if self.partial_text:
+                        # INTENT: reconcile ordinary display output per item, not
+                        # per response. A completed reasoning prefix cannot replace
+                        # the text of a different unfinished message.
+                        # ASSUMES: all observed output identities cover a contiguous
+                        # prefix; unfinished non-text items supply no invented text.
+                        if set(self.indexes) != set(range(len(self.indexes))):
+                            raise _ProtocolError("ordinary partial text has incomplete index coverage")
+                        for index in sorted({i for i, _ in self.partial_text}):
+                            if index in indexed_partial:
+                                continue  # This item's done content is authoritative.
+                            # Local incomplete display only, never completed replay.
+                            indexed_partial[index] = {
+                                "type": "message", "id": self.indexes[index],
+                                "role": "assistant", "status": "incomplete",
+                                "content": [{"type": "output_text", "text": "".join(chunks)}
+                                            for (output_index, _), chunks in sorted(self.partial_text.items())
+                                            if output_index == index]}
+                for index, item in sorted(indexed_partial.items()):
+                    _validate_output_item(item)
+                    if item.get("type") == "web_search_call":
+                        raise _ProtocolError("unexpected hosted search in ordinary continuation")
+                    self._identity(index, item.get("id"), item.get("type"), item.get("call_id"))
+                    if index in self.completed and json.loads(self.completed[index]) != item:
+                        raise _ProtocolError("ordinary terminal inventory conflicts with done items")
+                partial = [item for _, item in sorted(indexed_partial.items())]
+                if (len(partial) > _SEARCH_MAX_ITEMS or len(_search_json(partial)) > _SEARCH_MAX_BYTES):
+                    raise _ProtocolError("search output exceeded aggregate limit")
+                self.terminal = {**terminal, "output": partial}
+                return self.terminal
+            if kind != "response.completed" or terminal.get("error") is not None:
+                raise _ProtocolError("search response did not complete successfully")
+            if any(json.loads(raw).get("status", "completed") != "completed" for raw in self.completed.values()):
+                raise _ProtocolError("search inventory item was not completed")
+            if set(self.completed) != set(self.indexes) or set(self.indexes) != set(range(len(self.indexes))):
+                raise _ProtocolError("search inventory missing completed items or index coverage")
+            items = [json.loads(self.completed[i]) for i in range(len(self.completed))]
+            # Shared validation intentionally treats absent/null output like [].
+            # Coverage and byte-identical nonempty reconciliation stay mandatory.
+            terminal_items = terminal.get("output") or []
+            if terminal_items and terminal_items != items:
+                raise _ProtocolError("search terminal inventory conflicts with completed items")
+            self.terminal = {**terminal, "output": items}
+            return self.terminal
+        return None
+
+
+class _BoundedSearchStream:
+    """Narrow MIME fallback plus whole-body bound before the existing SSE iterator."""
+    def __init__(self, response):
+        self.response = response
+
+    async def aiter_bytes(self):
+        total = 0
+        prefix = bytearray()
+        mime = self.response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        recognized = mime == "text/event-stream"
+        if mime in ("text/html", "application/json"):
+            raise _ProtocolError("search expected SSE, received non-stream content")
+        async for chunk in self.response.aiter_bytes():
+            total += len(chunk)
+            if total > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search stream exceeded aggregate byte limit")
+            if not recognized:
+                prefix.extend(chunk)
+                # Non-SSE MIME fallback needs a real bounded response SSE
+                # preamble. Never scan past HTML, JSON, whitespace or challenge text.
+                if len(prefix) < 32 and b"\n" not in prefix:
+                    continue
+                if not (prefix.startswith(b"event: response.") or prefix.startswith(b'data: {"type":"response.')
+                        or prefix.startswith(b'data: {"type": "response.')):
+                    raise _ProtocolError("search stream has no recognized SSE response prefix")
+                recognized = True
+                yield bytes(prefix)
+                prefix.clear()
+            else:
+                yield chunk
+        if not recognized:
+            raise _ProtocolError("search stream has no recognized SSE response prefix")
+
+
+async def _collect_search_response(resp, disconnect_event, registry, json_mode=False,
+                                   reject_refusals=False):
+    collector = _SearchCollector(registry)
+    if json_mode:
+        raw = bytearray()
+        iterator = resp.aiter_bytes().__aiter__()
+        while True:
+            try:
+                chunk = await _await_or_disconnect(iterator.__anext__(), disconnect_event)
+            except StopAsyncIteration:
+                break
+            if len(raw) + len(chunk) > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search JSON exceeded aggregate byte limit")
+            raw.extend(chunk)
+        try:
+            response = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            raise _ProtocolError("search response contained malformed JSON") from None
+        if isinstance(response, dict) and response.get("status") == "failed":
+            # v1.4.11 (C): an HTTP 200 JSON body with status "failed" is the JSON
+            # form of a terminal response.failed. Route it through the same collector
+            # branch the SSE transport uses: it classifies the body's `error` with
+            # _normalize_backend_error (phase upstream_stream) and raises the fixed
+            # client message, so the caller sends the matching status. A body with
+            # no usable `error` classifies as api_error and stays 502.
+            collector.event({"type": "response.failed", "response": response})
+        response = _validate_response_for_conversion(response)
+        items = response.get("output")
+        if not isinstance(items, list):
+            raise _ProtocolError("search terminal output must be a list")
+        # JSON transport supplies the actual completed inventory in one object.
+        # Reuse the inventory validator; these internal events are not wire evidence.
+        for index, item in enumerate(items):
+            collector.event({"type": "response.output_item.done", "output_index": index, "item": item})
+        return collector.event({"type": "response." + response["status"], "response": response})
+    async for raw in _iter_bounded_sse_data(_BoundedSearchStream(resp), disconnect_event):
+        if raw.strip() == b"[DONE]":
+            break
+        try:
+            event = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            raise _ProtocolError("search stream contained malformed SSE JSON") from None
+        # Optional guard runs before history truncation can drop done evidence.
+        # Ordinary streaming never uses this buffered collection path.
+        if reject_refusals:
+            _reject_buffered_refusal_event(event)
+        terminal = collector.event(event)
+        if terminal is not None:
+            return terminal
+    raise _ProtocolError("search stream ended without a successful terminal response")
+
+
+def _search_url(value):
+    if not isinstance(value, str) or len(value) > 8192 or any(ord(c) <= 32 or ord(c) == 127 for c in value):
+        raise _ProtocolError("search source URL is invalid")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme not in ("https", "http") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError()
+        parsed.port
+    except ValueError:
+        raise _ProtocolError("search source URL is invalid") from None
+    return value
+
+
+def _search_source_ok(source):
+    # v1.4.8: one consulted source is projectable only as a typed URL with an
+    # optional string title. Anything else is skipped (never raised) by callers.
+    if not isinstance(source, dict) or source.get("type") != "url":
+        return False
+    try:
+        _search_url(source.get("url"))
+    except _ProtocolError:
+        return False
+    return not ("title" in source and source["title"] is not None
+                and not isinstance(source["title"], str))
+
+
+def _validate_hosted_action(item, observe=False):
+    """Validate documented action evidence; diagnostics never contain provider text.
+
+    Returns the action dict, or None when the action's SHAPE is unrecognized and the
+    item should be skipped (v1.4.8). WHY the split: a non-completed or invalid status
+    is a protocol state the collector also enforces, so it still raises; an unknown
+    action type, missing evidence or an odd field is just content we cannot render.
+    Skipping such an item is safe because the raw item stays in the replay
+    inventory unchanged and it carries no client tool ID (function-call pairing and
+    inventory identity/coverage checks live elsewhere and are untouched).
+    """
+    action = item.get("action")
+    kind = action.get("type") if isinstance(action, dict) else None
+    action_type = kind if isinstance(kind, str) and kind in ("search", "open_page", "find_in_page") else "unknown"
+    status = item.get("status")
+    action_status = status if isinstance(status, str) and status in ("in_progress", "searching", "completed", "failed", "incomplete") else "unknown"
+    outcome, evidence, source_count = "malformed", "absent", 0
+    try:
+        if action_status == "unknown":
+            raise _ProtocolError("hosted action status is invalid")
+        if status != "completed":
+            outcome = "not_completed"
+            raise _ProtocolError("hosted action did not complete successfully")
+        if not isinstance(action, dict) or not isinstance(kind, str) or not kind:
+            return None
+        if action_type == "unknown":
+            outcome = "unsupported"
+            return None
+        if kind == "search":
+            for key in ("query", "queries"):
+                if key not in action:
+                    continue
+                value = action[key]
+                if key == "query" and not isinstance(value, str):
+                    return None
+                if key == "queries" and (not isinstance(value, list) or any(not isinstance(q, str) for q in value)):
+                    return None
+            sources = action.get("sources")
+            if not isinstance(sources, list):
+                # Absent or malformed sources: skipping is more truthful than
+                # projecting an empty (zero-result) search the provider never reported.
+                outcome = "missing_evidence" if "sources" not in action or sources is None else "malformed"
+                return None
+            source_count = sum(1 for source in sources if _search_source_ok(source))
+            evidence = "sources"
+            if sources and not source_count:
+                # v1.4.8: the provider listed sources but none is usable. Projecting
+                # an empty result list would claim the search found nothing; skip it.
+                outcome = "malformed"
+                return None
+            outcome = "valid" if source_count else "zero_results"
+        else:
+            # INTENT: retain page actions as actions, never synthetic searches.
+            # REASONING: pinned OpenAPI + SDK specify optional nullable open URL,
+            # but require both URL and pattern for find. No source list is defined.
+            # ASSUMES (v1.4.8): extra fields are ignored (projection copies only the
+            # known keys); a find without a valid pattern/URL is skipped.
+            if kind == "find_in_page" and ("pattern" not in action or "url" not in action):
+                outcome = "missing_evidence"
+                return None
+            if kind == "find_in_page" and not isinstance(action["pattern"], str):
+                return None
+            url = action.get("url")
+            if kind == "find_in_page" or url is not None:
+                try:
+                    _search_url(url)
+                except _ProtocolError:
+                    return None
+                evidence = "url"
+            outcome = "valid" if evidence == "url" else "url_not_supplied"
+        return action
+    finally:
+        if observe:
+            # Only fixed enums and an integer derived from a bounded inventory.
+            # No query, URL, pattern, title, item id, extension or ciphertext enters logs.
+            _lifecycle_event("hosted_action", action_type=action_type,
+                             action_status=action_status, outcome=outcome,
+                             evidence=evidence, source_count=source_count)
+
+
+def _search_projection(response, model, registry):
+    """Keep malformed conversion failures structured and provider prose private."""
+    try:
+        message = _project_search_response(response, model, registry)
+        hosted = [item for item in response.get("output", []) if item.get("type") == "web_search_call"]
+        # v1.4.8: skipped items may lack a dict action; count them as no known type.
+        kinds = [item["action"].get("type") if isinstance(item.get("action"), dict) else None
+                 for item in hosted]
+        _lifecycle_event("hosted_projection", outcome="valid" if hosted else "no_hosted_actions",
+                         action_count=len(hosted),
+                         search_count=kinds.count("search"),
+                         open_page_count=kinds.count("open_page"),
+                         find_in_page_count=kinds.count("find_in_page"))
+        return message
+    except _ProtocolError:
+        _lifecycle_event("hosted_projection", outcome="protocol_error")
+        raise
+    except (TypeError, AttributeError, KeyError, ValueError, RecursionError):
+        _lifecycle_event("hosted_projection", outcome="malformed")
+        raise _ProtocolError("search response conversion failed") from None
+
+
+def _project_search_response(response, model, registry):
+    """Real consulted URLs and answer attribution; no proprietary-origin fields."""
+    response = _validate_response_for_conversion(response)
+    items = response["output"]
+    if len(items) > _SEARCH_MAX_ITEMS or len(_search_json(items)) > _SEARCH_MAX_BYTES:
+        raise _ProtocolError("search output exceeded aggregate limit")
+    searches = [i for i in items if i.get("type") == "web_search_call"]
+    if registry.forced_search and not searches:
+        raise _ProtocolError("forced search returned no hosted search evidence")
+    if registry.max_uses is not None and len(searches) > registry.max_uses:
+        raise _ProtocolError("shim-observed search-call ceiling exceeded; upstream work may already have occurred")
+    # INTENT: preserve the ordinary stream's missing-usage policy on buffered
+    # transports too. REASONING: measured zero is not absent/invalid usage.
+    # ASSUMES: shared validation has dropped invalid counters. Only model answer
+    # text feeds the existing heuristic; consulted URLs, attribution and hosted
+    # calls are NOT tokens or provider search charges manufactured by the shim.
+    usage = dict(response.get("usage") or {})
+    usage_estimated = "input_tokens" not in usage or "output_tokens" not in usage
+    if "output_tokens" not in usage:
+        answer_text = "".join(part.get("text", "") for item in items
+                              if item.get("type") == "message"
+                              for part in item.get("content", []) if part.get("type") == "output_text")
+        usage["output_tokens"] = _estimate_tokens(answer_text)
+    usage.setdefault("input_tokens", 0)
+    response = {**response, "usage": usage}
+    usage_source = "estimated" if usage_estimated else "backend"
+    if not searches:
+        message = _responses_to_anthropic(response, model)
+        message["_usage_source"] = usage_source
+        return message
+    titles, citations = {}, []
+    unverified_spans = False
+    # v1.4.8: blocked_domains on a lane that cannot exclude them upstream (see
+    # _ToolRegistry). A host matches when it equals a blocked domain or is one of
+    # its subdomains; matching sources and citations are removed from the display.
+    blocked = tuple(getattr(registry, "blocked_domains", None) or ())
+
+    def _blocked_host(url):
+        host = (urllib.parse.urlsplit(url).hostname or "").rstrip(".").lower()
+        return any(host == d or host.endswith("." + d) for d in blocked)
+
+    removed_blocked = 0
+
+    for item in items:
+        _validate_output_item(item)
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                annotations = part.get("annotations", [])
+                if not isinstance(annotations, list):
+                    # v1.4.8: attribution is additive display text; an odd shape
+                    # loses the citation list, not the answer.
+                    _warn_once("search_annotations", "search projection: skipped "
+                               "non-list annotations (citations omitted)")
+                    continue
+                for annotation in annotations:
+                    if not isinstance(annotation, dict) or annotation.get("type") != "url_citation":
+                        continue
+                    try:
+                        _search_url(annotation.get("url"))
+                    except _ProtocolError:
+                        _warn_once("search_citation_url", "search projection: skipped a "
+                                   "citation with an invalid URL")
+                        continue
+                    if blocked and _blocked_host(annotation["url"]):
+                        removed_blocked += 1
+                        continue
+                    # INTENT: validate offsets explicitly without inventing source
+                    # quotations or assuming provider Unicode indexing semantics.
+                    # REASONING: our conservative local convention is a nonempty
+                    # half-open range in the original output_text. Only ASCII is
+                    # encoding-unambiguous across code points/UTF-8/UTF-16. For
+                    # non-ASCII or malformed/missing offsets, retain the URL as a
+                    # provider-linked source but label spans UNVERIFIED. Never
+                    # slice, repair offsets, or modify the replay annotation.
+                    # ASSUMES: titles/URLs are provider attribution, not quotations.
+                    text = part.get("text") if part.get("type") == "output_text" else None
+                    start, end = annotation.get("start_index"), annotation.get("end_index")
+                    valid_range = (isinstance(text, str) and type(start) is int and type(end) is int
+                                   and 0 <= start < end <= len(text))
+                    if not valid_range or not text.isascii():
+                        unverified_spans = True
+                    url = annotation["url"]
+                    title = annotation.get("title")
+                    # v1.4.8: an unusable title falls back to the URL label.
+                    if not isinstance(title, str) or len(title) > _SEARCH_MAX_TITLE_CHARS:
+                        title = None
+                    title = title or "URL: " + url
+                    titles[url] = title
+                    citations.append((title, url))
+    blocks = _SearchProjectionList()
+    source_count = 0
+    token = uuid.uuid4().hex
+    for item in items:
+        kind = item.get("type")
+        if kind == "reasoning":
+            text = _reasoning_summary_text(item)
+            if text:
+                blocks.append({"type": "thinking", "thinking": text, "signature": ""})
+        elif kind == "web_search_call":
+            action = _validate_hosted_action(item)
+            if action is None:
+                # v1.4.8: unrecognized action shape. Skip this display item; the raw
+                # item still replays to the provider unchanged (see the docstring).
+                _warn_once("search_action_shape", "search projection: skipped a hosted "
+                           "web action with an unrecognized shape (see hosted_action events)")
+                continue
+            if action["type"] != "search":
+                # The installed WebSearch parser retains text blocks, but renders
+                # web_search_tool_result arrays as ranked links. Use the existing
+                # hosted tool identity as a replay anchor and text as action evidence;
+                # never reinterpret a page open/find as a new search or source quote.
+                ref = "srvtoolu_shim_%s_%d" % (token, len(blocks))
+                # v1.4.8: copy only documented keys; extra provider fields are ignored.
+                actual_input = {key: action[key] for key in ("type", "url", "pattern") if key in action}
+                blocks.append({"type": "server_tool_use", "id": ref, "name": "web_search", "input": actual_input})
+                url = action.get("url")
+                detail = "\n\nHosted web action: " + action["type"] + " (not ranked search results)."
+                if url is None:
+                    detail += " URL not supplied by provider; page provenance unavailable."
+                else:
+                    source_count += 1
+                    if source_count > _SEARCH_MAX_SOURCES:
+                        raise _ProtocolError("search consulted-source count exceeded limit")
+                    target = url.replace("<", "%3C").replace(">", "%3E").replace("(", "%28").replace(")", "%29")
+                    detail += " Provider action URL: [page](" + target + ")."
+                if action["type"] == "find_in_page":
+                    detail += " Pattern: " + json.dumps(action["pattern"], ensure_ascii=True) + "."
+                detail += " Action completion does not verify page content or a pattern match.\n\n"
+                blocks.append({"type": "text", "text": detail})
+                continue
+            # _validate_hosted_action returned this action, so sources is a list and
+            # query/queries (when present) are well-typed.
+            sources = action["sources"]
+            actual_input = {key: action[key] for key in ("query", "queries") if key in action}
+            # Never invent a single query for missing/multiple upstream queries.
+            if "queries" in actual_input and len(actual_input["queries"]) > 1:
+                actual_input.pop("query", None)
+            ref = "srvtoolu_shim_%s_%d" % (token, len(blocks))
+            source_count += len(sources)
+            if source_count > _SEARCH_MAX_SOURCES:
+                raise _ProtocolError("search consulted-source count exceeded limit")
+            results = _SearchProjectionList()
+            for source in sources:
+                if not _search_source_ok(source):
+                    # v1.4.8: drop one unusable source, keep the rest of the search.
+                    _warn_once("search_source_shape", "search projection: skipped a "
+                               "consulted source with an unrecognized shape")
+                    continue
+                url = source["url"]
+                if blocked and _blocked_host(url):
+                    removed_blocked += 1
+                    continue
+                title = source.get("title") or titles.get(url) or "URL: " + url
+                if len(title) > _SEARCH_MAX_TITLE_CHARS:
+                    title = "URL: " + url
+                results.append({"type": "web_search_result", "url": url, "title": title})
+            blocks.append({"type": "server_tool_use", "id": ref, "name": "web_search", "input": actual_input})
+            blocks.append({"type": "web_search_tool_result", "tool_use_id": ref, "content": results})
+        elif kind == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "output_text" and part.get("text"):
+                    blocks.append({"type": "text", "text": part["text"]})
+        elif kind == "function_call":
+            try:
+                arguments = json.loads(item["arguments"])
+            except ValueError:
+                raise _ProtocolError("search-associated function arguments are invalid") from None
+            arguments, _ = _sanitize_tool_args(item["name"], arguments)
+            blocks.append({"type": "tool_use", "id": item["call_id"], "name": item["name"], "input": arguments})
+    if citations:
+        # Explicit added attribution, never source quotations or invented ciphertext.
+        # Percent-encode Markdown delimiters only in display links; replay keeps
+        # original query-bearing URLs and every original annotation field unchanged.
+        links = _SearchProjectionList()
+        for title, url in dict.fromkeys(citations):
+            label = title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("\n", " ").replace("\r", " ")
+            target = url.replace("<", "%3C").replace(">", "%3E").replace("(", "%28").replace(")", "%29")
+            links.append("[%s](%s)" % (label, target))
+        label = ("Provider-linked sources (text spans unverified): " if unverified_spans
+                 else "Source attribution: ")
+        blocks.append({"type": "text", "text": "\n\n" + label + "; ".join(links)})
+    if not any(b["type"] != "thinking" for b in blocks):
+        # v1.4.8: every hosted item was skipped and the model wrote no answer text.
+        # Never hand Claude Code an empty message; say plainly what happened.
+        blocks.append({"type": "text", "text": "[The web search ran, but its results came "
+                       "back in a format this shim could not display.]"})
+    if blocked and any(b["type"] == "web_search_tool_result" for b in blocks):
+        # v1.4.8: tell the reader the exclusion was applied after the search.
+        blocks.append({"type": "text", "text": "\n\nNote: this backend can't exclude "
+                       "domains during search; results from blocked domains were "
+                       "removed afterwards."})
+        if removed_blocked:
+            log.info("search projection: removed %d results/citations on blocked domains",
+                     removed_blocked)
+    usage = response.get("usage") or {}
+    input_total, output_total = usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+    cached = _resolve_cached_tokens(usage, input_total)
+    message = {"id": response.get("id") or "msg_" + uuid.uuid4().hex, "type": "message",
+            "role": "assistant", "model": model, "content": blocks,
+            "stop_reason": "tool_use" if any(b["type"] == "tool_use" for b in blocks) else "end_turn",
+            "stop_sequence": None, "_cached_tokens": cached, "_usage_source": usage_source,
+            "usage": _anthropic_usage_block(input_total, output_total, cached, _actual_speed_from_response(response))}
+    # Validate the full response before committing any replay state. A failed
+    # projection must neither insert a group nor evict a prior valid occurrence.
+    _search_json_size(message, _SEARCH_MAX_PROJECTED_BYTES)
+    # v1.4.8: replay groups are anchored on a projected server_tool_use. If every
+    # hosted item was skipped, there is nothing to anchor: the turn is delivered as
+    # plain text/tool_use and later turns replay it as ordinary history.
+    if any(b["type"] == "server_tool_use" for b in blocks):
+        _SEARCH_REPLAY.put(token, items, blocks)
+    return message
+
+
 # --- Helpers: response translation (OpenAI Responses -> Anthropic) ---
+
+class _ToolWhitespaceError(_ProtocolError):
+    """Provider failed to make structural progress while forming tool arguments."""
+
+
+def _check_tool_argument_whitespace(st, fragment):
+    # This is an operational output bound, not a JSON grammar restriction.
+    # Preserve lexical state across SSE fragments; strings may contain arbitrary
+    # whitespace, escaped quotes and backslashes without counting as padding.
+    inside, escaped, run = st.get("json_whitespace_state", (False, False, 0))
+    for char in fragment:
+        if inside:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                inside = False
+            run = 0
+        else:
+            if char == '"':
+                inside = True
+            run = run + 1 if char in " \t\r\n" else 0
+            if run > 256:
+                raise _ToolWhitespaceError(
+                    "backend tool arguments exceeded 256 consecutive whitespace "
+                    "characters outside JSON strings; generation cancelled "
+                    "before tool arguments completed")
+    st["json_whitespace_state"] = (inside, escaped, run)
+
 
 def _sanitize_tool_args(tool_name, args):
     # Evidence-based cleanup of the GPT "fill-every-optional" tool-call habit,
     # quantified in the 2026-07-09/10 GPT DAAFBench smoke battery
-    # (research/2026-07-09_FrameworkDev_GPTBenchSmoke/SESSION_NOTES.md):
+    # (maintainer-only record, not shipped:
+    # research/2026-07-09_FrameworkDev_GPTBenchSmoke/SESSION_NOTES.md):
     #   * Read.pages == ""            — 724 occurrences; each one costs a
     #     rejected tool call + an error round-trip before the model retries.
     #   * Agent/Task isolation=<any>  — filled on essentially every dispatch;
@@ -4098,23 +5775,15 @@ def _scrub_and_trim_body(text):
 def _diag_headers(headers):
     # Extract the allowlisted diagnostic headers into a compact "k=v k=v" string.
     # INTENT: surface safe rate-limit / retry-after metadata without body prose.
-    # REASONING: allowlist-only lookup means credential headers (Authorization)
-    #   are structurally unreachable here — we never iterate all headers.
+    # REASONING: allowlist-only lookup means credential headers (Authorization),
+    #   cookies and opaque session tokens are structurally unreachable here — we
+    #   never iterate all headers (v1.4.9 removed the x-codex-* prefix loop that did).
     # ASSUMES: `headers` is an httpx.Headers (case-insensitive .get()).
     parts = []
     for name in DIAG_HEADER_ALLOWLIST:
         val = headers.get(name)
         if val is not None:
             parts.append(f"{name}={_sanitize_sensitive_text(val)}")
-    # v1.2.14 (D1): also surface any prefix-allowlisted header (e.g. x-codex-*). Iterate
-    # actual headers only for the prefix rule so the exact-match ordering above is
-    # unchanged; skip a name already emitted by the exact loop so it is never doubled.
-    for name, val in headers.items():
-        lname = name.lower()
-        if val is None or lname in DIAG_HEADER_ALLOWLIST:
-            continue
-        if lname.startswith(DIAG_HEADER_PREFIX_ALLOWLIST):
-            parts.append(f"{lname}={_sanitize_sensitive_text(val)}")
     return " ".join(parts) if parts else "(none)"
 
 
@@ -4378,6 +6047,7 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
         if disconnect_event.is_set():
             raise _ClientDisconnected()
         try:
+            _trace_event("provider_request", payload, transport="json")
             _record_attempt("json")
             r = await _await_or_disconnect(
                 _client.post(url, headers=headers, json=payload),
@@ -4406,7 +6076,8 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
                 await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
                 continue
             _record_backend_error("api_error", backend_type=type(e).__name__,
-                                  phase="upstream_request")
+                                  phase="upstream_request",
+                                  failure_reason="backend transport error")
             raise
         _record_upstream_headers(r)
         if r.status_code >= 400 and attempt < MAX_RETRIES:
@@ -4522,7 +6193,37 @@ async def _settle_request_resources(state):
         raise owner_cancellation
 
 
-async def _open_backend_stream(url, headers, payload, disconnect_event):
+async def _read_search_error_body(resp, disconnect_event):
+    """Read a search error once with a transport bound, never an unbounded aread.
+
+    Bounds apply to decoded chunks delivered by HTTPX; the current transport chunk
+    can cross the ceiling, but it is not retained and no further chunk is pulled.
+    The owner must settle the stream on overflow, disconnect, or read failure.
+    """
+    cache_key = "daaf_search_error_body"
+    if cache_key in resp.extensions:
+        return resp.extensions[cache_key]
+    raw = bytearray()
+    iterator = resp.aiter_bytes().__aiter__()
+    try:
+        while True:
+            try:
+                chunk = await _await_or_disconnect(iterator.__anext__(), disconnect_event)
+            except StopAsyncIteration:
+                break
+            if len(raw) + len(chunk) > _SEARCH_MAX_ERROR_BYTES:
+                raise _ProtocolError("search error body exceeded byte limit")
+            raw.extend(chunk)
+    finally:
+        # Close the owned iterator explicitly: do not leave its async-generator
+        # finalization to garbage collection after request cleanup was reported.
+        await iterator.aclose()
+    result = bytes(raw)
+    resp.extensions[cache_key] = result
+    return result
+
+
+async def _open_backend_stream(url, headers, payload, disconnect_event, *, search_bearing=False):
     # v1.2.7 shared streamed-connect helper.
     # INTENT: give downstream streaming and ChatGPT inbound-nonstream accumulation
     # the same pre-content retries/lazy-401 behavior while making every blocked
@@ -4538,6 +6239,7 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             raise _ClientDisconnected()
         stream_cm = _client.stream("POST", url, headers=headers, json=payload)
         try:
+            _trace_event("provider_request", payload, transport="sse")
             _record_attempt("sse")
             resp = await _await_or_disconnect(
                 stream_cm.__aenter__(),
@@ -4567,6 +6269,7 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
                 _record_backend_error(
                     "api_error", backend_type=type(e).__name__,
                     phase="upstream_request",
+                    failure_reason="backend transport error",
                 )
                 raise
             delay = _retry_delay(attempt, None)
@@ -4602,16 +6305,25 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             # preserve the retry budget and reconnect before semantic content.
             continue
 
+        if search_bearing and resp.status_code >= 400:
+            # Bound the ACTUAL read before retry classification, even on the final
+            # attempt. The ordinary route deliberately retains its existing policy.
+            try:
+                search_error = await _read_search_error_body(resp, disconnect_event)
+            except BaseException:
+                await _settle_stream_context(stream_cm)
+                raise
+
         if resp.status_code >= 400 and attempt < MAX_RETRIES:
             # v1.2.14 (R4): read the error body ONCE for classification-driven gating
             # and delay-source selection. The body is parsed in memory for structural
             # signals only (never decoded into a log line). On disconnect the read is
             # cancelled and the owned context is settled before propagating.
             try:
-                raw_err = await _await_or_disconnect(
+                raw_err = (search_error if search_bearing else await _await_or_disconnect(
                     resp.aread(),
                     disconnect_event,
-                )
+                ))
             except _ClientDisconnected:
                 await _settle_stream_context(stream_cm)
                 raise
@@ -4736,9 +6448,9 @@ def _actual_speed_from_response(response):
         if terminal_order > _LATEST_TERMINAL_ORDER:
             _LATEST_TERMINAL = latest
             _LATEST_TERMINAL_ORDER = terminal_order
-    if raw_tier in _FAST_ACTUAL_SERVICE_TIERS:
+    if canonical_served in _FAST_ACTUAL_SERVICE_TIERS:
         return "fast"
-    if raw_tier in _STANDARD_ACTUAL_SERVICE_TIERS:
+    if canonical_served in _STANDARD_ACTUAL_SERVICE_TIERS:
         return "standard"
     return None
 
@@ -4769,6 +6481,74 @@ def _anthropic_usage_block(input_total, output_total, cached, speed=None):
 
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
 
+def _validate_nonstream_output_items(output_items):
+    # INTENT: reject the entire refusal-bearing response before cache/content effects.
+    # REASONING: clients may parse allow-looking text despite a refusal stop reason;
+    # neither refusal nor prefix may escape through ordinary or hosted conversion.
+    # ASSUMES: callers supply a validated list, after any collector recovery. The
+    # refusal discriminator suffices even for empty, missing or malformed payloads.
+    # The buffered search-stream fallback also uses this check via the converter;
+    # ordinary streaming refusal handling is deliberately outside this change.
+    for item in output_items:
+        _validate_output_item(item)
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "refusal":
+                    raise _ProtocolError("backend response contains refusal")
+
+
+def _reject_buffered_refusal_event(event):
+    """Reject explicit refusal evidence before buffered inventory reconciliation."""
+    kind = event.get("type") if isinstance(event, dict) else None
+    if kind in ("response.refusal.delta", "response.refusal.done"):
+        raise _ProtocolError("backend response contains refusal")
+    if kind in ("response.content_part.added", "response.content_part.done"):
+        part = event.get("part")
+        if isinstance(part, dict) and part.get("type") == "refusal":
+            raise _ProtocolError("backend response contains refusal")
+    if kind == "response.output_item.done":
+        _validate_nonstream_output_items([event.get("item")])
+
+
+def _parse_recovery_number(value):
+    # Used for every float/constant token, even one overwritten by a duplicate key.
+    number = float(value)
+    if not -float("inf") < number < float("inf"):
+        raise ValueError("non-finite recovery number")
+    return number
+
+
+def _validate_recovered_function_arguments(raw):
+    # INTENT: reject invalid/unserializable recovered inputs before any cache effect.
+    # REASONING: Python JSON accepts NaN/Infinity and can overflow finite literals;
+    # deep input can exhaust decoder/encoder recursion. Full-terminal legacy stays
+    # unchanged. ASSUMES: raw inventory already passed the existing byte bound.
+    try:
+        arguments = json.loads(raw, parse_float=_parse_recovery_number,
+                               parse_constant=_parse_recovery_number)
+        if not isinstance(arguments, dict):
+            raise _ProtocolError("backend recovered function arguments are not an object")
+        # Iterator stack bounds structural depth without recursively walking values
+        # or allocating a flattened copy. Count the root object as depth one.
+        stack = [iter(arguments.values())]
+        while stack:
+            try:
+                value = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                continue
+            if isinstance(value, (dict, list)):
+                if len(stack) >= 64:
+                    raise _ProtocolError("backend recovered function arguments exceed nesting limit")
+                stack.append(iter(value.values() if isinstance(value, dict) else value))
+        encoded = json.dumps(arguments, allow_nan=False, ensure_ascii=True,
+                             separators=(",", ":"))
+        if len(encoded) > _SEARCH_MAX_BYTES:
+            raise _ProtocolError("backend recovered function arguments exceed byte limit")
+    except (ValueError, RecursionError):
+        raise _ProtocolError("backend recovered function arguments are not bounded finite JSON") from None
+
+
 def _responses_to_anthropic(resp_obj, model):
     # Translate a complete Responses response object into an Anthropic message.
     # INTENT: walk `output[]` and build the Anthropic content array in the order
@@ -4780,8 +6560,12 @@ def _responses_to_anthropic(resp_obj, model):
     #   reasoning cache so a non-streaming turn seeds continuity.
     resp_obj = _validate_response_for_conversion(resp_obj)
     output_items = resp_obj.get("output", [])
-    for item in output_items:
-        _validate_output_item(item)
+    # Recovery callers supply a list before reaching this boundary. Explicit null
+    # here has no usable inventory; reject rather than invent an empty success.
+    # The shared terminal validator still permits streaming's existing recovery.
+    if output_items is None:
+        raise _ProtocolError("backend nonstream response output is null")
+    _validate_nonstream_output_items(output_items)
     # v1.3.3 (A2-R1): persist only when the populate actually mutated the cache, so a
     # reasoning-free or unpaired turn triggers no disk write. Fail-open; never on the hot
     # path's critical section (the write is atomic-replace and swallows all errors).
@@ -4967,6 +6751,86 @@ def _anthropic_error_type_for_status(status):
     return _ANTHROPIC_ERROR_TYPE_BY_STATUS.get(status, "api_error")
 
 
+# v1.4.10: the inverse direction, Anthropic error `type` -> client HTTP status.
+# INTENT: a NON-STREAM failure that arrives IN-BAND (the upstream answered HTTP 200,
+#   then sent response.failed or an `error` event) has a classified type but no real
+#   backend status. Sending it as a flat 502 made Claude Code retry a deterministic
+#   rejection (e.g. context_length_exceeded) up to 10 times. On the v1.2.10
+#   status-passthrough branch the real backend status wins (since v1.2.14 R2 it can
+#   disagree with the classifier type: 429 + insufficient_quota goes out as 429
+#   invalid_request_error); an in-band failure has no status, so it is derived here.
+# REASONING: built by inverting _ANTHROPIC_ERROR_TYPE_BY_STATUS, so the two
+#   directions share one source of truth and cannot drift. The forward map is
+#   one-to-one (pinned by test_v1410_inband_status), so the inverse is exact.
+#   permission_error->403 and not_found_error->404 are unreachable at the two call
+#   sites (no _BACKEND_SIGNAL_CLASSIFICATION entry maps to them, and the status
+#   fallback needs a real status); they are kept for map symmetry.
+#   authentication_error->401 (in-band token_invalidated) keeps a client retry:
+#   Claude Code 2.1.281 retries a 401, so the retry can reach the lazy-401 refresh
+#   (see the v1.4.10 header).
+# ASSUMES: api_error, "-" and any unknown type are a genuine shim/backend fault
+#   (refusal, framing, protocol, recovery-validation, conversion, post-200 transport)
+#   and keep the historical 502.
+_CLIENT_STATUS_BY_ANTHROPIC_ERROR_TYPE = {
+    error_type: status for status, error_type in _ANTHROPIC_ERROR_TYPE_BY_STATUS.items()
+}
+
+
+def _client_status_for_anthropic_error_type(error_type):
+    # v1.4.10: exact-type lookup; everything outside the map stays 502.
+    return _CLIENT_STATUS_BY_ANTHROPIC_ERROR_TYPE.get(error_type, 502)
+
+
+# v1.4.11 (A): the retry hint for a NON-STREAM error response.
+# INTENT: tell the client not to retry a rejection the shim has classified as
+#   deterministic. The case that matters is a backend 429 whose code is
+#   insufficient_quota / usage_not_included (or a v1.4.11 billing code): it keeps its
+#   real 429 status (v1.2.14 R2 passthrough) but carries invalid_request_error, and
+#   Claude Code retried it as a throttle.
+# REASONING: Claude Code 2.1.281 reads `x-should-retry` before its status rules
+#   (`if(r==="false"){...return!1}` precedes `if(e.status===429)...` and
+#   `if(e.status&&e.status>=500)return!0`); the official TS SDK obeys the same
+#   header. One rule, keyed on the client-facing TYPE, covers every status the type
+#   travels under: on a 400 it is harmless (a 400 matches no retry branch). Other
+#   types get no header: api_error (incl. code server_error) is a transient 5xx the
+#   client should retry; rate_limit_error and overloaded_error are retryable by
+#   design; authentication_error keeps Claude Code's 401 retry, which clears its
+#   credential cache and lets the shim's lazy-401 refresh run.
+#   Status exclusion (review fix): no header on a 408 or 409, whatever the type. The
+#   status fallback (_status_fallback_classification) types a bare 409 (and any
+#   other unrecognized 4xx except 401/408/429) as invalid_request_error, but Claude
+#   Code 2.1.281 retries both statuses (`if(e.status===408)return!0;
+#   if(e.status===409)return!0;`), and its header check runs before those status
+#   rules, so the header would have removed a retry the client grants. The caller
+#   passes the status it is about to send; None (unknown) applies the type rule only.
+# ASSUMES: the header is honored only where the client reads it. Two documented
+#   gaps in 2.1.281: with CLAUDE_CODE_RETRY_WATCHDOG set, `if(S6()&&ZPt(e))return!0`
+#   retries a 429 before the header is read; and the max_tokens overflow parser
+#   (nMt) also runs first. Streaming responses cannot carry it (their HTTP 200 and
+#   headers are sent before the outcome is known; errors travel as SSE events), but
+#   on the streaming main loop it still takes effect one step later. Read from the
+#   2.1.281 client source, not observed live: the SDK turns an SSE `error` event into
+#   an error with no status (`throw new vt(void 0,h,void 0,e.headers,g)`), so no
+#   status-based retry applies, and the main loop then falls back once to a
+#   NON-streaming request (`Error streaming, falling back to non-streaming mode`,
+#   made with `stream:!1` inside the `_ne` retry wrapper) unless
+#   CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK is set (DAAF does not set it) or a
+#   server-side flag turns the fallback off.
+#   That re-send is a non-stream request, so it gets this header and the v1.4.10
+#   status: a pre-content failure costs one streamed attempt plus one non-streamed
+#   re-send.
+_NO_RETRY_HEADERS = ((b"x-should-retry", b"false"),)
+_CLIENT_RETRIED_STATUSES_KEPT = frozenset((408, 409))
+
+
+def _no_retry_headers_for(error_type, status=None):
+    # v1.4.11 (A): extra_headers for _send_json; None (no header) for every other type,
+    # and for a 408/409 (Claude Code retries those; see the status exclusion above).
+    if status in _CLIENT_RETRIED_STATUSES_KEPT:
+        return None
+    return list(_NO_RETRY_HEADERS) if error_type == "invalid_request_error" else None
+
+
 _BACKEND_ERROR_MESSAGE_BY_STATUS = {
     400: "backend rejected the request",
     401: "backend authentication failed",
@@ -5056,11 +6920,27 @@ def _status_fallback_classification(status):
 # Ordered checks inside the classifier; a code match beats a type match, and both
 # beat the HTTP status. Fixed messages only (v1.2.11 no-prose rule).
 _BACKEND_SIGNAL_CLASSIFICATION = {
+    # v1.4.11 (B): "Prompt is too long" is the phrase Claude Code 2.1.281 recognizes
+    # as a context overflow (yHn: includes "prompt is too long"), for non-stream errors
+    # and streamed SSE error events alike. No digits: a gap parser
+    # (/prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i) would read them.
     "context_length_exceeded": (
-        "invalid_request_error", "backend context length exceeded", False),
+        "invalid_request_error", "Prompt is too long (backend context length exceeded)",
+        False),
     "insufficient_quota": (
         "invalid_request_error", "backend quota or plan limit reached", False),
     "usage_not_included": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    # v1.4.11 (D): OpenAI's billing codes (error-codes guide, fetched 2026-10-14: all
+    # four are 429s; "Retrying billing, spend, or quota errors won't restore API
+    # access"). Never observed in shim.log.
+    "credit_balance_exhausted": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "organization_spend_limit_exceeded": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "project_spend_limit_exceeded": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "organization_usage_limit_exceeded": (
         "invalid_request_error", "backend quota or plan limit reached", False),
     "invalid_prompt": ("invalid_request_error", "backend rejected the request", False),
     "bio_policy": ("invalid_request_error", "backend rejected the request", False),
@@ -5111,9 +6991,10 @@ def _normalize_backend_error(payload, status=None, phase=None):
     # here — A1 does not consume it; A2 threads it through to the retry loops.
     anthropic_type, client_message, _retryable = _classify_backend_error(
         status, backend_code, backend_type)
+    # v1.4.12: the classifier's fixed client message is the logged failure_reason.
     _record_backend_error(
         anthropic_type, backend_type=backend_type, backend_code=backend_code,
-        phase=phase,
+        phase=phase, failure_reason=client_message,
     )
     return anthropic_type, client_message, backend_type, backend_code
 
@@ -5150,6 +7031,8 @@ async def _build_backend_headers(force_token_refresh=False, rejected_token=None)
             "authorization": f"Bearer {access_token}",
             "content-type": "application/json",
             "accept": "text/event-stream",
+            **({"session-id": state.conversation_session_id}
+               if state is not None and state.conversation_session_id is not None else {}),
             "X-Client-Request-Id": client_request_id,
         }
     return {
@@ -5216,6 +7099,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
     event_open = False
     chunk_iterator = resp.aiter_bytes().__aiter__()
     while True:
+        _trace_event("upstream_read_start")
         try:
             chunk = await _await_or_disconnect(
                 chunk_iterator.__anext__(),
@@ -5223,6 +7107,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
             )
         except StopAsyncIteration:
             break
+        _trace_event("upstream_chunk", bytes=len(chunk), content_omitted="raw_chunk_credentials_boundary")
         line_buffer.extend(chunk)
         while True:
             newline_at = line_buffer.find(b"\n")
@@ -5250,7 +7135,9 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
             if payload is not None:
                 _record_upstream_first_event()
                 _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
+                _trace_event("upstream_event", payload)
                 yield payload
+    _trace_event("upstream_eof", partial_line_bytes=len(line_buffer), partial_event_bytes=event_size)
     if not (line_buffer or event_open or data_lines):
         return
     # v1.2.14 (R5): a non-blank-terminated tail at EOF. If a complete, dispatchable
@@ -5269,6 +7156,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
         data_lines.clear()
         _record_upstream_first_event()
         _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
+        _trace_event("upstream_event", payload, eof_flushed=True)
         yield payload
         return
     # Otherwise the residual is a genuinely incomplete event (a partial data line, or
@@ -5294,6 +7182,12 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     # v1.2.14 (R5): a mutable one-slot flag lets the bounded SSE reader tolerate a
     # malformed tail at EOF only after a terminal semantic frame was accepted.
     terminal_seen = [False]
+    # INTENT: preserve completed items omitted from a compact terminal envelope.
+    # REASONING: retain bounded inventory, but defer search-only validation errors
+    # until recovery is needed. A populated terminal keeps ordinary acceptance.
+    # ASSUMES: only done items are evidence; deltas/partial tool JSON are not repaired.
+    completed_inventory = _SearchCollector(_ToolRegistry(None, None))
+    recovery_error = None
     try:
         async for data_bytes in _iter_bounded_sse_data(
                 resp, disconnect_event, terminal_seen):
@@ -5304,9 +7198,55 @@ async def _accumulate_terminal_response(resp, disconnect_event):
             except (ValueError, UnicodeDecodeError):
                 return None, "backend stream contained malformed SSE JSON"
             etype = _validate_stream_event_fields(ev)
+            _reject_buffered_refusal_event(ev)
+            if (etype in ("response.output_item.added", "response.output_item.done")
+                    and recovery_error is None):
+                try:
+                    completed_inventory.event(ev)
+                except _ProtocolError:
+                    # Fixed message only; release retained content and stop collecting.
+                    # Continue shared event validation and wait for terminal authority.
+                    recovery_error = "backend completed-item recovery inventory is invalid or exceeds limits"
+                    completed_inventory = None
+            if (recovery_error is None and etype in (
+                    "response.output_text.delta", "response.output_text.done",
+                    "response.function_call_arguments.delta", "response.function_call_arguments.done",
+                    "response.content_part.added", "response.content_part.done",
+                    "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
+                    "response.reasoning_summary_part.added", "response.reasoning_summary_part.done")):
+                try:
+                    index, item_id = ev.get("output_index"), ev.get("item_id")
+                    if index is None and isinstance(item_id, str):
+                        index = completed_inventory.ids.get(item_id)
+                    if item_id is None and type(index) is int:
+                        item_id = completed_inventory.indexes.get(index)
+                    # No content retention or synthesis: only strengthen coverage.
+                    _require_protocol_string(item_id, "recovery item reference")
+                    if item_id not in completed_inventory.ids:
+                        completed_inventory.retained_bytes += len(_search_json(item_id))
+                        if completed_inventory.retained_bytes > _SEARCH_MAX_BYTES:
+                            raise _ProtocolError("backend recovery references exceed byte limit")
+                    item_type = ("function_call" if etype.startswith("response.function_call_arguments.")
+                                 else "reasoning" if etype.startswith("response.reasoning_summary_")
+                                 else "message")
+                    completed_inventory._identity(index, item_id, item_type)
+                except _ProtocolError:
+                    recovery_error = "backend completed-item recovery has ambiguous item references"
+                    completed_inventory = None
             if etype in ("response.completed", "response.incomplete"):
                 terminal_seen[0] = True
                 terminal = _validate_terminal_response(etype, ev.get("response"))
+                if not terminal.get("output"):
+                    if recovery_error is not None:
+                        raise _ProtocolError(recovery_error)
+                    if completed_inventory.indexes:
+                        if (set(completed_inventory.completed) != set(completed_inventory.indexes)
+                                or set(completed_inventory.indexes) != set(range(len(completed_inventory.indexes)))):
+                            raise _ProtocolError("backend completed-item recovery lacks complete index coverage")
+                        terminal = completed_inventory.event(ev)
+                        for item in terminal["output"]:
+                            if item.get("type") == "function_call":
+                                _validate_recovered_function_arguments(item["arguments"])
                 return terminal, None
             if etype == "response.failed":
                 response_obj = ev.get("response")
@@ -5343,6 +7283,17 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     except _ProtocolError as error:
         return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
     except ValueError as error:
+        # v1.4.12: a ValueError's text is not guaranteed shim-authored (a library
+        # ValueError can quote its input), so the log gets a fixed category with the
+        # class name, recorded here before the caller's generic record. The returned
+        # client message is unchanged. Skipped once the client has gone: the caller
+        # returns on disconnect without recording, and an error record here would
+        # turn that request's outcome from disconnect into error.
+        if not disconnect_event.is_set():
+            _record_backend_error(
+                "api_error", phase="upstream_stream",
+                failure_reason="backend SSE framing error (%s)" % type(error).__name__,
+            )
         return None, _scrub_and_trim_body(str(error))[:200] or "backend SSE framing error"
     return None, "backend stream ended without a terminal response"
 
@@ -5368,17 +7319,29 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     # collapse; unrelated and nested duplicates retain last-key-wins compatibility.
     _set_phase("request_parse")
     try:
-        req = _decode_anthropic_request_json(body)
+        req = _decode_anthropic_request_json(body, scope_headers)
+        if _DIAGNOSTICS is not None and isinstance(req, dict):
+            try:
+                _DIAGNOSTICS.bind(_request_state().req_id, req, body)
+                _trace_event("client_correlation", headers={
+                    key.decode("ascii"): value.decode("ascii", errors="replace")
+                    for key, value in scope_headers
+                    if key.lower() in (b"x-client-request-id", b"x-request-id")})
+            except Exception:
+                pass
     except _DuplicateTopLevelSpeedError:
         _mark_error(phase="request_validation", error_type="invalid_request_error")
+        # v1.4.11 (A): every local 400 carries x-should-retry: false (uniform rule;
+        # a 400 is not retried anyway).
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error",
             "message": "duplicate top-level speed field",
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
     except (ValueError, UnicodeDecodeError) as e:
         log.error("bad request json: %s", type(e).__name__)
-        await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})
+        await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}},
+                         extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     # Validate only the structural boundary the existing translator depends on.
@@ -5464,7 +7427,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error",
             "message": "invalid request structure",
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     # Validate the body/header Fast contract before authentication or any upstream call.
@@ -5479,7 +7442,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         _mark_error(phase="request_validation", error_type="invalid_request_error")
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error", "message": str(error),
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     _set_phase("request_translation")
@@ -5490,18 +7453,21 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
     try:
+        search_registry = _ToolRegistry(req.get("tools"), req.get("tool_choice"))
         responses_payload, missing_reasoning, reasoning_cache_hits, effort_value, \
             effort_source, injected_restored_reasoning_ids, injected_restored_call_ids = \
             _anthropic_to_responses_request(
-                req, model, slug_effort_raw, requested_service_tier)
+                req, model, slug_effort_raw, requested_service_tier, search_registry)
     except _InvalidRequestError as error:
         # The exception text is constructed exclusively from structural indexes,
         # bounded type labels, and local constants. Never log or reflect block data.
         _mark_error(phase="request_translation", error_type="invalid_request_error")
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error", "message": str(error),
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
+    search_bearing = bool(search_registry.search_name or any(
+        item.get("type") == "web_search_call" for item in responses_payload["input"]))
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
     state = _request_state()
@@ -5565,13 +7531,23 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 "backend round-trip", _safe_slug)
             await _send_json(send, 400, {"type": "error", "error": {
                 "type": "invalid_request_error",
+                # User-facing guidance (2026-10-12): name all four tier aliases.
+                # CLAUDE_CODE_SUBAGENT_MODEL alone is only a fallback for
+                # subagents without their own model (Claude Code >= 2.1.251), so
+                # it cannot stop DAAF's opus/sonnet agents sending claude-* slugs;
+                # and Claude Code's housekeeping calls (naming and summarizing
+                # the session) use the haiku tier. Text only — no logic change.
                 "message": (
                     "model %r is not available via the ChatGPT (Codex) lane; "
-                    "remap Claude aliases to GPT slugs via "
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL "
-                    "/ CLAUDE_CODE_SUBAGENT_MODEL in environment_settings.txt"
+                    "map all four Claude tier aliases to GPT slugs in "
+                    "environment_settings.txt: ANTHROPIC_DEFAULT_FABLE_MODEL, "
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL "
+                    "and ANTHROPIC_DEFAULT_HAIKU_MODEL (Claude Code's housekeeping "
+                    "calls, such as naming and summarizing your session, use the "
+                    "haiku tier); or, if this is your session model, pick a GPT "
+                    "model with /model"
                 ) % _safe_slug,
-            }})
+            }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
             return
 
     # v1.2.5: build the backend auth headers by lane.
@@ -5642,6 +7618,13 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         # failure at header-build time. Fail fast with the actionable message; no
         # token value in the error (RuntimeError text is the re-login instruction).
         log.error("chatgpt auth unavailable: %s", str(e))
+        # v1.4.13: write the backend_error line (it had none): a fixed category,
+        # never the RuntimeError text. Before the send, so the auth phase is the
+        # first cause.
+        _record_backend_error("authentication_error", backend_type="token_refresh",
+                              phase="backend_authentication",
+                              failure_reason="backend token refresh failed (%s)"
+                              % type(e).__name__)
         try:
             await _send_json(send, 401, {"type": "error", "error": {
                 "type": "authentication_error", "message": str(e)}})
@@ -5651,6 +7634,106 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     url = f"{SHIM_BACKEND_BASE_URL}/responses"
 
     try:
+        if not stream and search_bearing:
+            # Both search transports remain bounded. OpenAI retains JSON while
+            # subscription requests SSE; neither emits partial downstream content.
+            json_mode = SHIM_BACKEND_MODE == "openai"
+            responses_payload["stream"] = not json_mode
+            search_cm = None
+            try:
+                resp, search_cm, headers, retries, refreshed = await _open_backend_stream(
+                    url, headers, responses_payload, disconnect_event, search_bearing=True)
+                if resp.status_code >= 400:
+                    # The opener already bounded this body; reuse its private bytes.
+                    raw_error = await _read_search_error_body(resp, disconnect_event)
+                    try:
+                        details = json.loads(raw_error)
+                    except ValueError:
+                        details = {}
+                    error_type, message, _, _ = _normalize_backend_error(details, status=resp.status_code, phase="upstream_headers")
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                    # v1.4.11 (A): no-retry hint when the classified type is
+                    # invalid_request_error (e.g. a 429 insufficient_quota); never on a
+                    # 408/409, which the client retries.
+                    await _send_json(send, resp.status_code, {"type": "error", "error": {"type": error_type, "message": message}},
+                                     extra_headers=_no_retry_headers_for(error_type, resp.status_code))
+                    return
+                terminal = await _collect_search_response(resp, disconnect_event, search_registry, json_mode, reject_refusals=True)
+                owned, search_cm = search_cm, None
+                await _settle_stream_context(owned)
+                # Validate recovered inventory before hosted projection/replay effects.
+                _validate_nonstream_output_items(terminal["output"])
+                anth = _search_projection(terminal, model, search_registry)
+                cached = anth.pop("_cached_tokens", None)
+                usage_source = anth.pop("_usage_source")
+                state = _request_state()
+                if state is not None:
+                    state.input_tokens = anth["usage"]["input_tokens"] + (cached or 0)
+                    state.output_tokens = anth["usage"]["output_tokens"]
+                    state.cached_tokens = cached
+                    state.usage_source = usage_source
+                    state.stop_reason = anth["stop_reason"]
+                # v1.4.13: no count_tokens calibration here. This branch is reached
+                # only when search_bearing is true, and hosted-search usage counts
+                # server-fetched content that len(body) cannot represent (live
+                # ratios 9.6-16 vs ~0.2): the band guard rejected them with a WARNING
+                # on every search, and a large search-bearing body could be accepted
+                # at a skewed ratio. The ordinary call sites are unchanged.
+                if usage_source == "backend":
+                    log.debug("count_tokens calibration skipped reason=hosted_search")
+                await _send_json(send, 200, anth)
+            except RuntimeError as error:
+                if search_cm is not None:
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                # v1.4.13: the backend_error line this branch never wrote; a fixed
+                # category, never the RuntimeError text. Skipped after a client
+                # disconnect, so a disconnect outcome is not turned into error (the
+                # send below is unchanged).
+                if not disconnect_event.is_set():
+                    _record_backend_error("authentication_error", backend_type="token_refresh",
+                                          phase="backend_authentication",
+                                          failure_reason="backend token refresh failed (%s)"
+                                          % type(error).__name__)
+                await _send_json(send, 401, {"type": "error", "error": {"type": "authentication_error", "message": _RELOGIN_MSG}})
+            except (_ProtocolError, ValueError, httpx.HTTPError) as error:
+                # Release upstream BEFORE a downstream send can backpressure.
+                if search_cm is not None:
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                message = str(error) if isinstance(error, _ProtocolError) else "backend search transport or framing error"
+                state = _request_state()
+                error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
+                # v1.4.12: write the reason to the log too. An in-band failure was
+                # already recorded by the classifier (with its fixed message), so this
+                # is a no-op there. Otherwise: a _ProtocolError message is a literal
+                # (shim-authored); ValueError/httpx text is not guaranteed to be, so it
+                # is logged as the fixed client message plus the exception class name.
+                # No phase: the first-cause phase is the current one, as _send_json's
+                # _mark_error would have fixed it.
+                _record_backend_error(
+                    error_type,
+                    failure_reason=(message if isinstance(error, _ProtocolError)
+                                    else "%s (%s)" % (message, type(error).__name__)),
+                )
+                # v1.4.10: an in-band response.failed/error is classified by
+                # _SearchCollector.event before it raises; send the status that
+                # matches that type (400 for context_length_exceeded) so the client
+                # does not retry it. Unclassified failures (refusal, framing, limits,
+                # transport) record no type and keep 502 api_error.
+                # v1.4.11 (A): plus the no-retry hint for invalid_request_error. (C) A
+                # JSON-transport (OpenAI-lane) body with status "failed" reaches this
+                # branch classified, via _collect_search_response.
+                client_status = _client_status_for_anthropic_error_type(error_type)
+                await _send_json(send, client_status,
+                                 {"type": "error", "error": {"type": error_type, "message": message}},
+                                 extra_headers=_no_retry_headers_for(error_type, client_status))
+            finally:
+                if search_cm is not None:
+                    await _settle_stream_context(search_cm)
+            return
+
         if not stream and SHIM_BACKEND_MODE == "chatgpt":
             # v1.2.7: Codex requires stream:true even when the Anthropic caller
             # requested JSON. Consume one real upstream SSE response internally,
@@ -5669,8 +7752,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # v1.2.10: capture the real backend HTTP status for a rejection so the
             # final send can pass it through (mapped to an Anthropic error type)
             # instead of collapsing every 4xx/5xx to a flat, retryable-looking 502.
-            # Stays None for post-200 accumulation/conversion failures, which have
-            # no backend rejection status and correctly keep the 502 api_error path.
+            # Stays None for post-200 failures, which have no backend rejection
+            # status. v1.4.10: those derive their status from the recorded type
+            # instead (an in-band context_length_exceeded -> 400); unclassified
+            # accumulation/conversion failures still get 502 api_error.
             backend_status = None
             try:
                 try:
@@ -5680,6 +7765,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 except RuntimeError as e:
                     log.error("chatgpt non-stream lazy-401 refresh failed: %s", str(e))
                     if not disconnect_event.is_set():
+                        # v1.4.13: the backend_error line this branch never wrote; a
+                        # fixed category, never the RuntimeError text. Skipped after a
+                        # disconnect, like the send, so a disconnect stays one.
+                        _record_backend_error("authentication_error",
+                                              backend_type="token_refresh",
+                                              phase="backend_authentication",
+                                              failure_reason="backend token refresh failed (%s)"
+                                              % type(e).__name__)
                         await _send_json(send, 401, {"type": "error", "error": {
                             "type": "authentication_error", "message": str(e)}})
                     return
@@ -5696,7 +7789,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     backend_status = status
                     try:
                         raw_err = (
-                            await _await_or_disconnect(
+                            await _read_search_error_body(resp, disconnect_event)
+                            if search_bearing else await _await_or_disconnect(
                                 resp.aread(),
                                 disconnect_event,
                             )
@@ -5771,16 +7865,22 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 )
                 state = _request_state()
                 if state is not None and not state.backend_error_logged:
+                    # v1.4.12: safe_message is shim-authored when this record is the
+                    # first one: a local constant, a _ProtocolError literal, or a
+                    # status-classifier message (classified and ValueError failures
+                    # were recorded earlier, so this branch is skipped for them).
                     _record_backend_error(
                         _anthropic_error_type_for_status(backend_status)
                         if backend_status is not None else "api_error",
                         phase="upstream_stream",
+                        failure_reason=safe_message,
                     )
                 # v1.2.10: if the failure was a backend HTTP rejection, pass the real
                 # status through (mapped to the matching Anthropic error type) so a
                 # deterministic 400 (e.g. context_length_exceeded) is not retried by
-                # the client. Accumulation/conversion failures after a 200 (no
-                # backend_status) retain the original 502 api_error shape.
+                # the client. v1.4.10: failures after a 200 (no backend_status) take
+                # the status that matches their recorded type (else branch below);
+                # only unclassified ones keep the 502 api_error shape.
                 if backend_status is not None:
                     # v1.2.14 (R2): surface the CLASSIFIER type (code/type precedence
                     # over status), set by _normalize_backend_error on the successful
@@ -5793,18 +7893,38 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                         if state is not None and state.anthropic_error_type != "-"
                         else _anthropic_error_type_for_status(backend_status)
                     )
+                    # v1.4.11 (A): a 429 classified invalid_request_error (quota or
+                    # billing code) keeps its 429 but tells the client not to retry.
+                    # A 408/409 gets no header (the client retries those).
                     await _send_json(send, backend_status, {"type": "error", "error": {
                         "type": passthrough_type,
-                        "message": safe_message}})
+                        "message": safe_message}},
+                        extra_headers=_no_retry_headers_for(passthrough_type, backend_status))
                 else:
+                    # v1.4.10: no backend HTTP status. The upstream answered 200 and
+                    # the failure came in-band (response.failed / error), or the
+                    # shim itself rejected the stream.
+                    # INTENT: send the status that matches the recorded type, so an
+                    #   in-band context_length_exceeded reaches Claude Code as a 400
+                    #   it does not retry (live 2026-10-13: it was sent as 502).
+                    # REASONING: _accumulate_terminal_response records the
+                    #   classifier type before returning; refusal, framing, protocol,
+                    #   recovery and conversion failures record none, so the
+                    #   fallback above records api_error and they keep 502.
+                    # ASSUMES: the first recorded type is this request's terminal
+                    #   cause (the non-stream path stops at its first failure).
                     state = _request_state()
                     normalized_type = (
                         state.anthropic_error_type
                         if state is not None and state.anthropic_error_type != "-"
                         else "api_error"
                     )
-                    await _send_json(send, 502, {"type": "error", "error": {
-                        "type": normalized_type, "message": safe_message}})
+                    client_status = _client_status_for_anthropic_error_type(normalized_type)
+                    await _send_json(
+                        send, client_status,
+                        {"type": "error", "error": {
+                            "type": normalized_type, "message": safe_message}},
+                        extra_headers=_no_retry_headers_for(normalized_type, client_status))
                 return
             usage = anth["usage"]
             cached = anth.pop("_cached_tokens", None)
@@ -5853,11 +7973,34 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     _scrub_metadata(backend_code), error_type,
                     _diag_headers(r.headers),
                 )
+                # v1.4.11 (A): no-retry hint when the classified type is
+                # invalid_request_error (e.g. a 429 insufficient_quota); never on a
+                # 408/409, which the client retries.
                 await _send_json(send, r.status_code, {"type": "error", "error": {
-                    "type": error_type, "message": client_msg}})
+                    "type": error_type, "message": client_msg}},
+                    extra_headers=_no_retry_headers_for(error_type, r.status_code))
                 return
+            # v1.4.11 (C): an HTTP 200 whose Responses object says status "failed".
+            # INTENT: classify the body's `error` like an in-band response.failed and
+            #   send the matching status, instead of the flat 502 "conversion failed".
+            # REASONING: the Responses object documents status "failed" with an
+            #   `error: {code, message}` (openai-python response.py / response_error.py,
+            #   fetched 2026-10-14), and OpenRouter returns exactly that on HTTP 200 for
+            #   a dropped upstream (inspect-robots #448: code server_error). Passing the
+            #   whole object lets _backend_error_fields descend into root["error"],
+            #   as the streaming response.failed handler does. status=None: the 200 is
+            #   not a rejection status, so only a recognized code/type classifies it.
+            # ASSUMES: a "failed" body with no usable error classifies as api_error
+            #   (unknown/unstructured envelope) and keeps 502 api_error. Fixed
+            #   messages only (v1.2.11); the backend's prose is never echoed. Never
+            #   observed on api.openai.com.
+            failed_body = None
             try:
-                anth = _responses_to_anthropic(r.json(), model)
+                response_body = r.json()
+                if isinstance(response_body, dict) and response_body.get("status") == "failed":
+                    failed_body = response_body
+                else:
+                    anth = _responses_to_anthropic(response_body, model)
             except (_ProtocolError, TypeError, AttributeError,
                     KeyError, ValueError) as error:
                 log.error("messages non-stream conversion error: %s",
@@ -5865,10 +8008,28 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 _record_backend_error(
                     "api_error", backend_type=type(error).__name__,
                     phase="response_conversion",
+                    failure_reason="backend response conversion failed",
                 )
                 await _send_json(send, 502, {"type": "error", "error": {
                     "type": "api_error",
                     "message": "backend response conversion failed"}})
+                return
+            if failed_body is not None:
+                error_type, client_msg, backend_type, backend_code = \
+                    _normalize_backend_error(
+                        failed_body, status=None, phase="upstream_stream",
+                    )
+                log.error(
+                    "backend non-stream response status=failed retries=%d "
+                    "backend_type=%s backend_code=%s anthropic_type=%s",
+                    retries, _scrub_metadata(backend_type),
+                    _scrub_metadata(backend_code), error_type,
+                )
+                client_status = _client_status_for_anthropic_error_type(error_type)
+                await _send_json(
+                    send, client_status,
+                    {"type": "error", "error": {"type": error_type, "message": client_msg}},
+                    extra_headers=_no_retry_headers_for(error_type, client_status))
                 return
             usage = anth["usage"]
             cached = anth.pop("_cached_tokens", None)
@@ -5970,7 +8131,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         async def emit(ev, data):
             state = _request_state()
             is_terminal = ev in ("message_stop", "error")
+            _trace_event("emit_intent", event_type=ev,
+                         deferred_text_chars=len(deferred_text), deferred_thinking_chars=len(deferred_thinking))
             async with emit_lock:
+                _trace_event("emit_lock_acquired", event_type=ev)
                 if is_terminal and state is not None:
                     state.terminal_frame_send = "attempted"
                 _record_downstream_first_content()
@@ -6172,15 +8336,25 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             st["args_emitted"] = True
 
         async def _open_tool(st):
-            # v1.2.14 (R3): open one deferred/serialized tool_use block. anth_index is
-            # assigned HERE (not at output_item.added) so Anthropic block indices stay
-            # monotonic in EMISSION order. A serialized tool has no other tool open when
-            # it is added, so it opens immediately and its index/bytes equal what the
-            # pre-R3 single-slot reducer produced (byte-identical serialized path).
+            # v1.2.14 (R3): give one deferred/serialized tool the single active-tool slot.
+            # v1.4.8: in sanitize mode the downstream tool_use HEADER waits until the
+            # arguments are complete (_start_tool), because the arguments are sent as one
+            # delta at .done anyway. Until then nothing about this tool is on the wire, so
+            # a whitespace-guard trip can retry upstream instead of leaving Claude Code
+            # an empty tool call. Sanitize-off keeps the immediate header (unchanged).
+            st["opened"] = True
+            if not SHIM_SANITIZE_TOOLS or st["arguments_done"] is not None:
+                await _start_tool(st)
+
+        async def _start_tool(st):
+            # Emit the tool_use content_block_start once. anth_index is assigned HERE so
+            # Anthropic block indices stay monotonic in EMISSION order.
             nonlocal next_index
+            if st["started"]:
+                return
             st["anth_index"] = next_index
             next_index += 1
-            st["opened"] = True
+            st["started"] = True
             await emit("content_block_start", {"type": "content_block_start",
                 "index": st["anth_index"],
                 "content_block": {"type": "tool_use", "id": st["call_id"],
@@ -6203,6 +8377,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
 
         async def _close_tool(st):
             # v1.2.14 (R3): emit the terminal content_block_stop for one open tool.
+            # v1.4.8: a still-deferred header (and its sanitized args, when known) is
+            # emitted first, so every closed tool is a complete start->delta->stop block.
+            await _start_tool(st)
             await emit("content_block_stop", {
                 "type": "content_block_stop", "index": st["anth_index"]})
             st["closed"] = True
@@ -6230,13 +8407,45 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     continue
                 return
 
+        def _settle_unfinished_args(item_id, st):
+            # v1.4.8: at the terminal, decide whether a sanitize-mode tool whose header
+            # is still held may be sent, and with which arguments. Returns False when
+            # the tool must be dropped instead of becoming an empty `{}` call.
+            # INTENT: a completed response proves generation finished, so its final
+            #   output item (preferred) or the buffered deltas are the arguments, and
+            #   they flow through the same sanitizer as the .done path. An incomplete
+            #   response whose arguments never completed (no .done, no output_item.done)
+            #   was cut off mid-call; sending it would run a truncated tool call.
+            # ASSUMES: terminal_output_items was validated with the terminal event.
+            if not SHIM_SANITIZE_TOOLS or st["started"] or st["arguments_done"] is not None:
+                return True
+            if final_status != "completed":
+                return False
+            for item in terminal_output_items or []:
+                if (isinstance(item, dict) and item.get("type") == "function_call"
+                        and (item.get("id") == item_id
+                             or item.get("call_id") == st["call_id"])
+                        and item.get("name") == st["name"]
+                        and isinstance(item.get("arguments"), str)):
+                    st["arguments_done"] = (st["name"], item["arguments"])
+                    return True
+            st["arguments_done"] = (st["name"], st["args_buf"])
+            return True
+
         async def _drain_pending_tools():
             # v1.2.14 (R3): terminal-success flush — open and close every still-deferred
             # tool in added order so each becomes a complete non-overlapping tool_use
             # block. Called after the single active tool (if any) has been closed.
+            # v1.4.8: a sanitize-mode tool with unfinished arguments on an incomplete
+            # response is dropped (marked closed, never sent); see _settle_unfinished_args.
             for iid in tool_added_order:
                 st = tool_state[iid]
                 if not st["opened"] and not st["closed"]:
+                    if not _settle_unfinished_args(iid, st):
+                        st["closed"] = True
+                        log.warning("dropped a tool call whose arguments never completed "
+                                    "(response status=%s)", _scrub_metadata(final_status))
+                        continue
                     await _open_tool(st)
                     await _close_tool(st)
 
@@ -6255,16 +8464,28 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # only the in-band error `type` string is status-aware. Every other caller
             # (mid-stream protocol/framing/transport failures with no backend status)
             # keeps the default api_error, preserving the v1.2.8 finalizer semantics.
-            nonlocal text_block_open, thinking_block_open, failure_finalized
+            nonlocal text_block_open, thinking_block_open, failure_finalized, stream_cm
+            # Buffered search no longer needs its upstream after any failure.
+            # Relinquish ownership before heartbeat settlement or downstream writes.
+            if search_bearing and stream_cm is not None:
+                owned, stream_cm = stream_cm, None
+                await _settle_stream_context(owned)
             # v1.2.14 (R6): stop the heartbeat before emitting any terminal-failure
             # frames so a ping can never interleave with the error/body-close sequence.
             await _stop_heartbeat()
-            _record_backend_error(error_type, phase="upstream_stream")
+            safe_message = (_scrub_and_trim_body(str(message or ""))[:200]
+                            or "backend stream failed")
+            # v1.4.12: the client's message is also the logged failure_reason. Every
+            # caller passes shim-authored text (audited for 1.4.12: local constants,
+            # _ProtocolError literals, classifier fixed messages; httpx failures
+            # arrive as the constant "backend transport error"). The one caller whose
+            # text is not a constant (a token-refresh RuntimeError) has already
+            # recorded a fixed category, so this record is a no-op for it.
+            _record_backend_error(error_type, phase="upstream_stream",
+                                  failure_reason=safe_message)
             if failure_finalized or disconnect_event.is_set():
                 return False
             failure_finalized = True
-            safe_message = (_scrub_and_trim_body(str(message or ""))[:200]
-                            or "backend stream failed")
             if text_block_open:
                 text_block_open = False
                 await emit("content_block_stop", {
@@ -6276,12 +8497,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     "delta": {"type": "signature_delta", "signature": ""}})
                 await emit("content_block_stop", {
                     "type": "content_block_stop", "index": thinking_index})
-            # v1.2.14 (R3): only OPENED tools have a downstream block (and a real
+            # v1.2.14 (R3): only STARTED tools have a downstream block (and a real
             # anth_index) to close; a still-deferred tool never emitted a
-            # content_block_start, so it is skipped here. Filtering to opened tools
+            # content_block_start, so it is skipped here. Filtering to started tools
             # also keeps the sort key from comparing a pending tool's None index.
+            # v1.4.8: in sanitize mode this also skips the active tool whose arguments
+            # never completed, so a failure no longer leaves an empty tool call.
             for item_id in sorted(
-                (key for key in tool_state if tool_state[key]["opened"]),
+                (key for key in tool_state if tool_state[key]["started"]),
                 key=lambda key: tool_state[key]["anth_index"],
             ):
                 st = tool_state[item_id]
@@ -6294,27 +8517,151 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             await send({"type": "http.response.body", "body": b"", "more_body": False})
             return True
 
+        async def _close_text_and_thinking():
+            # Close an open thinking block (empty-signature convention, see
+            # _ensure_text_open) and an open text block before a tool or a retry.
+            nonlocal thinking_block_open, text_block_open
+            if thinking_block_open:
+                await emit("content_block_delta", {"type": "content_block_delta",
+                    "index": thinking_index,
+                    "delta": {"type": "signature_delta", "signature": ""}})
+                await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
+                thinking_block_open = False
+            if text_block_open:
+                await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
+                text_block_open = False
+
+        whitespace_retry_used = False
+        # v1.4.8: (client message, Anthropic error type) when the one whitespace retry
+        # was attempted but its reopen failed. The shared error handler then reports
+        # THAT cause (e.g. a 429 or an expired login) instead of the whitespace trip.
+        whitespace_retry_failure = None
+
+        async def _retry_after_whitespace_trip():
+            # v1.4.8: one transparent upstream retry after the tool-argument whitespace
+            # guard trips. Claude Code does not retry an error that arrives after a tool
+            # call has started, so the shim re-sends the same payload itself, but only
+            # while no tool_use header has reached the client (sanitize mode defers it,
+            # see _open_tool) and only once per response. The new attempt continues the
+            # SAME downstream message (same message_start and heartbeat, next block
+            # index). Returns False to use the normal error path instead; when the
+            # reopen itself failed, whitespace_retry_failure carries the real cause.
+            nonlocal whitespace_retry_used, resp, stream_cm, frames
+            nonlocal saw_tool_use, deferred_text, deferred_thinking
+            nonlocal whitespace_retry_failure
+            if (whitespace_retry_used or not SHIM_SANITIZE_TOOLS
+                    or disconnect_event.is_set()
+                    or any(st["started"] for st in tool_state.values())):
+                return False
+            whitespace_retry_used = True
+            req_state = _request_state()
+            # Name attempt 1's upstream request id now: the reopen overwrites it.
+            log.warning("tool-argument whitespace guard tripped before any tool_use "
+                        "was sent; retrying upstream once (attempt-1 upstream_req_id=%s)",
+                        req_state.upstream_request_id if req_state is not None else "-")
+            # Release the abandoned attempt before any downstream write can block.
+            await frames.aclose()
+            owned, stream_cm = stream_cm, None
+            await _settle_stream_context(owned)
+            await _close_text_and_thinking()
+            # Forget everything the abandoned attempt registered; none of it was sent
+            # (deferred text/thinking included) and none of it may reach the cache.
+            for container in (tool_state, tool_added_order, added_item_ids,
+                              completed_item_values, completed_items):
+                container.clear()
+            saw_tool_use = False
+            deferred_text = deferred_thinking = ""
+            if req_state is not None:
+                # The idle-gap clock restarts with the new attempt; the reconnect wait
+                # is not upstream silence inside a stream.
+                req_state.last_upstream_event_at = None
+            _record_retry("tool_argument_whitespace")
+            try:
+                new_resp, new_cm, _headers, _retries, refreshed = await _open_backend_stream(
+                    url, headers, responses_payload, disconnect_event)
+            except RuntimeError as error:
+                # Token refresh failed (the message carries the re-login command).
+                log.error("whitespace retry could not reopen the backend stream: %s",
+                          type(error).__name__)
+                # v1.4.12: fixed category; the RuntimeError text is not logged here.
+                _record_backend_error("authentication_error", backend_type="token_refresh",
+                                      phase="backend_authentication",
+                                      failure_reason="backend token refresh failed (%s)"
+                                      % type(error).__name__)
+                whitespace_retry_failure = (str(error) or _RELOGIN_MSG, "authentication_error")
+                return False
+            except (_ProtocolError, httpx.HTTPError) as error:
+                # _open_backend_stream already recorded an exhausted transport failure.
+                log.error("whitespace retry could not reopen the backend stream: %s",
+                          type(error).__name__)
+                reopen_message = ("backend transport error"
+                                  if isinstance(error, httpx.HTTPError) else str(error))
+                # v1.4.12: reopen_message is a constant or a _ProtocolError literal.
+                _record_backend_error("api_error", backend_type=type(error).__name__,
+                                      phase="upstream_request",
+                                      failure_reason=reopen_message)
+                whitespace_retry_failure = (reopen_message, "api_error")
+                return False
+            if new_resp.status_code >= 400:
+                status = new_resp.status_code
+                log.error("whitespace retry backend status=%d", status)
+                _mark_error(phase="upstream_headers",
+                            error_type=_anthropic_error_type_for_status(status))
+                raw_err = b""
+                try:
+                    raw_err = await _await_or_disconnect(new_resp.aread(), disconnect_event)
+                except _ClientDisconnected:
+                    await _settle_stream_context(new_cm)
+                    raise
+                except Exception:
+                    pass
+                await _settle_stream_context(new_cm)
+                try:
+                    structured_error = json.loads(raw_err.decode("utf-8", "replace"))
+                except ValueError:
+                    structured_error = {}
+                error_type, client_failure, _backend_type, _backend_code = \
+                    _normalize_backend_error(structured_error, status=status,
+                                             phase="upstream_headers")
+                if refreshed and status == 401:
+                    client_failure = _RELOGIN_MSG
+                whitespace_retry_failure = (client_failure, error_type)
+                return False
+            resp, stream_cm = new_resp, new_cm
+            frames = _iter_bounded_sse_data(resp, disconnect_event, terminal_seen)
+            return True
+
         # v1.2.7: open through the shared pre-content retry/lazy-401 helper.
-        # Once event consumption begins this response is never replayed.
+        # Once event consumption begins this response is never replayed, except the
+        # one v1.4.8 whitespace-guard retry (_retry_after_whitespace_trip).
         resp = None
         stream_cm = None
+        frames = None                # upstream SSE reader; a whitespace retry swaps it
         did_401_refresh = False
         precontent_failure_message = None
+        # v1.4.12: the logged reason for a pre-content failure. Equal to the client
+        # message when that is shim-authored; a fixed category for a RuntimeError.
+        precontent_failure_reason = None
         try:
             resp, stream_cm, headers, retries, did_401_refresh = \
                 await _open_backend_stream(
-                    url, headers, responses_payload, disconnect_event)
+                    url, headers, responses_payload, disconnect_event, search_bearing=search_bearing)
+        except _ProtocolError as error:
+            precontent_failure_message = str(error)
+            precontent_failure_reason = precontent_failure_message
         except RuntimeError as e:
             # A permanent token-refresh failure is converted to a clean terminal
             # error stream below; no credential material is included.
             log.error("chatgpt stream lazy-401 refresh failed: %s", str(e))
             precontent_failure_message = str(e)
+            precontent_failure_reason = "backend token refresh failed (%s)" % type(e).__name__
         except httpx.HTTPError as e:
             if disconnect_event.is_set():
                 _record_disconnect("before_stream_start")
                 return
             log.error("backend stream connect error: %s", type(e).__name__)
             precontent_failure_message = "backend transport error"
+            precontent_failure_reason = precontent_failure_message
 
         # INTENT: fix a known backend HTTP rejection as the first causal error before
         #   attempting the downstream SSE response start.
@@ -6354,7 +8701,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     raw_err = ""
                     try:
                         raw_err = (
-                            await _await_or_disconnect(
+                            await _read_search_error_body(resp, disconnect_event)
+                            if search_bearing else await _await_or_disconnect(
                                 resp.aread(),
                                 disconnect_event,
                             )
@@ -6381,7 +8729,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     error_type = "api_error"
                     backend_type = "-"
                     backend_code = "-"
-                    _record_backend_error(error_type, phase="upstream_request")
+                    _record_backend_error(
+                        error_type, phase="upstream_request",
+                        failure_reason=precontent_failure_reason or client_failure,
+                    )
                 log.error(
                     "backend stream error status=%d retries=%d backend_type=%s "
                     "backend_code=%s anthropic_type=%s | headers: %s",
@@ -6427,9 +8778,68 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 if _hb_state is not None:
                     _hb_state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
-            async for data_bytes in _iter_bounded_sse_data(
-                resp, disconnect_event, terminal_seen
-            ):
+            if search_bearing:
+                # Search-bearing requests share one canonical buffered collector.
+                # The existing heartbeat, disconnect watcher, error finalizer and
+                # stream-context owner remain in force; ordinary streaming is untouched.
+                try:
+                    terminal = await _collect_search_response(resp, disconnect_event, search_registry, reject_refusals=not search_registry.search_name)
+                    owned, stream_cm = stream_cm, None
+                    await _settle_stream_context(owned)
+                    anth = _search_projection(terminal, model, search_registry)
+                except _ProtocolError as error:
+                    state = _request_state()
+                    error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
+                    await _finalize_stream_failure(str(error), error_type)
+                    return
+                for index, block in enumerate(anth["content"]):
+                    kind = block["type"]
+                    start = dict(block)
+                    field = {"text": "text", "thinking": "thinking", "tool_use": "input", "server_tool_use": "input"}.get(kind)
+                    if field:
+                        start[field] = {} if field == "input" else ""
+                        if kind == "thinking":
+                            start.pop("signature", None)
+                    await emit("content_block_start", {"type": "content_block_start", "index": index, "content_block": start})
+                    if field:
+                        delta = ({"type": "input_json_delta", "partial_json": json.dumps(block[field])}
+                                 if field == "input" else {"type": field + "_delta", field: block[field]})
+                        await emit("content_block_delta", {"type": "content_block_delta", "index": index, "delta": delta})
+                        if kind == "thinking":
+                            await emit("content_block_delta", {"type": "content_block_delta", "index": index,
+                                       "delta": {"type": "signature_delta", "signature": ""}})
+                    await emit("content_block_stop", {"type": "content_block_stop", "index": index})
+                cached = anth.pop("_cached_tokens", None)
+                usage_source = anth.pop("_usage_source")
+                state = _request_state()
+                if state is not None:
+                    state.input_tokens = anth["usage"]["input_tokens"] + (cached or 0)
+                    state.output_tokens = anth["usage"]["output_tokens"]
+                    state.cached_tokens = cached
+                    state.usage_source = usage_source
+                    state.stop_reason = anth["stop_reason"]
+                    state.tools_called = sum(b["type"] == "tool_use" for b in anth["content"])
+                # v1.4.13: no count_tokens calibration from a search-bearing response
+                # (this block runs only when search_bearing is true); see the
+                # non-stream search branch for the reason.
+                if usage_source == "backend":
+                    log.debug("count_tokens calibration skipped reason=hosted_search")
+                await _stop_heartbeat()
+                await emit("message_delta", {"type": "message_delta", "delta": {
+                    "stop_reason": anth["stop_reason"], "stop_sequence": None}, "usage": anth["usage"]})
+                await emit("message_stop", {"type": "message_stop"})
+                _mark_success()
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+                return
+
+            # v1.4.8: pull frames explicitly (same semantics as `async for`) so a
+            # whitespace-guard retry can swap `frames` to the new upstream mid-loop.
+            frames = _iter_bounded_sse_data(resp, disconnect_event, terminal_seen)
+            while True:
+                try:
+                    data_bytes = await frames.__anext__()
+                except StopAsyncIteration:
+                    break
                 # HARDENING (client-disconnect mid-stream): stop pulling from the
                 # backend the moment the client goes away.
                 if disconnect_event.is_set():
@@ -6570,8 +8980,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                             for st in tool_state.values()
                         )
                         st = {
-                            "anth_index": None,        # assigned at open (emission order)
-                            "opened": False,
+                            "anth_index": None,        # assigned at header (emission order)
+                            "opened": False,           # holds the active-tool slot
+                            "started": False,          # v1.4.8: header is on the wire
                             "closed": False,
                             "call_id": item["call_id"],
                             "name": item["name"],
@@ -6591,15 +9002,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                             # then open immediately. While another tool IS open, text and
                             # thinking are already closed, so the deferred branch has
                             # nothing to close and emits nothing until it drains.
-                            if thinking_block_open:
-                                await emit("content_block_delta", {"type": "content_block_delta",
-                                    "index": thinking_index,
-                                    "delta": {"type": "signature_delta", "signature": ""}})
-                                await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
-                                thinking_block_open = False
-                            if text_block_open:
-                                await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
-                                text_block_open = False
+                            # (v1.4.8: in sanitize mode "open" takes the slot; the header
+                            # itself follows when the arguments complete.)
+                            await _close_text_and_thinking()
                             await _open_tool(st)
                     elif item.get("type") not in _KNOWN_ITEM_TYPES:
                         # v1.2.14 (R1): message/reasoning items are known and handled
@@ -6627,6 +9032,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     # canonical fallback when arguments.done omits the full string,
                     # in both sanitize modes. Sanitize mode still defers emission
                     # to .done; sanitize-off still forwards incrementally.
+                    try:
+                        _check_tool_argument_whitespace(st, frag)
+                    except _ToolWhitespaceError:
+                        # v1.4.8: retry once if no tool_use has reached the client;
+                        # otherwise fall through to the shared error path below.
+                        if await _retry_after_whitespace_trip():
+                            continue
+                        raise
                     st["args_buf"] += frag
                     # v1.2.14 (R3): forward incrementally only once the block is OPEN.
                     # A still-deferred tool just buffers (emitted_len stays behind, and
@@ -6690,8 +9103,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     # delta when it drains. Identical replay is ignored above, so
                     # downstream sees this exact delta at most once. Sanitize-off already
                     # forwarded (open) or buffered (deferred) the deltas — nothing to emit.
-                    if SHIM_SANITIZE_TOOLS and st["opened"] and not st["args_emitted"]:
-                        await _flush_tool_args_sanitized(st, complete_args)
+                    # v1.4.8: _start_tool emits the deferred header, then this one delta.
+                    if SHIM_SANITIZE_TOOLS and st["opened"]:
+                        await _start_tool(st)
                     continue
 
                 # --- an output item completed ---
@@ -6766,11 +9180,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                         st["finalized"] = True
                         st["completed_item"] = item
                         if st["opened"]:
-                            # Sanitize-mode fallback: if arguments.done never fired, emit
-                            # the single sanitized delta from the completed item's
-                            # arguments now, before the block closes.
-                            if SHIM_SANITIZE_TOOLS and not st["args_emitted"]:
-                                await _flush_tool_args_sanitized(st, st["arguments_done"][1])
+                            # Sanitize-mode fallback: if arguments.done never fired,
+                            # _close_tool -> _start_tool emits the header and the single
+                            # sanitized delta from the completed item's arguments now.
                             await _close_tool(st)
                             # An active tool just closed — drain the next deferred tool.
                             await _try_open_next_tool()
@@ -6906,11 +9318,18 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # Close the active tool that never received an output_item.done (at most one
             # is open under the R3 scheduler), then drain any still-deferred tools so
             # each becomes a complete non-overlapping tool_use block in added order.
+            # v1.4.8: a held (sanitize-mode) header gets its arguments from the terminal
+            # output or the buffered deltas first, or is dropped on an incomplete
+            # response, so the drain never sends an empty `{}` tool call.
             for item_id in tool_added_order:
                 st = tool_state[item_id]
                 if st["opened"] and not st.get("closed"):
-                    await emit("content_block_stop", {"type": "content_block_stop", "index": st["anth_index"]})
-                    st["closed"] = True
+                    if not _settle_unfinished_args(item_id, st):
+                        st["closed"] = True
+                        log.warning("dropped a tool call whose arguments never completed "
+                                    "(response status=%s)", _scrub_metadata(final_status))
+                        continue
+                    await _close_tool(st)
             await _drain_pending_tools()
 
             # v1.2.14 (R3): flush reasoning/text that arrived out of order (while a tool
@@ -6976,7 +9395,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 # on a backend-sourced usage (usage_source == "backend").
                 state.cached_tokens = cached_tokens
                 state.usage_source = "estimated" if usage_estimated else "backend"
-                state.tools_called = len(tool_state)
+                # v1.4.8: count only tool calls actually sent (a dropped one is not).
+                state.tools_called = sum(1 for st in tool_state.values() if st["started"])
 
             # v1.2.14 (R6): stop the heartbeat before the terminal frames so no ping
             # can be written after message_delta/message_stop.
@@ -7002,7 +9422,22 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # Transport, framing, controlled protocol, and narrow translation/state
             # failures after response start share one terminal-error lifecycle. Do
             # not catch asyncio.CancelledError: task cancellation remains cancellation.
-            if isinstance(e, _ProtocolError):
+            failure_type = "api_error"
+            if isinstance(e, _ToolWhitespaceError):
+                if whitespace_retry_failure is None:
+                    # v1.4.12: str(e) is the _ToolWhitespaceError literal.
+                    _record_backend_error("api_error", backend_type="tool_argument_guard",
+                                          backend_code="excessive_json_whitespace",
+                                          phase="upstream_tool_arguments",
+                                          failure_reason=str(e))
+                # Stop upstream before an error send can block on the downstream.
+                if stream_cm is not None:
+                    owned, stream_cm = stream_cm, None
+                    await _settle_stream_context(owned)
+            if isinstance(e, _ToolWhitespaceError) and whitespace_retry_failure is not None:
+                # v1.4.8: the retry's reopen failed; report that cause and type.
+                failure_kind, failure_type = whitespace_retry_failure
+            elif isinstance(e, _ProtocolError):
                 failure_kind = _scrub_and_trim_body(str(e))[:200] or "backend protocol error"
             elif isinstance(e, ValueError):
                 failure_kind = "backend SSE framing error"
@@ -7015,8 +9450,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 failure_kind = "backend stream translation error"
             # v1.2.8: include the scrubbed message — the exception TYPE alone made
             # the v1.2.7 field-validation incident undiagnosable from the log.
+            # v1.4.12: only a _ProtocolError's text is logged (every raise site is a
+            # shim-authored literal). A TypeError/KeyError/AttributeError/ValueError
+            # or httpx message can quote a backend value, so those log the constant
+            # failure_kind chosen above instead.
             log.error("stream failure after response start: %s: %s",
-                      type(e).__name__, _scrub_and_trim_body(str(e))[:200])
+                      type(e).__name__,
+                      _scrub_and_trim_body(str(e))[:200]
+                      if isinstance(e, _ProtocolError) else failure_kind)
             if disconnect_event.is_set():
                 return
             if not started:
@@ -7028,7 +9469,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                               "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
                 started = True
             try:
-                await _finalize_stream_failure(failure_kind)
+                await _finalize_stream_failure(failure_kind, failure_type)
             except Exception:
                 # A downstream write failure means the client is already gone; the
                 # finally block still closes the upstream stream promptly.
@@ -7092,6 +9533,10 @@ async def _handle_models(send):
     await _send_json(send, 200, {"data": [
         {"type": "model", "id": "openai/gpt-5.6-sol", "display_name": "gpt-5.6-sol"},
         {"type": "model", "id": "openai/gpt-5.5", "display_name": "gpt-5.5"},
+        {"type": "model", "id": "openai/gpt-6-astra", "display_name": "gpt-6-astra"},
+        {"type": "model", "id": "openai/gpt-6-sol", "display_name": "gpt-6-sol"},
+        {"type": "model", "id": "openai/gpt-6-luna", "display_name": "gpt-6-luna"},
+        {"type": "model", "id": "openai/gpt-6.1-sol", "display_name": "gpt-6.1-sol"},
     ]})
 
 
@@ -7263,8 +9708,17 @@ async def app(scope, receive, send):
         while True:
             message = await receive()
             if message["type"] == "lifespan.startup":
+                try:
+                    _start_diagnostics()
+                except RuntimeError:
+                    # Explicit failure prevents ASGI auto-detection from continuing.
+                    await send({"type": "lifespan.startup.failed",
+                                "message": _DIAGNOSTICS_STARTUP_ERROR})
+                    return
                 await send({"type": "lifespan.startup.complete"})
             elif message["type"] == "lifespan.shutdown":
+                if _DIAGNOSTICS is not None:
+                    await asyncio.to_thread(_DIAGNOSTICS.stop)
                 await send({"type": "lifespan.shutdown.complete"})
                 return
         return
@@ -7291,6 +9745,21 @@ async def app(scope, receive, send):
         except Exception:
             state.gpt_policy_snapshot = None
         token = _REQUEST_STATE.set(state)
+        original_send = send
+
+        async def observed_send(message):
+            # Capture actual ASGI body handoff; headers remain outside recorder.
+            _trace_event("downstream_send_start", message.get("body"),
+                         asgi_type=message.get("type"), status=message.get("status"),
+                         more_body=message.get("more_body"))
+            try:
+                await original_send(message)
+            except BaseException as error:
+                _trace_event("downstream_send_failure", exception=type(error).__name__)
+                raise
+            _trace_event("downstream_send_completed", asgi_type=message.get("type"))
+
+        send = observed_send
         _lifecycle_event("request_start", method="POST", path="/v1/messages")
         try:
             body = await _read_body(receive)

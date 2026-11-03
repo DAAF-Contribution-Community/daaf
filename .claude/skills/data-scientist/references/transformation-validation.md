@@ -29,7 +29,7 @@ pre_sample = df.sample(10, seed=42)  # Reproducible sample
 
 # Record relevant aggregates for validation
 pre_row_count = len(df)
-pre_null_counts = {col: df[col].null_count().item() for col in df.columns}
+pre_null_counts = {col: df[col].null_count() for col in df.columns}
 
 # For aggregations, record sums of additive metrics
 pre_total = df.select(pl.col("amount").sum()).item() if "amount" in df.columns else None
@@ -37,7 +37,7 @@ pre_total = df.select(pl.col("amount").sum()).item() if "amount" in df.columns e
 # ============================================================
 # STEP 2: Perform transformation (with comments)
 # ============================================================
-# GOAL: [State what you're trying to accomplish]
+# INTENT: [State what you're trying to accomplish]
 # EXPECTED: [State expected changes - row count, columns, etc.]
 # INVARIANTS: [State what should NOT change]
 
@@ -91,7 +91,7 @@ pre_total <- if ("amount" %in% names(df)) sum(df$amount, na.rm = TRUE) else NULL
 # ============================================================
 # STEP 2: Perform transformation (with comments)
 # ============================================================
-# GOAL: [State what you're trying to accomplish]
+# INTENT: [State what you're trying to accomplish]
 # EXPECTED: [State expected changes - row count, columns, etc.]
 # INVARIANTS: [State what should NOT change]
 
@@ -132,8 +132,8 @@ Different operations have different expected row count behaviors:
 | Filter | Decrease (or stay same if no matches filtered) |
 | Select | Same |
 | With_columns | Same |
-| Join (inner) | Usually decrease; ≤ min(left, right) |
-| Join (left) | ≥ left count (can increase if many-to-many) |
+| Join (inner) | ≤ left count if right keys are unique; a repeated matching right key can push it above both inputs |
+| Join (left) | = left count if right keys are unique; more if a matching right key repeats |
 | Join (outer) | ≥ max(left, right) |
 | Group_by.agg | = number of unique groups |
 | Concat (vertical) | = sum of input row counts |
@@ -231,6 +231,15 @@ result_count = len(result_df)
 print(f"Post-join shape: {result_df.shape}")
 print(f"Left: {left_count:,}, Right: {right_count:,}, Result: {result_count:,}")
 
+# Fan-out: a repeated right key duplicates every left row it matches, even when the
+# result stays smaller than the right table. Or let polars enforce it:
+# left_df.join(right_df, on=join_keys, how="left", validate="m:1")
+right_dup_rows = right_df.select(join_keys).is_duplicated().sum()
+if right_dup_rows > 0:
+    print(f"WARNING: {right_dup_rows:,} right rows share a join key — each matching left row is duplicated (fan-out)")
+if join_type == "left" and result_count != left_count:
+    print(f"WARNING: left join changed the row count ({left_count:,} -> {result_count:,})")
+
 if result_count > max(left_count, right_count):
     print(f"WARNING: Result has more rows than either input — possible many-to-many duplication!")
 
@@ -257,6 +266,20 @@ cat(sprintf("Post-join shape: %d x %d\n", result_count, ncol(result_df)))
 cat(sprintf("Left: %s, Right: %s, Result: %s\n",
             format(left_count, big.mark = ","), format(right_count, big.mark = ","),
             format(result_count, big.mark = ",")))
+
+# Fan-out: a repeated right key duplicates every left row it matches, even when the
+# result stays smaller than the right table. Or let dplyr enforce it:
+# left_join(left_df, right_df, by = join_keys, relationship = "many-to-one")
+right_keys_df <- right_df[join_keys]
+right_dup_rows <- sum(duplicated(right_keys_df) | duplicated(right_keys_df, fromLast = TRUE))
+if (right_dup_rows > 0) {
+  cat(sprintf("WARNING: %s right rows share a join key -- each matching left row is duplicated (fan-out)\n",
+              format(right_dup_rows, big.mark = ",")))
+}
+if (join_type == "left" && result_count != left_count) {
+  cat(sprintf("WARNING: left join changed the row count (%s -> %s)\n",
+              format(left_count, big.mark = ","), format(result_count, big.mark = ",")))
+}
 
 if (result_count > max(left_count, right_count)) {
   cat("WARNING: Result has more rows than either input -- possible many-to-many duplication!\n")
@@ -318,7 +341,10 @@ pre_sum = pre_df[sum_column].sum()
 post_sum = post_df[sum_column].sum()
 diff = abs(pre_sum - post_sum)
 print(f"Sum of '{sum_column}': {pre_sum:,.2f} → {post_sum:,.2f} (diff: {diff:,.2f})")
-assert diff < 1e-6, f"STOP: Sum changed during aggregation by {diff}"
+# Relative tolerance: regrouping float additions changes the last bits, so a fixed 1e-6
+# false-alarms on large totals; scale by the sum of absolute values (signs may cancel)
+tol = 1e-12 * max(1.0, pre_df[sum_column].abs().sum())
+assert diff <= tol, f"STOP: Sum changed during aggregation by {diff}"
 ```
 
 **R:**
@@ -331,7 +357,10 @@ cat(sprintf("Sum of '%s': %s -> %s (diff: %s)\n",
             sum_column, format(pre_sum, big.mark = ",", nsmall = 2),
             format(post_sum, big.mark = ",", nsmall = 2),
             format(diff_val, big.mark = ",", nsmall = 2)))
-stopifnot("STOP: Sum changed during aggregation" = diff_val < 1e-6)
+# Relative tolerance: regrouping float additions changes the last bits, so a fixed 1e-6
+# false-alarms on large totals; scale by the sum of absolute values (signs may cancel)
+tol <- 1e-12 * max(1, sum(abs(pre_df[[sum_column]]), na.rm = TRUE))
+stopifnot("STOP: Sum changed during aggregation" = diff_val <= tol)
 ```
 
 ### Group Count Validation
@@ -361,8 +390,8 @@ stopifnot("STOP: Group count mismatch" = expected_groups == actual_groups)
 ```python
 # Validate row accounting — all rows accounted for in aggregation
 pre_count = len(pre_df)
-group_sizes = pre_df.group_by(group_columns).len()
-total_accounted = group_sizes["len"].sum()
+# Include pl.len().alias("n_rows") in the aggregation that produced post_df
+total_accounted = post_df["n_rows"].sum()
 print(f"Row accounting: {pre_count:,} original rows, {total_accounted:,} accounted for in groups")
 assert pre_count == total_accounted, f"STOP: {pre_count - total_accounted} rows unaccounted for!"
 ```
@@ -371,8 +400,7 @@ assert pre_count == total_accounted, f"STOP: {pre_count - total_accounted} rows 
 ```r
 # Validate row accounting -- all rows accounted for in aggregation
 pre_count <- nrow(pre_df)
-group_sizes <- pre_df |> group_by(across(all_of(group_columns))) |> summarise(n = n(), .groups = "drop")
-total_accounted <- sum(group_sizes$n)
+total_accounted <- sum(post_df$n_rows)  # add n_rows = n() to the summarise() that built post_df
 cat(sprintf("Row accounting: %s original rows, %s accounted for in groups\n",
             format(pre_count, big.mark = ","), format(total_accounted, big.mark = ",")))
 stopifnot("STOP: Rows unaccounted for" = pre_count == total_accounted)
@@ -390,7 +418,7 @@ Manual spot-checking catches errors that automated checks miss.
 random_sample = df.sample(5, seed=42)
 edge_sample = pl.concat([df.head(2), df.tail(2)])
 null_cols = [col for col in df.columns if df[col].null_count() > 0]
-null_sample = df.filter(pl.col(null_cols[0]).is_null()).head(2) if null_cols else pl.DataFrame()
+null_sample = df.filter(pl.col(null_cols[0]).is_null()).head(2) if null_cols else df.clear()
 sample = pl.concat([random_sample, edge_sample, null_sample]).unique().head(10)
 print(f"Verification sample: {len(sample)} rows")
 print(sample)
@@ -425,7 +453,7 @@ print("2. Transformation logic was applied correctly")
 print("3. Output values are correct")
 print()
 
-sample = select_verification_sample(pre_df, n=5)
+sample = pre_df.sample(5, seed=42)
 sample_ids = sample["id"].to_list()
 
 print("BEFORE transformation:")
@@ -498,12 +526,20 @@ stopifnot("Expected integer for id" = is.integer(df$id))
 **Python:**
 ```python
 # Problem: Type conversion can silently create nulls or lose precision
-pre_null_count = df["column"].null_count().item()
+pre_null_count = df["column"].null_count()
 
-# This might silently fail
-df = df.with_columns(pl.col("column").cast(pl.Int64))
+# Float -> Int casts truncate silently (1.7 -> 1) and create no nulls: count changed values first
+if df["column"].dtype.is_float():
+    n_truncated = df.select(
+        (pl.col("column") != pl.col("column").cast(pl.Int64, strict=False).cast(pl.Float64)).sum()
+    ).item()
+    if n_truncated > 0:
+        print(f"WARNING: Casting to Int64 will truncate {n_truncated} non-integer values!")
 
-post_null_count = df["column"].null_count().item()
+# strict=False turns unparseable values into nulls (the default strict=True raises instead)
+df = df.with_columns(pl.col("column").cast(pl.Int64, strict=False))
+
+post_null_count = df["column"].null_count()
 new_nulls = post_null_count - pre_null_count
 
 if new_nulls > 0:
@@ -514,6 +550,14 @@ if new_nulls > 0:
 ```r
 # Problem: Type conversion can silently create NAs or lose precision
 pre_na_count <- sum(is.na(df$column))
+
+# Double -> integer conversion truncates silently (1.7 -> 1) and creates no NA: count changed values first
+if (is.double(df$column)) {
+  n_truncated <- sum(df$column != trunc(df$column), na.rm = TRUE)
+  if (n_truncated > 0) {
+    cat(sprintf("WARNING: Converting to integer will truncate %d non-integer values!\n", n_truncated))
+  }
+}
 
 # This might silently introduce NAs (e.g., as.integer("abc") -> NA)
 df <- df |> mutate(column = as.integer(column))
@@ -555,22 +599,26 @@ if (nrow(result) == 0) {
 
 **Python:**
 ```python
-# Check join key types match (type mismatches cause silent join failures)
+# Check join key types match (polars raises on Int vs String and upcasts compatible numeric
+# types; the silent case is same-dtype formatting, e.g. '01' vs '1', which the key-overlap
+# line in Pre-Join Checks catches)
 for key in join_keys:
     left_type = left_df[key].dtype
     right_type = right_df[key].dtype
     if left_type != right_type:
-        print(f"WARNING: Type mismatch for '{key}': {left_type} vs {right_type} — join may fail silently!")
+        print(f"WARNING: Type mismatch for '{key}': {left_type} vs {right_type} — align the key types before joining")
 ```
 
 **R:**
 ```r
-# Check join key types match (type mismatches cause silent join failures)
+# Check join key types match (dplyr errors on incompatible types and matches integer with
+# double; the silent case is same-type formatting, e.g. "01" vs "1", which the key-overlap
+# line in Pre-Join Checks catches)
 for (key in join_keys) {
   left_type <- class(left_df[[key]])
   right_type <- class(right_df[[key]])
   if (!identical(left_type, right_type)) {
-    cat(sprintf("WARNING: Type mismatch for '%s': %s vs %s -- join may fail silently!\n",
+    cat(sprintf("WARNING: Type mismatch for '%s': %s vs %s -- align the key types before joining\n",
                 key, left_type, right_type))
   }
 }
@@ -580,20 +628,21 @@ for (key in join_keys) {
 
 **Python:**
 ```python
-# Problem: Groupby excludes null keys by default in some operations
+# Problem: Joins do not match null keys by default (group_by keeps them as a group)
 null_key_rows = df.filter(pl.col("group_key").is_null())
 if len(null_key_rows) > 0:
     print(f"WARNING: {len(null_key_rows)} rows have null group keys")
-    print("These may be excluded from groupby operations!")
+    print("They form their own null group in group_by and match nothing in a join!")
 ```
 
 **R:**
 ```r
-# Problem: group_by drops NA keys by default in some operations
+# Problem: group_by keeps NA as a group and joins match NA by default (na_matches = "na");
+# check NA keys explicitly
 null_key_rows <- df |> filter(is.na(group_key))
 if (nrow(null_key_rows) > 0) {
   cat(sprintf("WARNING: %d rows have NA group keys\n", nrow(null_key_rows)))
-  cat("These may be excluded from group_by operations!\n")
+  cat("They form their own NA group in group_by and match other NA keys in a join!\n")
 }
 ```
 

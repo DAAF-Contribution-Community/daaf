@@ -69,9 +69,19 @@ def luna_model():
         effort_level="high",
         context_window_tokens=370_000,
         actual_billing_treatment="not_separately_billed",
+        # compute_accounting() prices from this block alone since 2026-09-29 (no
+        # LUNA_* constant fallback), so it carries a complete schedule; rates
+        # mirror the gpt-56-luna-chatgpt entry in config/models.yaml.
         api_equivalent_pricing={
             "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
             "accessed_at": "2026-07-15",
+            "threshold_input_tokens": 272_000,
+            "short_context": {
+                "input": 0.20, "cached_input": 0.02, "cache_write": 0.25, "output": 1.20,
+            },
+            "long_context": {
+                "input": 0.40, "cached_input": 0.04, "cache_write": 0.50, "output": 1.80,
+            },
         },
     )
 
@@ -159,9 +169,9 @@ class ArtifactSerializationTests(unittest.TestCase):
         self.assertEqual("not_separately_billed", luna_record["actual_billing"]["charge_status"])
         self.assertIsNone(luna_record["api_equivalent"]["cost_usd"])
         # 0.0456 under the 2026-08-11 Luna 5x price cut (120k uncached input *
-        # 0.20/M + 18k output * 1.20/M); was 0.228 under the prior schedule. The
-        # fixture supplies no short_context block, so this falls back to the
-        # cost_estimator LUNA_SHORT_CONTEXT_RATES constants.
+        # 0.20/M + 18k output * 1.20/M); was 0.228 under the prior schedule.
+        # Priced from the fixture's own short_context block (the former
+        # LUNA_SHORT_CONTEXT_RATES fallback was removed 2026-09-29).
         self.assertAlmostEqual(0.0456, luna_record["api_equivalent"]["short_context_uncached_scenario_usd"])
         self.assertEqual([luna.id], luna_record["model_identity"]["claude_cli_model_usage_ids"])
         self.assertIsNone(luna_record["model_identity"]["backend_confirmed_model_id"])
@@ -537,10 +547,16 @@ class ChildModelPurityTests(unittest.TestCase):
         with patch.dict(os.environ, fake_creds):
             models = load_models(Path("/daaf/benchmarks/config/models.yaml"))
 
-        pinned = [k for k, v in models.items() if ":" in v.id]
+        expected_pinned = {
+            "deepseek-v4-flash-0731", "deepseek-v4-pro", "gemini-31-pro",
+            "gemma-4-26b", "gemma-4-31b", "glm-51", "grok-46", "inkling",
+            "inkling-small", "kimi-k26", "kimi-k27-code", "nemotron-3-ultra",
+            "qwen-36-27b", "qwen-38-24t-a95b", "qwen-38-27b",
+        }
+        pinned = {k for k, v in models.items() if ":" in v.id}
         self.assertEqual(
-            10, len(pinned),
-            f"expected 10 provider-pinned registry entries, got {pinned}",
+            expected_pinned, pinned,
+            "provider-pinned registry keys changed; reconcile expected coverage",
         )
         unpinned_wire_ids = sorted(
             (config.id, config.wire_id)

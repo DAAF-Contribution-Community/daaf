@@ -500,6 +500,30 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
+        It "the docker cp recovery hint names the normalized container (-Work -> work-daaf-docker-1)" {
+            # Twin of the update_daaf.bats "project name (update)" hint test. Compose
+            # names the container "<project>-daaf-docker-1" with the NORMALIZED project
+            # name, so the hint must name "work-daaf-docker-1", not "-Work-daaf-docker-1".
+            $savedProject = $env:DAAF_PROJECT_NAME
+            try {
+                $env:DAAF_PROJECT_NAME = '-Work'
+                Mock docker {
+                    $allArgs = $args -join " "
+                    if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                    if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
+                    # docker cp fails
+                    $global:LASTEXITCODE = 1
+                    return ""
+                }
+                $output = Sync-HostScript "samehash" 6>&1
+                ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
+                @($output | Where-Object { "$_" -clike "*docker cp work-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1*" }).Count | Should -Be 1
+                @($output | Where-Object { "$_" -clike "*docker cp -Work*" }).Count | Should -Be 0
+            } finally {
+                if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+            }
+        }
+
         It "existence-heals with an empty OldHead (up-to-date path)" {
             Mock docker {
                 $allArgs = $args -join " "
@@ -1021,6 +1045,127 @@ Describe "update_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
+    # Test-ConflictStateClear / Get-GitOperationInProgress
+    # -----------------------------------------------------------------
+    # The check Resolve-Conflict and Resolve-StashConflict run after an
+    # updater-launched Claude Code session. Option 1 needs an interactive console,
+    # which Pester cannot fake, so the check is tested directly. "Conflicts
+    # resolved!" appears only when no unmerged files remain AND git has no merge,
+    # rebase or cherry-pick in progress.
+    Context "Test-ConflictStateClear" {
+        It "a merge still in progress prints no success message and returns false" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "" }
+                if ($a -match 'MERGE_HEAD') { return "merge" }
+                return ""
+            }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            $text = ($result | Where-Object { $_ -isnot [bool] }) -join "`n"
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $false
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'the merge is not finished yet'
+            $text | Should -Match 'git commit -m "Resolved merge conflicts from DAAF update"'
+            $text | Should -Match '\.\\update_daaf\.ps1'
+            $text | Should -Match 'git -C /daaf merge --abort'
+        }
+
+        It "a rebase still in progress points to git rebase --continue" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "" }
+                if ($a -match 'rebase-merge') { return "rebase" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "rebase" "rebase --abort" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'git rebase --continue'
+            $text | Should -Match 'git -C /daaf rebase --abort'
+        }
+
+        It "nothing left in progress prints the success message and returns true" {
+            Mock docker { $global:LASTEXITCODE = 0; return "" }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $true
+            (($result | Where-Object { $_ -isnot [bool] }) -join "`n") | Should -Match 'Conflicts resolved!'
+        }
+
+        It "returns exactly one boolean on its output stream" {
+            Mock docker { $global:LASTEXITCODE = 0; return "" }
+            $out = @(Test-ConflictStateClear "stash" 6>$null)
+            $out.Count | Should -Be 1
+            $out[0] | Should -BeOfType [bool]
+        }
+
+        It "unmerged files left are listed and no success message is printed" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "CLAUDE.md" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "merge" "merge --abort" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'Some conflicts still remain in these files:'
+            $text | Should -Match '  CLAUDE\.md'
+        }
+
+        It "fails closed when the git state probe cannot run" {
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'MERGE_HEAD') { $global:LASTEXITCODE = 1; return }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $false
+            $text = ($result | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match "could not check git's state"
+        }
+
+        It "stash kind with a merge in progress offers the abort and the stash pop" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'MERGE_HEAD') { return "merge" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "stash" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'git -C /daaf merge --abort'
+            $text | Should -Match 'git -C /daaf stash pop'
+        }
+    }
+
+    Context "Get-GitOperationInProgress" {
+        It "probes merge, rebase and cherry-pick state in the repo's .git directory" {
+            $script:ProbeArgs = $null
+            Mock docker { $script:ProbeArgs = ($args -join ' '); $global:LASTEXITCODE = 0; return "cherry-pick" }
+            Get-GitOperationInProgress | Should -Be "cherry-pick"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/MERGE_HEAD*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/rebase-merge*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/rebase-apply*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/CHERRY_PICK_HEAD*"
+            $script:ProbeArgs | Should -Not -BeLike '*"*'
+        }
+
+        It "returns unknown when docker sets no exit code" {
+            Mock docker { return "" }
+            Get-GitOperationInProgress | Should -Be "unknown"
+        }
+
+        It "is a no-op under DAAF_DRY_RUN" {
+            $env:DAAF_DRY_RUN = "1"
+            Mock docker { }
+            try { Get-GitOperationInProgress | Should -Be "" } finally { Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue }
+            Should -Invoke docker -Times 0
+        }
+    }
+
+    # -----------------------------------------------------------------
     # Safety: Mutex and trap
     # -----------------------------------------------------------------
     Context "Safety mechanisms" {
@@ -1371,12 +1516,14 @@ function docker {
 
     # An env-origin DAAF_BRANCH tag gives an informative REFUSAL (exit 1): the
     # updater names the tag, points at the supported re-install path, and states
-    # which branch ongoing updates track. It never persists a tag. (Repurposed
-    # from the former "tag-specific error" test after the env-tag design decision;
-    # the file-origin tag path below is the softer warn-and-continue arm.)
+    # which branch ongoing updates track. It never persists a tag. The file-origin
+    # tag path below is the softer warn-and-continue arm.
     It "env-origin DAAF_BRANCH tag is refused with re-install guidance" {
         $env:DAAF_NESTED = "1"
-        $env:DAAF_BRANCH = "v2.1.0"
+        $env:DAAF_BRANCH = "v3.0.2"
+        # The default project prints no DAAF_PROJECT_NAME prefix on the command.
+        $savedProject = $env:DAAF_PROJECT_NAME
+        Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
         $wrapperScript = Join-Path $script:TestDir "test_wrapper_tag.ps1"
         Set-Content -Path $wrapperScript -Value @'
 $ErrorActionPreference = "Stop"
@@ -1394,8 +1541,8 @@ function docker {
         }
         "*compose exec*git -C /daaf fetch*" { return }
         "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
-        "*compose exec*git -C /daaf rev-parse --verify*origin/v2.1.0*" { $global:LASTEXITCODE = 1; return }
-        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v2.1.0*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/v3.0.2*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v3.0.2*" { $global:LASTEXITCODE = 0; return }
         "*compose exec*git -C /daaf branch*" { return }
         "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
         "*compose exec*git*" { return }
@@ -1408,16 +1555,121 @@ function docker {
         $output = & pwsh -NoProfile -File $wrapperScript *>&1
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -Be 1
-        $outputStr | Should -BeLike "*v2.1.0*"
+        $outputStr | Should -BeLike "*v3.0.2*"
         $outputStr | Should -BeLike "*version tag*"
         $outputStr | Should -BeLike "*not a branch*"
-        # Names the supported re-install path (pinned to the tag)...
-        $outputStr | Should -BeLike "*install.ps1 | iex*"
+        # Names the supported re-install path: forced, pinned to the tag, run from
+        # this folder's parent, printed as a quoted absolute path (never `cd ..`).
+        $outputStr | Should -BeLike ('*  $env:DAAF_FORCE_REINSTALL = "1"; $env:DAAF_BRANCH = ''v3.0.2''; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex*')
+        $outputStr | Should -BeLike ("*  cd `"" + (Split-Path -Parent $script:TestDir.FullName) + "`"*")
+        $outputStr | Should -Not -BeLike "*cd ..*"
         # ...states which branch ongoing updates track...
         $outputStr | Should -BeLike "*default branch*"
         # ...and never saves a tag as the update branch.
         $outputStr | Should -BeLike "*never saved as your update branch*"
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject }
+    }
+
+    # main's install.ps1 downloads host scripts (daaf.bat among them) that
+    # releases before v3.0.2 lack, so a forced re-install onto such a tag would
+    # overwrite files and then stop. The updater prints no re-install command.
+    It "env-origin DAAF_BRANCH tag <Tag> (older than v3.0.2) gets no re-install command" -ForEach @(
+        @{ Tag = 'v2.1.0' }
+        @{ Tag = 'v3.0.1' }
+    ) {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = $Tag
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_oldtag.ps1"
+        Set-Content -Path $wrapperScript -Value (@'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/TAGVALUE*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/TAGVALUE*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@ -replace 'TAGVALUE', $Tag)
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*version tag*"
+        $outputStr | Should -BeLike "*Moving an installation onto a release older than v3.0.2 is not*"
+        $outputStr | Should -BeLike "*installing a release older than v3.0.0*"
+        $outputStr | Should -BeLike "*in a new folder can re-install over your default installation (daaf)*"
+        $outputStr | Should -Not -BeLike "*installed fresh*"
+        $outputStr | Should -BeLike "*https://github.com/DAAF-Contribution-Community/daaf/issues*"
+        $outputStr | Should -Not -BeLike "*DAAF_FORCE_REINSTALL*"
+        $outputStr | Should -Not -BeLike "*install.ps1 | iex*"
+        $outputStr | Should -BeLike "*never saved as your update branch*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # migrate_daaf.ps1 works only on the default install's volume, so an
+    # unconnected install with its own project name is told to re-add origin.
+    It "no remote: the default project gets the migrate one-liner, '<Project>' gets the re-link route" -ForEach @(
+        @{ Project = 'daaf'; Migrate = $true }
+        @{ Project = 'work'; Migrate = $false }
+    ) {
+        $env:DAAF_NESTED = "1"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        $savedProject = $env:DAAF_PROJECT_NAME
+        try {
+            $env:DAAF_PROJECT_NAME = $Project
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper_noremote.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $outputStr = $output | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $outputStr | Should -BeLike "*not connected to the update server*"
+            if ($Migrate) {
+                $outputStr | Should -BeLike "*  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 | iex*"
+            } else {
+                $outputStr | Should -BeLike "*  docker compose -p work exec daaf-docker git -C /daaf remote add origin https://github.com/DAAF-Contribution-Community/daaf.git*"
+                $outputStr | Should -Not -BeLike "*migrate_daaf.ps1 | iex*"
+            }
+        } finally {
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
     }
 
     # A file-origin DAAF_BRANCH tag (in environment_settings.txt, NOT the env)
@@ -1612,6 +1864,73 @@ function docker {
         $content | Should -Match 'Mutex\.ReleaseMutex'
         # Wait-AndExit also releases mutex
         $content | Should -Match 'function Wait-AndExit'
+    }
+
+    It "a project name that normalizes to nothing ('<_>') is refused, exit 1, before the lock and any docker call" -ForEach @('___', '@@') {
+        # Twin of the update_daaf.bats refusal test. Compose cannot be relied on to use
+        # such a name, and the printed `docker cp` hints would name no container.
+        $env:DAAF_NESTED = "1"
+        $savedProject = $env:DAAF_PROJECT_NAME
+        $callLog = Join-Path $script:TestDir "docker-calls.log"
+        $env:UPDATE_TEST_CALL_LOG = $callLog
+        try {
+            $env:DAAF_PROJECT_NAME = $_
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    Add-Content -LiteralPath $env:UPDATE_TEST_CALL_LOG -Value ($args -join ' ')
+    $global:LASTEXITCODE = 0
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $exitCode = $LASTEXITCODE
+            $outputStr = $output | Out-String
+            $exitCode | Should -Be 1
+            $block = @(
+                "ERROR: DAAF_PROJECT_NAME='$_' cannot be used as a Docker Compose",
+                "       project name. A project name may use lowercase letters, digits, '-'",
+                "       and '_', and must start with a letter or digit. Fix it in",
+                "       environment_settings.txt (or your shell), then run the update again.",
+                '       Nothing was changed.')
+            $outputStr | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # Before the lock and the banner, and no docker call at all.
+            $outputStr | Should -Not -BeLike "*DAAF Updater*"
+            Test-Path -LiteralPath $callLog | Should -BeFalse
+        } finally {
+            Remove-Item Env:UPDATE_TEST_CALL_LOG -ErrorAction SilentlyContinue
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
+    }
+
+    It "control: a normal project name passes the check and reaches docker (the call log is written)" {
+        # Without this control, "no call log" above could pass because the fake never
+        # logs at all.
+        $env:DAAF_NESTED = "1"
+        $savedProject = $env:DAAF_PROJECT_NAME
+        $callLog = Join-Path $script:TestDir "docker-calls.log"
+        $env:UPDATE_TEST_CALL_LOG = $callLog
+        try {
+            $env:DAAF_PROJECT_NAME = 'Work'
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    Add-Content -LiteralPath $env:UPDATE_TEST_CALL_LOG -Value ($args -join ' ')
+    $global:LASTEXITCODE = 1
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $outputStr = $output | Out-String
+            $outputStr | Should -Not -BeLike "*cannot be used as a Docker Compose*"
+            $outputStr | Should -BeLike "*DAAF Updater*"
+            Test-Path -LiteralPath $callLog | Should -BeTrue
+        } finally {
+            Remove-Item Env:UPDATE_TEST_CALL_LOG -ErrorAction SilentlyContinue
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
     }
 }
 
@@ -1996,5 +2315,176 @@ function docker {
         # Still no menu -- the interrupted update is finished first, never mixed.
         $outputStr | Should -Not -BeLike "*1) MERGE (recommended)*"
         $outputStr | Should -Not -BeLike "*local commit(s) on*"
+    }
+}
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G1 fetch, G2 readiness, G6)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas). The fetch
+# capture ("Git reported:") and the readiness capture ("Docker reported:") are shown
+# to the user, so they run under 'Continue'; the readiness errors are kept in memory
+# (no temp file). pwsh 7 keeps the lines either way, so the behavioral tests cannot
+# catch a revert on their own: the structural pin can.
+
+Describe "update_daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/update_daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+
+        # For each docker capture into $Var: the value of the nearest
+        # $ErrorActionPreference assignment before it (the bracket's mode) and after
+        # it (the restore).
+        function Get-TestEapBracket {
+            param($Ast, [string]$Var)
+            $capName = $Var
+            $eap = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+            }, $true) | Sort-Object { $_.Extent.StartOffset })
+            $caps = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq $capName) -and ($n.Right.Extent.Text -match '\bdocker\s')
+            }, $true))
+            foreach ($c in $caps) {
+                $open = @($eap | Where-Object { $_.Extent.EndOffset -le $c.Extent.StartOffset }) | Select-Object -Last 1
+                $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $c.Extent.EndOffset }) | Select-Object -First 1
+                [pscustomobject]@{ Text = $c.Right.Extent.Text; Open = $open.Right.Extent.Text; Close = $close.Right.Extent.Text; Line = $c.Extent.StartLineNumber }
+            }
+        }
+
+        # Run the real script in a child pwsh through a wrapper whose `docker`
+        # function answers like the state-machine tests above; $Arms are extra
+        # switch arms placed first. __DIR__ in an arm becomes the test folder.
+        function Invoke-UpdateUnderWrapper {
+            param([string]$Arms)
+            $dir = Join-Path $TestDrive ("upd-" + [guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $dir
+            New-FakeComposeFile -Directory $dir
+            $wrapper = @'
+$ErrorActionPreference = "Stop"
+function Start-Sleep { param([int]$Seconds) $null = $Seconds }
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+__ARMS__
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "compose ps -q daaf-docker" { Write-Output "abc123" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+            $wrapper = $wrapper.Replace('__ARMS__', $Arms.Replace('__DIR__', $dir))
+            $wrapperPath = Join-Path $dir 'test_wrapper.ps1'
+            Set-Content -Path $wrapperPath -Value $wrapper
+            Add-Content -Path $wrapperPath -Value ". '$script:ScriptPath'"
+            $savedNested = $env:DAAF_NESTED
+            $savedBranch = $env:DAAF_BRANCH
+            Push-Location -LiteralPath $dir
+            try {
+                $env:DAAF_NESTED = "1"
+                Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+                $output = & pwsh -NoProfile -File $wrapperPath *>&1
+                $code = $LASTEXITCODE
+            } finally {
+                Pop-Location
+                $env:DAAF_NESTED = $savedNested
+                $env:DAAF_BRANCH = $savedBranch
+            }
+            [pscustomobject]@{ Output = ($output | Out-String); ExitCode = $code; Dir = $dir }
+        }
+
+        # A native fake that writes "<prefix> (attempt N)" to stderr and exits
+        # with $Exit; N counts its calls (in <folder>/count).
+        function New-TestStderrFake {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+            param([string]$Dir, [string]$Prefix, [int]$Exit)
+            $null = New-Item -ItemType Directory -Force -Path $Dir
+            $path = Join-Path $Dir 'errfake'
+            $count = Join-Path $Dir 'count'
+            $body = "#!/usr/bin/env bash`nn=`$(( `$(cat '$count' 2>/dev/null || echo 0) + 1 ))`necho `"`$n`" > '$count'`necho `"$Prefix (attempt `$n)`" >&2`nexit $Exit`n"
+            [System.IO.File]::WriteAllText($path, $body)
+            & chmod +x $path
+            $path
+        }
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G1/G2: the fetch and readiness captures merge stderr (2>&1) inside a 'Continue' bracket that restores `$savedEAP" {
+        $expected = @{ '$fetchOutput' = 1; '$readyOut' = 1 }
+        foreach ($var in $expected.Keys) {
+            $sites = @(Get-TestEapBracket -Ast $Ast -Var $var)
+            $sites.Count | Should -Be $expected[$var] -Because "$var captures"
+            foreach ($s in $sites) {
+                $s.Text | Should -Match '2>&1' -Because "$var (line $($s.Line)) merges stderr"
+                $s.Open | Should -BeExactly '"Continue"' -Because "$var (line $($s.Line)) is shown to the user"
+                $s.Close | Should -BeExactly '$savedEAP' -Because "$var (line $($s.Line)) restores the caller's EAP"
+            }
+        }
+        # G2: no stderr-to-file redirect and no temp file for the readiness errors.
+        $code = @((Get-Content -LiteralPath $ScriptPath) | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '2>>' -or $_ -match 'readyLog' }).Count | Should -Be 0
+    }
+
+    It "G1: a failed fetch shows git's stderr line under 'Git reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $fake = New-TestStderrFake -Dir (Join-Path $TestDrive 'fetchfake') -Prefix "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com" -Exit 128
+        $r = Invoke-UpdateUnderWrapper -Arms "        `"*compose exec*git -C /daaf fetch*`" { & '$fake'; return }"
+        $r.ExitCode | Should -Be 1
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Git reported:')
+        $i | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[$i + 1] | Should -BeExactly "    fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com (attempt 1)"
+    }
+
+    It "G2: a readiness timeout shows the last five of Docker's stderr lines under 'Docker reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # The container is not running (empty `ps -q`), so the update starts it and
+        # polls 30 times; every poll fails with a numbered stderr line.
+        $fake = New-TestStderrFake -Dir (Join-Path $TestDrive 'readyfake') -Prefix 'Error response from daemon: container fake is restarting' -Exit 1
+        $arms = "        `"compose ps -q daaf-docker`" { return }`n        `"compose exec -T daaf-docker true`" { & '$fake'; return }"
+        $r = Invoke-UpdateUnderWrapper -Arms $arms
+        $r.ExitCode | Should -Be 1
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Docker reported:')
+        $i | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[($i + 1)..($i + 6)] | Should -Be @(
+            '    Error response from daemon: container fake is restarting (attempt 26)'
+            '    Error response from daemon: container fake is restarting (attempt 27)'
+            '    Error response from daemon: container fake is restarting (attempt 28)'
+            '    Error response from daemon: container fake is restarting (attempt 29)'
+            '    Error response from daemon: container fake is restarting (attempt 30)'
+            '')
+        $r.Output | Should -BeLike "*ERROR: The DAAF container started but is not responding after 60 seconds.*"
     }
 }

@@ -130,8 +130,12 @@ fi
 CONTAINER_ID=$(docker compose ps -aq daaf-docker 2>/dev/null || true)
 if [ -z "${CONTAINER_ID}" ]; then
     echo "ERROR: No daaf-docker container found (running or stopped)."
-    echo "Have you run the DAAF installer? The container must exist (running or stopped)"
-    echo "for this script to copy the updated files from it."
+    echo "The rebuild copies its build files out of that container, so it must exist."
+    echo "'docker compose down' removes it, for example. To create it again, choose"
+    echo "1) Start Claude Code in the DAAF Control Panel (bash daaf.sh), type /exit,"
+    echo "then choose 10) Rebuild Container again. Without the Control Panel: run"
+    echo "'bash run_daaf.sh bash', type exit, then run 'bash rebuild_daaf.sh' again."
+    echo "If DAAF was never installed from this folder, run the installer instead."
     exit 1
 fi
 
@@ -195,18 +199,16 @@ if [ "${DOCKERFILE_CHANGED}" = "no" ] && [ "${COMPOSEFILE_CHANGED}" = "no" ]; th
 fi
 
 # --- Apple Silicon (arm64) build-time notice ---
-# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
-# so Apple Silicon no longer compiles R packages from source. A rebuild that
-# touches an early layer still re-runs the sizable package installs, but there is
-# no arm64-specific source-compile penalty. A brief heads-up keeps the quiet
-# install phase from looking like a hang.
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries, like x86_64, so
+# R packages are not compiled from source. A rebuild that touches an early layer
+# still re-runs the sizable package installs; a brief heads-up keeps their quiet
+# stretches from looking like a hang.
 DAAF_ARCH="$(uname -m 2>/dev/null || echo unknown)"
 if [ "${DAAF_ARCH}" = "arm64" ] || [ "${DAAF_ARCH}" = "aarch64" ]; then
     echo ""
     echo "NOTE: arm64 detected (Apple Silicon or other ARM64 host). If this rebuild"
     echo "      re-runs the package layers it takes a while with some quiet stretches"
-    echo "      -- this is normal, not a hang. arm64 now installs pre-built R binaries"
-    echo "      (no source compilation)."
+    echo "      -- this is normal, not a hang."
     echo ""
 fi
 

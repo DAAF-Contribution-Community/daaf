@@ -1,0 +1,49 @@
+{
+ "rows": [
+  {
+   "boundary_conditions": null,
+   "certainty": "moderate",
+   "certainty_reason": "A trial given substantial weight [user_f1c70001-c01] and an event study [user_f1c70002-c01] agree in direction; held down for risk of bias (voluntary adoption, user_f1c70002-c02).",
+   "certainty_scheme": "stated",
+   "claim_ids_json": "[\"user_f1c70001-c01\",\"user_f1c70002-c01\",\"user_f1c70003-c01\"]",
+   "decided_by_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\",\"role\":\"synthesizer\"}",
+   "descriptive_summary_json": "{\"claim_ids\":[\"user_f1c70001-c01\",\"user_f1c70002-c01\",\"user_f1c70003-c01\"],\"k\":3,\"label\":\"descriptive summary, not a pooled estimate\",\"max\":\"0.21\",\"median\":\"0.15\",\"metric\":\"sd units of reading score\",\"min\":\"0.09\",\"q1\":\"0.12\",\"q3\":\"0.18\",\"quantile_method\":\"statistics.quantiles(n=4, method='inclusive')\",\"rule\":\"dsum-v1\",\"weighted\":false}",
+   "direction_summary_json": "{\"ci95\":[0.438503,1.0],\"claim_ids\":[\"user_f1c70001-c01\",\"user_f1c70002-c01\",\"user_f1c70003-c01\"],\"excluded_none\":0,\"method\":\"exact binomial, Wilson interval\",\"n\":3,\"p_two_sided\":0.25,\"proportion\":1.0,\"rule\":\"signtest-v1\",\"u\":3}",
+   "finding_id": "F01",
+   "grade_notes_json": null,
+   "input_sha256": "11ba53d73e6ebf1cfbe9c70df94b53151bddde9e368030436f0b0b63691b934b",
+   "moderator_status": "none",
+   "not_rated_reason": null,
+   "recorded_version": 1,
+   "rules_json": "{\"dsum\":\"dsum-v1\",\"signtest\":\"signtest-v1\"}",
+   "sensitivity_note": null,
+   "statement": "Small-group tutoring probably raises reading scores.",
+   "status": "current",
+   "superseded_by": null,
+   "synthesis_method": "swim"
+  },
+  {
+   "boundary_conditions": null,
+   "certainty": null,
+   "certainty_reason": null,
+   "certainty_scheme": "not_rated",
+   "claim_ids_json": "[\"user_f1c70004-c01\"]",
+   "decided_by_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\",\"role\":\"synthesizer\"}",
+   "descriptive_summary_json": null,
+   "direction_summary_json": null,
+   "finding_id": "F02",
+   "grade_notes_json": null,
+   "input_sha256": "11ba53d73e6ebf1cfbe9c70df94b53151bddde9e368030436f0b0b63691b934b",
+   "moderator_status": "none",
+   "not_rated_reason": "qualitative_evidence",
+   "recorded_version": 1,
+   "rules_json": "{\"dsum\":\"dsum-v1\",\"signtest\":\"signtest-v1\"}",
+   "sensitivity_note": null,
+   "statement": "Teachers described scheduling as the main barrier to small groups.",
+   "status": "current",
+   "superseded_by": null,
+   "synthesis_method": "thematic"
+  }
+ ],
+ "source": "data/findings_v1.parquet"
+}

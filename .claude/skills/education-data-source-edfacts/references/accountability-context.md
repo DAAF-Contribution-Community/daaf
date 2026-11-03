@@ -252,7 +252,7 @@ Collects IDEA special education data:
 | 2014-16 | Common Core transition | Assessment system changes |
 | 2015 | ESSA enacted | New accountability framework |
 | 2017-18 | ESSA implementation | New state plans in effect |
-| 2019-20 | COVID waivers | Testing largely waived |
+| 2019-20 | COVID waivers | Assessment requirement waived for all 50 States, DC, Puerto Rico and the BIE (85 FR 29935) |
 | 2020-21 | Partial return | Some states tested |
 | 2021-22 | Full testing resumes | Post-COVID baseline |
 

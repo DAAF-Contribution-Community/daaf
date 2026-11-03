@@ -39,14 +39,14 @@ The **Adjusted Cohort Graduation Rate (ACGR)** is the federal standard for calcu
 ### Basic Formula
 
 ```
-ACGR = (Graduates with Regular Diploma) / (Adjusted Cohort) × 100
+ACGR = (Graduates with Regular Diploma [+ State-defined alternate diploma, from 2017-18]) / (Adjusted Cohort) × 100
 ```
 
 ### Step-by-Step Calculation
 
 1. **Identify original cohort**: All first-time 9th graders in a given year
 2. **Adjust cohort**: Add transfers in, subtract legitimate removals
-3. **Count graduates**: Students earning regular diplomas within 4 years
+3. **Count graduates**: Students earning regular diplomas (or, from 2017-18 in States that offer one, a State-defined alternate diploma) within 4 years
 4. **Calculate rate**: Graduates ÷ Adjusted Cohort × 100
 
 ### What Counts as "On-Time"
@@ -104,16 +104,16 @@ States must have documented confirmation that students:
 
 ## Extended Graduation Rates
 
-EDFacts also reports extended graduation rates for students who take longer:
+Extended-year ACGRs (e.g., 5- or 6-year) are optional and State-adopted; they are not present in the Portal grad-rates files.
 
 ### Rate Types
 
-| Rate | Definition | First Available |
-|------|------------|-----------------|
-| 4-year ACGR | Graduate within 4 years | 2010-11 |
-| 5-year ACGR | Graduate within 5 years | 2011-12 |
-| 6-year ACGR | Graduate within 6 years | 2012-13 |
-| 7-year ACGR | Graduate within 7 years | Some states |
+| Rate | Definition |
+|------|------------|
+| 4-year ACGR | Graduate within 4 years (required) |
+| Extended-year ACGR (e.g., 5-, 6-, or 7-year) | Graduate within additional years; voluntary, and a State may use more than one |
+
+> ED's January 2017 ACGR guidance: "No. The use of an extended-year ACGR is voluntary." A State that adopts one must report it separately from the 4-year ACGR. Extended rates therefore come from State sources, not the Portal files (see `variable-definitions.md` § Extended Rate Variables).
 
 ### Why Extended Rates Matter
 
@@ -159,7 +159,7 @@ cohort_rates <- list(
 
 ### Regular Diploma (Counts in ACGR)
 
-Only students receiving a **regular high school diploma** count as graduates:
+Graduates are students receiving a regular high school diploma or (from 2017-18) a State-defined alternate diploma (students with the most significant cognitive disabilities). Before 2017-18, only a **regular high school diploma** counted:
 
 | Counts as Graduate | Does NOT Count |
 |--------------------|----------------|
@@ -183,8 +183,10 @@ Students receiving these are counted as **non-graduates** in ACGR:
 - General Educational Development (GED)
 - High School Equivalency Test (HiSET)
 - Certificate of completion
-- IEP diploma (in most states)
+- Diploma based on meeting IEP goals
 - Special education certificate
+
+The exception is the State-defined alternate diploma for students with the most significant cognitive disabilities: from 2017-18, in States that offer one, its recipients count as graduates (ED 2017 guidance: "not earlier than ACGR data for the 2017-2018 school year").
 
 ### State Variation in Diploma Types
 
@@ -196,27 +198,18 @@ Some states have multiple diploma pathways:
 
 ## Timing and Reporting
 
-### Cohort Year vs. Graduation Year
+### Cohort Year vs. Reporting Year
 
-| Cohort Enters 9th Grade | 4-Year Graduation | Data Reported |
-|-------------------------|-------------------|---------------|
-| Fall 2019 | Spring/Summer 2023 | 2023-24 school year |
-| Fall 2020 | Spring/Summer 2024 | 2024-25 school year |
+EDFacts labels ACGR data by the school year in which the cohort graduates: the SY 2023-24 four-year ACGR is for students who first entered grade 9 in SY 2020-21 (class of 2024). Inference from the FS150 SY 2023-24 file specification, whose five-year rate reported for SY 2023-24 covers students who entered grade 9 in SY 2019-20. The Portal follows the same convention: `year` = fall of the graduating school year (year=2019 = SY 2019-20 = class of 2020; 9th-grade entry = `year` − 3).
 
-### Data Lag
+| Cohort Enters 9th Grade | 4-Year Graduation | EDFacts reporting year | Portal `year` |
+|-------------------------|-------------------|------------------------|---------------|
+| Fall 2019 | Spring/Summer 2023 | SY 2022-23 | 2022 |
+| Fall 2020 | Spring/Summer 2024 | SY 2023-24 | 2023 |
 
-Graduation data has a **1-year lag**:
-- School year 2023-24 reporting includes 2022-23 graduates
-- Data for Class of 2023 available in fall 2024
+### Release Timing
 
-### Reporting Timeline
-
-| Event | Typical Timing |
-|-------|----------------|
-| Students graduate | May-August |
-| States compile data | September-December |
-| EDFacts submission | January-March |
-| Public release | Fall of following year |
+States submit ACGR data to ED after the cohort's graduation year, and ED/NCES publish it later. The exact submission due dates and public-release lag were not verified (FS150 states no due date); check the EDFacts submission schedule for the year you need. Portal grad-rates years end at 2019.
 
 ## Cross-State Comparability
 
@@ -241,6 +234,8 @@ Despite standardization, some variation exists:
 | Documentation practices | Transfer tracking varies |
 | State accountability pressure | May affect practices |
 
+> **Note:** Portal year 2019 (SY 2019-20): "some states may have changed their requirements for a regular high school diploma to account for the impact of the coronavirus pandemic … may have resulted in less comparability in the ACGRs between 2019–20 and other school years" (NCES COE, note 6).
+
 ### Interpretation Guidance
 
 | Comparison | Validity |
@@ -263,7 +258,7 @@ ACGR must be reported for these subgroups. In the Portal data, subgroups are rep
 | English learners | LEP | lep | `1` |
 | Homeless | HOM | homeless | `1` |
 | Foster care | FCS | foster_care | `1` |
-| Each race/ethnicity | Multiple | race | `1-7` |
+| Each race/ethnicity | Multiple | race | `1-5, 7` (no `6`; see SKILL.md Race Codes) |
 
 > **Note:** `migrant` and `military_connected` columns are NOT present in grad rate datasets (only in assessment datasets).
 
@@ -290,25 +285,21 @@ Small subgroups are heavily suppressed:
 ### Pitfall 1: Confusing Cohort Year and Graduation Year
 
 ```python
-# Confusing: Which year is which?
-# year=2022 in EDFacts refers to the reporting year
-# The cohort entered 9th grade 4 years earlier
+# Portal grad-rates year = fall of the school year in which the cohort graduates (year=2012 = SY 2012-13, class of 2013; Hawaii Portal 2010/2012 = 80/82 matches NCES ACGR 2010-11/2012-13 = 80/82)
+# The cohort entered 9th grade in fall of (year - 3)
 
-def cohort_entry_year(reporting_year):
-    """Calculate when cohort entered 9th grade."""
-    return reporting_year - 4
-    
-# Example: 2022 graduation data = Fall 2018 9th grade cohort
+cohort_entry_year = year - 3
+
+# Example: year=2019 (SY 2019-20, class of 2020) = Fall 2016 9th-grade cohort
 ```
 
 ```r
-# Confusing: Which year is which?
-# year=2022 in EDFacts refers to the reporting year
-# The cohort entered 9th grade 4 years earlier
+# Portal grad-rates year = fall of the school year in which the cohort graduates (year=2012 = SY 2012-13, class of 2013; Hawaii Portal 2010/2012 = 80/82 matches NCES ACGR 2010-11/2012-13 = 80/82)
+# The cohort entered 9th grade in fall of (year - 3)
 
-cohort_entry_year <- reporting_year - 4
+cohort_entry_year <- year - 3
 
-# Example: 2022 graduation data = Fall 2018 9th grade cohort
+# Example: year=2019 (SY 2019-20, class of 2020) = Fall 2016 9th-grade cohort
 ```
 
 ### Pitfall 2: Treating GED Completers as Graduates
@@ -318,7 +309,7 @@ cohort_entry_year <- reporting_year - 4
 total_completers = diploma_grads + ged_completers  # INCORRECT
 
 # CORRECT: ACGR uses only diploma graduates
-acgr_numerator = diploma_grads  # Regular diploma only
+acgr_numerator = diploma_grads  # Regular diploma (+ State-defined alternate diploma from 2017-18); never GED
 ```
 
 ```r
@@ -326,12 +317,12 @@ acgr_numerator = diploma_grads  # Regular diploma only
 total_completers <- diploma_grads + ged_completers  # INCORRECT
 
 # CORRECT: ACGR uses only diploma graduates
-acgr_numerator <- diploma_grads  # Regular diploma only
+acgr_numerator <- diploma_grads  # Regular diploma (+ State-defined alternate diploma from 2017-18); never GED
 ```
 
 ### Pitfall 3: Ignoring Extended Rates
 
-When analyzing students with disabilities or EL students:
+When analyzing students with disabilities or EL students (extended rates come from States that adopt them, not from the Portal files; the values below are illustrative):
 
 ```python
 # Limited view
@@ -416,7 +407,7 @@ library(dplyr)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 years <- c(2018, 2019)
 paths <- sprintf("edfacts/schools_edfacts_grad_rates_%d", years)
-urls <- paste0(mirror$root_url, "/", paths, ".", mirror$format)
+urls <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", paths, ".", mirror$format)
 # NOTE: illustrative only — schools_edfacts_grad_rates_* are Polars-written with
 # string_view columns, so this plain arrow::read_parquet() fails under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -529,7 +520,7 @@ for (info in list(
 
 | Regulation | Content |
 |------------|---------|
-| 34 CFR 200.19 | ACGR definition and calculation |
+| ESEA §8101(23), (25) (as amended by ESSA) | Statutory four-year and extended-year ACGR definitions; 34 CFR 200.19 is the 2008 regulation |
 | ESSA Section 1111 | Graduation rate requirements |
 | ED Guidance (2017) | Non-regulatory guidance on ACGR |
 
@@ -540,4 +531,4 @@ for (info in list(
 | Report ACGR | Required for all high schools |
 | Report subgroups | If n-size met |
 | Include in accountability | High school indicator |
-| Extended rates | Optional but encouraged |
+| Extended rates | Optional (State-adopted); if used, reported separately from the 4-year ACGR |

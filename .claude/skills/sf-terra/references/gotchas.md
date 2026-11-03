@@ -45,7 +45,7 @@ with_s2_off <- function(expr) {
 | Scenario | s2 ON (default) | s2 OFF |
 |----------|----------------|--------|
 | Area of polygons in EPSG:4326 | Correct (geodesic m^2) | Wrong (square degrees) |
-| Distance between points in 4326 | Correct (meters) | Wrong (degrees) |
+| Distance between points in 4326 | Correct (meters) | Errors without lwgeom (not installed in DAAF; observed 2026-11-01, sf 1.1-0) |
 | Buffer in geographic CRS | May error | Works but wrong shape |
 | Intersection of complex polygons | May error on invalid rings | More permissive |
 
@@ -58,12 +58,15 @@ with_s2_off <- function(expr) {
 ### Symptom
 
 ```
-Error: st_crs(x) != st_crs(y)
+Error: st_crs(x) == st_crs(y) is not TRUE    # st_join, st_intersection, st_intersects, st_filter, st_distance
+Error: arguments have different crs          # rbind() of sf objects
 ```
 
 ### Cause
 
-Spatial operations (join, intersection, distance) require all inputs in the same CRS. This error fires when CRS differs between objects.
+Spatial operations (join, intersection, distance) require all inputs in the same CRS. This error fires when CRS differs between objects. It also fires when only one input has a CRS. If both have none (`st_crs()` is NA), the check passes and the operation runs silently, even if the coordinates are in different systems: set the CRS on both first (observed 2026-11-01, sf 1.1-0).
+
+terra behaves differently: `extract()` reprojects the vector itself, with a warning ("[extract] transforming vector data to the CRS of the raster"), while `crop()` fails with "[crop] extents do not overlap", which does not mention CRS (observed 2026-11-01, terra 1.9-11).
 
 ### Fix
 

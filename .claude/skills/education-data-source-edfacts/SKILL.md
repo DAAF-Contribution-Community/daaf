@@ -30,9 +30,9 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 
 - **Collector**: U.S. Department of Education, via State Education Agencies (SEAs)
 - **Coverage**: All public schools and districts in 50 states + DC
-- **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates, accountability indicators
+- **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates (in ED's own files, not the Portal), accountability indicators
 - **Frequency**: Annual collection
-- **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
+- **Available years (Portal)**: Assessments 2009–2018 and 2020 (no 2019); Graduation rates 2010–2019. For assessments, Portal `year` is the fall of the school year (2019 = SY 2019-20, 2020 = SY 2020-21)
 - **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
 - **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
 - **Available through**: Education Data Portal mirrors
@@ -95,19 +95,18 @@ What are you comparing?
 
 | Data Element | Description | Available Years |
 |--------------|-------------|-----------------|
-| Proficiency rates | % meeting state standards in reading/math | 2009-10 to present |
-| Participation rates | % of students assessed | 2012-13 to present |
+| Proficiency rates | % meeting state standards in reading/math | Portal years 2009–2018, 2020 (no 2019) |
+| Participation rates | % of students assessed | Not in the Portal assessment files (no participation variable in the Portal or the mirror); ED's public EDFacts participation files start with SY 2012-13 (ED "EDFacts Data Files" page, archived 2022-01-19) |
 | Achievement levels | Below Basic, Basic, Proficient, Advanced | Varies by state |
-| Grade levels | Grades 3-8, high school (varies) | 2009-10 to present |
+| Grade levels | Grades 3-8, high school (varies) | Portal years 2009–2018, 2020 (no 2019) |
 
 ### Graduation Data
 
 | Data Element | Description | Available Years |
 |--------------|-------------|-----------------|
-| 4-year ACGR | Adjusted Cohort Graduation Rate | 2010-11 to present |
-| 5-year ACGR | Extended graduation rate | 2011-12 to present |
-| 6-year ACGR | Further extended rate | 2012-13 to present |
-| Diploma types | Regular diploma only in ACGR | All years |
+| 4-year ACGR | Adjusted Cohort Graduation Rate | Portal years 2010–2019 |
+| Extended-year ACGR (e.g., 5- or 6-year) | Optional and State-adopted; not present in the Portal grad-rates files | — |
+| Diploma types | Regular diploma; from 2017-18 also a State-defined alternate diploma for students with the most significant cognitive disabilities | 2017-18 onward |
 
 ### Key Identifiers
 
@@ -143,7 +142,7 @@ What are you comparing?
 | Foster care | `FCS` | `1` | foster_care | Assessments, Grad Rates |
 | Migrant | `MIG` | `1` | migrant | Assessments only |
 | Military connected | `MIL` | `1` | military_connected | Assessments only |
-| Race/ethnicity | Multiple | `1-7, 99` | race | Assessments, Grad Rates |
+| Race/ethnicity | Multiple | `1-5, 7, 99` (no `6`; see Race Codes) | race | Assessments, Grad Rates |
 | Sex | `M/F` | `1, 2, 99` | sex | Assessments only |
 
 **EDFacts Filter Column Pattern:**
@@ -161,7 +160,7 @@ What are you comparing?
 
 ### Race Codes
 
-> **Empirically verified** from 2018 school assessment data. Only these values appear in the `race` column:
+> **Empirically verified** from 2018 school assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only these values appear in the `race` column:
 
 | Code | Category |
 |------|----------|
@@ -213,10 +212,10 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/not applicable | Data not reported |
-| `-2` | Not reported | Item doesn't apply to this entity |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply to this entity |
 | `-3` | Suppressed for privacy | Data suppressed for small N-size |
-| `-9` | Rounds to zero | Value rounds to zero |
+| `-9` | Not found in Portal data | Not in the Portal varlist corpus (explorer `variable-codes.md`) and in no pinned-mirror school assessment (2009-2018, 2020) or grad-rate (2010-2019) value column (probed 2026-10-28; district files not probed); filters that also drop `-9` are harmless |
 | Range values | Exact value suppressed | Range provided instead of exact value |
 | `_midpt` suffix | Calculated midpoint of suppressed range | Use for analysis when exact values are suppressed |
 
@@ -247,7 +246,7 @@ All EDFacts data is fetched via the **Education Data Portal mirror system**. The
 | District Assessments | `edfacts/districts_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) | 23 cols |
 | District Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` | Yearly (2010-2019) | 15 cols |
 
-> **Note:** 2019 assessment data is NOT available (at any level) due to COVID testing waivers.
+> **Note:** 2019 assessment data (Portal year 2019 = SY 2019-20) is NOT available (at any level) due to COVID testing waivers. Portal year 2020 is SY 2020-21.
 
 ### Codebooks
 
@@ -269,12 +268,12 @@ url = get_codebook_url("edfacts/codebook_districts_edfacts_graduation")
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # Assessment codebooks:
-url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_assessments", ".xls")
-url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_assessments", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "edfacts/codebook_schools_edfacts_assessments", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "edfacts/codebook_districts_edfacts_assessments", ".xls")
 
 # Graduation rate codebooks:
-url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_graduation", ".xls")
-url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_graduation", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "edfacts/codebook_schools_edfacts_graduation", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "edfacts/codebook_districts_edfacts_graduation", ".xls")
 ```
 
 > **Codebook naming note:** Graduation rate codebooks use `_graduation` (not `_grad_rates`), while the data files use `_grad_rates`. This follows the same pattern as other Portal sources where codebook names differ from data file names. See `datasets-reference.md` for the authoritative path mapping.
@@ -437,7 +436,7 @@ state_comparison <- df |>
 | Suppression codes | `./references/variable-definitions.md` |
 | Missing data values | `./references/variable-definitions.md` |
 | Range/midpoint variables | `./references/variable-definitions.md` |
-| Participation rates | `./references/variable-definitions.md` |
+| Participation rates (not in the Portal; use ED's own files) | `./references/variable-definitions.md` |
 | COVID-19 data gaps | `./references/data-quality.md` |
 | State reporting variations | `./references/data-quality.md` |
 | Known data issues | `./references/data-quality.md` |

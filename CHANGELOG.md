@@ -4,13 +4,132 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
-- [v3.0.2 -- 2026-08-18](#v302--2026-08-18)
+- [v3.1.0 -- 2026-11-03](#v310----2026-11-03)
+- [v3.0.2 -- 2026-08-18](#v302----2026-08-18)
 - [v3.0.1 -- 2026-07-29](#v301--2026-07-29)
 - [v3.0.0 -- 2026-07-17](#v300--2026-07-17)
 - [v2.1.0 -- 2026-05-02](#v210--2026-05-02)
 - [v2.0.1 -- 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 -- 2026-03-31](#v200--2026-03-31)
 - [v1.0.0 -- 2026-02-22](#v100--2026-02-22)
+
+---
+
+## v3.1.0 -- 2026-11-03
+<!-- AT TAG TIME: confirm this date matches the actual tag date -->
+
+### Data Analyst Augmentation Framework -- Checking Our Sources
+
+v3.1.0 is about rigor in the parts of research that live outside your dataset: the literature you build on, the methods advice DAAF follows, and the software environment your code runs in. The headline is a new, experimental Literature Review mode, DAAF's tenth, and the tools behind it. DAAF can now search several major scholarly databases, check each reference against a database record and for retraction notices before citing it, and read PDFs page by page, with the quotes and numbers in its reading notes checked against the page they came from; the new mode puts these together into a guided review at the depth you choose, from a quick scan to a formal review that you lead. Alongside that, DAAF's library and data guides got a careful accuracy pass against the actual software and data they describe, which turned up and fixed a number of real mistakes, including a few that could quietly change standard errors or break a data download.
+
+There's plenty more: a new guide for turning open-ended text into analysis variables, with optional support for Typesafe AI's Jev judgment service; newer models (Opus 5.5 on Anthropic routes, and the GPT-6 family on GPT routes); a frozen and security-patched environment so that a rebuild installs the same package versions every time; LaTeX PDFs for Quarto documents; safer backups and restores; and a long list of smaller changes that make DAAF behave more predictably and with fewer surprises.
+
+Updating takes a rebuild, and a few settings changed. Please read the notes for existing users below before you update.
+
+### Important Notes for Existing Users
+
+- **Run the updater and accept the rebuild it offers.** Please accept: several security fixes, including one for a serious flaw in the notebook server, only take effect once the image is rebuilt. Because the updater itself changed, it will also ask you to run it once more; please do (it's always safe to re-run).
+- **On GPT, OpenRouter or another non-Anthropic route? Update `environment_settings.txt`** (it's in your DAAF folder). DAAF now asks you to say which model plays each of Claude Code's four roles, using the lines shown in the updated `environment_settings_example.txt`. Make sure the `ANTHROPIC_DEFAULT_OPUS_MODEL` and `ANTHROPIC_DEFAULT_SONNET_MODEL` lines are set: if you relied on `CLAUDE_CODE_SUBAGENT_MODEL` alone, DAAF's specialists will be stopped, with a message naming these settings, until they are. Also add the new `ANTHROPIC_DEFAULT_FABLE_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL` lines; without the Haiku line, your provider may reject some of Claude Code's background requests. On the ChatGPT-subscription route, also change `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` to `919000`. Then choose **Restart Container** in the Control Panel.
+- **Some custom scripts may now be refused.** Scripts that print environment variables or API keys, or that install or remove packages, are stopped before they run, with a message saying why. If you edited `.claude/hooks/bash-safety.sh` yourself, move those changes into the new `bash-safety.site.sh` so future updates don't conflict.
+- **Your own model choice now sticks.** DAAF no longer forces the session model. On a Claude subscription or API key it starts on Claude Code's `opus` model, which is now Opus 5.5 (v3.0.2 started on Opus 4.8), but a model you pick with `/model` now wins. If your sessions open on an unexpected model after updating, run `/model` and choose the one you want.
+- **Code written from earlier DAAF guidance may deserve a second look.** This release corrects several library and education-data guides in ways that can change standard errors or which records a filter keeps (see "A Careful Accuracy Pass Over DAAF's Guides" below).
+- **Control Panel changes.** The new **11) Restart Container** applies edits to `environment_settings.txt` without a rebuild, including turning on the provider shim. **Stop Web Services** moves to **12**. Notebooks now open through a link with a per-launch access token (use option 4 to open them), and the session log viewer only answers on your own computer.
+- **Restores work a little differently.** You now type `RESTORE` after the backup has been copied into Docker and checked, rather than before. Backup and restore need Docker 25 or newer (Docker Desktop 4.27.1 or newer), plus enough free Docker disk space for a temporary copy of the backup.
+- **`git push` always asks first**, even in auto mode.
+- **Planning literature work? Get a free OpenAlex API key** at https://openalex.org/settings/api-key. The new literature search works without one, but in a limited mode. Optional keys go in section [5] of `environment_settings.txt`, followed by Restart Container.
+
+If anything goes sideways, please open a GitHub Issue or email [support@openaugments.org](mailto:support@openaugments.org).
+
+### Detailed Notes
+
+Disclosure: These notes were AI-drafted from a verified inventory of the release's changes and then reviewed by hand.
+
+#### Literature Review Mode, Reference Checks and PDF Reading
+
+DAAF now brings the same insistence on receipts to the research literature that it brings to data:
+
+- **A new Literature Review mode (experimental).** Pick a quick scan of abstracts, a standard review that reads key papers in full, or a formal or systematic review that you lead (DAAF drafts checklist answers with supporting quotes, and you make the judgment calls). Standard and formal reviews run in rounds with check-ins, and you confirm the reference list in its own check-in before the final version (a quick scan is a single pass, with the reference check folded into its final check-in). Specialists search, read one paper at a time with page-checked notes, and write the synthesis, wording each conclusion to match the strength of the evidence and never pooling or vote-counting across studies. **Note:** This mode is experimental: it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong.
+- **Search scholarly databases, with a record of every search.** One command searches OpenAlex, Semantic Scholar and ERIC (including EdWorkingPapers) together, merges different versions of the same paper, follows citations forward and backward from key papers, and finds legal open-access copies. Every search saves exactly what was asked and what came back.
+- **References checked before they're cited.** DAAF looks each reference up in a scholarly database to confirm its title, an author and the year, and checks OpenAlex, Crossref and Scite for retraction notices. In testing it did not pass any of 20 AI-invented references. It doesn't check co-authors and can miss subtle changes to a title, though, so a person should still read the reference list.
+- **PDFs read page by page, with quotes checked.** DAAF reads papers, codebooks and reports while keeping each page's original text. Scanned pages are read with text recognition (OCR) and marked as weaker evidence. When DAAF takes a quote or a number from a PDF into its reading notes, a separate checker confirms it appears on the page cited. It can't tell whether the PDF is the publisher's final version, and some table cases go to a person for review. Models DAAF has tested for it can also look at a picture of a table page as a second reading, controlled by the new "PDF page-image cross-checking" preference in `CLAUDE.md`; with any other model, a literature review asks you first.
+- **Optional extras.** Scite's tallies of how often later papers' citing sentences were classified as supporting or contradicting a study work without a key; Scite's paper search needs a paid key. Elicit adds AI research reports with your own paid key, and they spend money only when you explicitly confirm it.
+
+These tools need the rebuilt image, which adds text recognition and a pinned set of PDF libraries.
+
+#### Text as Data
+
+A new methods guide covers turning open-ended text into analysis variables with language models or trained classifiers: validating against human coding, measuring agreement, correcting for misclassification, protecting sensitive text, and reporting what you did. An optional skill supports Typesafe AI's Jev (updated for Jev 1.14), a paid third-party service that returns probability-style judgments about text and can also locate things in images, a feature the vendor marks as not yet production-ready. Validate it on your own coded examples before relying on it. Its `TYPESAFE_API_KEY` goes in section [5] of `environment_settings.txt`, followed by Restart Container.
+
+#### A Careful Accuracy Pass Over DAAF's Guides
+
+Before this release, we re-checked the advice in DAAF's library and data guides against the library versions installed in the image, the pinned education-data mirror, and primary documents, and corrected what was wrong. The corrections that matter most for your work:
+
+- **Standard errors and model defaults.** For example: when statsmodels reports z rather than t statistics, how plm clusters by default, how pyfixest's HC2/HC3 differ from statsmodels', and that scikit-learn's default logistic regression shrinks coefficients. Polars, spatial, network and survey guidance were corrected too, and Python table formatting now goes through great-tables.
+- **Education data.** The guides now give each dataset's actual race and sex codes, year by year, instead of one blanket list (for example, CCD's race codes 6 and 7 begin in 2008, and IPEDS uses additional sex codes), and they flag join keys that change type between years, such as PSEO's `opeid`. R download examples that returned "not found" errors and fetch templates that stopped with an error are fixed, the variable dictionaries were regenerated from the pinned mirror, and the FSA and NCCS guides follow current regulations and form layouts.
+- **Citations.** A separate review corrected misattributed, outdated or unsupported references across the methodology and data guides, including a sign error in one sensitivity formula in the stress-testing guide.
+- **Method choices in R.** If you work in R, DAAF no longer routes LIML, GMM instrumental-variables estimation outside panel models, seemingly unrelated regressions (SUR), three-stage least squares (3SLS) or vector autoregressions (VAR) to plm or base R. The image has no R package for the first four, and for VAR, base R can fit the model but nothing installed computes impulse responses, so DAAF raises these with you instead (in Python they run as before). Dynamic-panel GMM (Arellano-Bond, Blundell-Bond) goes to plm's `pgmm()`.
+
+If you wrote code from earlier guidance, it may be worth a second look at standard-error options and code filters. The guides are still snapshots, so check anything that surprises you.
+
+#### Newer Models: Claude Code 2.1.281, Opus 5.5 and GPT-6
+
+- **Claude Code 2.1.202 to 2.1.281**, with Opus 5.5 (1M-token context) as the default on Anthropic routes.
+- **Later context warnings for Opus 5.5 and Fable.** DAAF's session-health warnings for these models now start at 40%, 50% and 60% of the window (or 400k, 500k and 600k tokens). This is a maintainer policy choice, not a measured guarantee of quality at those depths.
+- **GPT-6 Astra, GPT-6 Sol, GPT-6 Luna and GPT-6.1 Sol** are available through OpenRouter and DAAF's provider shim (the small adapter that lets Claude Code talk to OpenAI's models). Sol and Luna are the recommended pairing, based on hands-on use rather than a validation run. Through a ChatGPT subscription, OpenAI accepted both model names in DAAF's 2026-10-28 test of reading pictures of PDF pages (Sol passed that test; Luna did not); neither has run a full DAAF session, and DAAF has no recorded test of either with an OpenAI API key. If OpenAI rejects a GPT-6 name on the OpenAI-API or ChatGPT-subscription route, GPT-5.6 Sol and Luna are drop-in alternatives. On the ChatGPT-subscription route, you can now use about 919,000 tokens of context instead of 370,000 once you change `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (see the notes above).
+- **Provider shim 1.3.18 to 1.4.13.** Claude Code's web search now works on GPT routes through OpenAI's hosted search, with real source links. Attached PDFs reach the model, a request that is too long or an empty account balance now gets a clear message instead of repeated retries, and the shim's log records why a request failed. Error lines written by older shim versions may contain session tokens, so you may want to delete older lines from `scripts/provider_shim/logs/shim.log`.
+- **Your institution's gateway.** The shim can now point at a university or company OpenAI-compatible service, as long as it supports OpenAI's Responses API, with a few lines in `environment_settings.txt`; whether web search works through a given gateway can only be found out by trying. Settings for the bundled Codex program can be set in the same file.
+
+GPT models through the OpenAI API or a ChatGPT subscription are supported routes that benefit from wider community testing. The ChatGPT-subscription route uses a backend that OpenAI doesn't officially offer to third-party tools, so it can change without notice, and you are responsible for following OpenAI's terms of service.
+
+#### Security Fixes and a Frozen Environment
+
+- **A rebuild now installs the same package versions every time.** The base image, the Python packages and the Ubuntu system packages are each frozen to a dated snapshot (R packages already were). The Ubuntu snapshot currently runs one month ahead of the Python packages' date, to pick up security updates. A few tools, including Claude Code and Quarto, are pinned to an exact version rather than a date.
+- **Security fixes.** The notebook system moves from marimo 0.19.11 to 0.25.0, fixing four published vulnerabilities, including a critical one that let anyone who could reach a notebook editor open a shell without logging in. The image stops trusting a compromised certificate authority (emSign ECC Root CA - G3), apart from a few rarely-networked tools until their next upgrade, and Pillow, poppler, other Ubuntu packages and the bundled Codex CLI are updated. Notebooks are now protected by a per-launch access token, and the session log viewer only answers on your own computer. If you have figure code that saves 32-bit integer images as PNG or passes `mode=` to `Image.fromarray()`, Pillow 13 now requires converting the image first.
+
+All of this arrives with the rebuild. Until you rebuild, the container keeps the old, vulnerable notebook version.
+
+#### LaTeX PDFs and Quarto 1.10.18
+
+Quarto documents can now render to PDF through LaTeX (a pinned TinyTeX), the standard path for journal templates and formatted tables, with Typst still available. Quarto moves from 1.7.29 to 1.10.18, and the image adds renv so you can record your R package versions (it can't be used to install packages while you work). A few things to know: Greek, Cyrillic and other non-Latin text needs a `mainfont` setting, the image has no Chinese, Japanese or Korean font, and a missing LaTeX package is added to the Dockerfile rather than installed on the fly.
+
+#### Safer Backups and Restores
+
+- **Restores never touch your current work until the backup is copied and checked.** A failed or interrupted restore leaves your data as it was and tells you how to finish.
+- **Backups count every file exactly** and say plainly when something was left out or couldn't be counted, including files whose names Windows can't store.
+
+Backups contain your Claude Code login, so keep them private.
+
+#### General Framework Improvements
+
+Many smaller changes make DAAF work as intended, with fewer idiosyncrasies and no surprises:
+
+- **DAAF reads before it plans.** It first confirms *how* it will work with you, then reads the files and links you pointed to, and only then asks you to approve *what* it will do.
+- **Up to five specialists work at once**, as before; if more would clearly help, DAAF now asks you.
+- **Python notebooks are checked for real.** The final notebook step now runs every cell and confirms each archived script matches the one that produced your results (apart from blank lines and trailing spaces), and characters such as backslashes in execution logs are kept exactly as printed. Avoid re-saving a finished analysis notebook from the marimo editor, which can add settings that break this check.
+- **Stronger guardrails.** The common ways a script or command could print your API keys are now refused, and if a credential still shows up in a tool's output, DAAF stops and tells you. A script whose run record couldn't be saved is reported as incomplete rather than successful; package removals are blocked like installs; the Literature Review commands that record your own decisions run only with your approval; and DAAF's safety checks are harder to get around.
+- **The updater no longer reports an unfinished update as done.** It only says conflicts are resolved once the merge or rebase is actually complete; otherwise it prints the commands that finish it, and those commands leave your research files out of the commit.
+- **Honest quality checks.** Quality-check summaries now say "not verified" or "skipped" instead of implying a pass.
+- **Specialists that can run commands run their code through DAAF's logged script runner**, and specialists that write detailed records save them to your project.
+- **Claude Code's own scratch folder now lives in your backed-up DAAF data** instead of a temporary system folder.
+- **The privacy-preserving path is stricter.** Its local profiling scripts withhold any summary built from too few records, and its checks say plainly whether each disclosure rule passed, failed or couldn't be checked.
+- **Model and context fixes:** the gauge of how full a session is reads correctly for Claude models on OpenRouter and at the start of a fresh session; specialists on Sonnet 5 and Haiku 5.5 no longer stop early, because DAAF now knows their 1M-token windows; and specialists now start in sessions running on Claude Mythos, which DAAF had been refusing.
+- **Smaller fixes** to script revisions (the next free revision name is suggested), session-log collection, and how session archives show specialists' work.
+- **Windows:** backups no longer break on special files or on install folders with spaces in their names, and Docker and Git error messages now reach you on Windows PowerShell 5.1.
+- **Multiple installs:** project names are handled the same way Docker handles them, and the installer finds an existing install from any folder instead of taking it over.
+- **claude.ai account skills and plugins:** DAAF now works alongside them, and the technical FAQ explains how to turn the sync off.
+
+#### For Contributors
+
+- **Deployment smoke test v2** checks five install routes, runs on any image, stops before paid checks when a free preflight fails, and packages each run's results for comparison; its Tier 3 now checks that a full analysis actually engages DAAF's orchestrator and can be resumed. CI now installs the image on Intel/AMD and ARM and runs the free checks and the Python test suite inside it, and a manual job tests updating from the previous release.
+- **DAAFBench** adds results for Qwen 3.8 (27B and 2.4T) and GLM 5.3. As always, it measures how well a model follows DAAF's protocols, not research quality.
+- **A documentation standard** (`agent_reference/DOCUMENTATION_STANDARDS.md`) and a documentation triage lint, with an advisory CI check that never blocks a merge, plus integration-checklist sections for new framework CLIs and scholarly-search backends. User guides, the README, CONTRIBUTING, host-script messages and the core framework docs were checked against the code and revised to the standard; a few skill and agent files are still to be brought to it.
+- **The maintainer-only mirror-maintenance scripts no longer ship** with DAAF.
+- **Custom agents:** an agent that can run shell commands should register the file-first hook, and "read-only" now means no Write or Edit tool in its list.
+
+**Checked live before release:** DAAF's deployment smoke test on four install routes (Claude subscription, ChatGPT subscription, OpenAI API key and OpenRouter) and a fresh install on Docker Desktop for macOS and for Windows; CI also built the image and ran the free checks on Intel/AMD and ARM. **Not yet checked live:** the Anthropic API-key route.
+
+**Full Changelog**: [v3.0.2...v3.1.0](https://github.com/DAAF-Contribution-Community/daaf/compare/v3.0.2...v3.1.0)
+<!-- AT TAG TIME: verify tag exists and this compare link resolves -->
 
 ---
 
@@ -298,7 +417,7 @@ If you'd like to contribute, the CONTRIBUTING guide has expanded for v3: it now 
 
 ### Data Analyst Augmentation Framework -- The Frictionless Update
 
-If v2.0.0 was about building out the reliaibility, robustness, and extensibility of DAAF's core analytical engine, v2.1.0 is about making it actually easy to set up, run, and maintain for real-world workflows and collaboration. For example, the original installation process asked users to juggle Docker commands, download and unzip GitHub repos, and manage the Docker volume filesystem. That friction was one of the biggest barrier to adoption, and this release implements a huge number of quality-of-life improvements to fix that. A single command now handles the entire installation. Named helper scripts replace every Docker incantation you'd need to remember and handles all of the back-end container management for you. A one-line update system means you can stay current without losing your work, regardless of when you installed DAAF for the first time. And a new session log viewer gives you a window into what DAAF is actually doing every step of the way, which is crucial for diagnostics and intuition when using the system.
+If v2.0.0 was about building out the reliability, robustness, and extensibility of DAAF's core analytical engine, v2.1.0 is about making it actually easy to set up, run, and maintain for real-world workflows and collaboration. For example, the original installation process asked users to juggle Docker commands, download and unzip GitHub repos, and manage the Docker volume filesystem. That friction was one of the biggest barriers to adoption, and this release implements a huge number of quality-of-life improvements to fix that. A single command now handles the entire installation. Named helper scripts replace every Docker incantation you'd need to remember and handle all of the back-end container management for you. A one-line update system means you can stay current without losing your work, regardless of when you installed DAAF for the first time. And a new session log viewer gives you a window into what DAAF is actually doing every step of the way, which is crucial for diagnostics and intuition when using the system.
 
 Beyond the operations story, this release also sets up a number of smaller infrastructural improvements -- for example, specialist agents can return more detailed findings, and I've implemented a code-testing pipeline to help ensure every release of DAAF ships without unexpected issues or bugs. More details for the highlights of this release are listed out below!
 

@@ -52,12 +52,11 @@ IMPORTANT: Redact any API keys, personal file paths, or sensitive data before po
 
 ## Environment
 
-- **OS:** <!-- e.g., Windows 11, macOS 14, Ubuntu 24.04 -->
-- **Setup:** <!-- Docker (recommended) or native install -->
-- **Auth method:** <!-- API key or Pro/Max subscription -->
-- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — type /model in Claude Code to check, or see "Model" in your session log header -->
-- **Claude Code version:** <!-- run `claude --version` inside the container -->
-- **DAAF version:** <!-- Check your session log header (.claude/logs/sessions/*.md) — model and DAAF version are logged automatically -->
+- **DAAF version:** <!-- see "DAAF Version" in your session log header (.claude/logs/sessions/*.md) -->
+- **Claude Code version:** <!-- run `claude --version` inside the container (Control Panel option 6, Open Terminal in Container) -->
+- **Model:** <!-- the exact model name: see "Model" in your session log header, or type /model in Claude Code -->
+- **Provider route:** <!-- one of: Anthropic subscription (say which plan), Anthropic API key, ChatGPT subscription through DAAF's provider shim, OpenAI API key through the provider shim (or an institutional gateway), OpenRouter, AWS Bedrock, Google Vertex AI -->
+- **Host OS:** <!-- the computer that runs Docker, e.g., Windows 11, macOS 15, Ubuntu 24.04 -->
 
 ## Additional context
 

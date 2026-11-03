@@ -177,9 +177,53 @@ print(f"Test F1: {results['test_f1_macro'].mean():.3f}")
 ```python
 from sklearn.model_selection import StratifiedKFold
 
+# For classifiers, cv=5 already stratifies (unshuffled); this adds shuffling
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 scores = cross_val_score(model, X, y, cv=skf, scoring="f1")
 ```
+
+### Grouped and Temporal Splits (Clustered or Time-Ordered Data)
+
+`cv=5` and `StratifiedKFold` treat rows as independent. With clustered data (students within schools) or time-ordered data, rows from the same school, or from later years, land on both sides of a split, and CV overstates how well the model predicts for new schools or future years. Choose the splitter by what the model will predict (`supervised-ml.md` in the `data-scientist` skill, § Cross-Validation Strategies for Social Science Data). Group splitters raise an error if `groups` is not passed (`StratifiedGroupKFold`'s message, "iteration over a 0-d array", does not name the cause).
+
+```python
+import numpy as np
+from sklearn.model_selection import (
+    GroupKFold, StratifiedGroupKFold, GroupShuffleSplit, TimeSeriesSplit,
+    cross_val_score, GridSearchCV,
+)
+
+# X, y as NumPy arrays; groups = one cluster ID per row, aligned with X and y
+groups = df["school_id"].to_numpy()
+
+# --- Clustered data (students within schools): each school's rows stay in one fold ---
+gkf = GroupKFold(n_splits=5, shuffle=True, random_state=42)
+scores = cross_val_score(model, X, y, groups=groups, cv=gkf, scoring="roc_auc")
+
+# --- Clustered data with imbalanced classes ---
+sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+scores = cross_val_score(model, X, y, groups=groups, cv=sgkf, scoring="roc_auc")
+
+# --- Held-out test set split by school (train_test_split ignores groups) ---
+gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+train_idx, test_idx = next(gss.split(X, y, groups=groups))
+
+# --- Tuning: the splitter goes in cv=, the school IDs go to fit() ---
+grid_search = GridSearchCV(model, param_grid, cv=gkf, scoring="roc_auc")
+grid_search.fit(X[train_idx], y[train_idx], groups=groups[train_idx])
+
+# --- Time-ordered data: sort by time; each fold trains on earlier rows only ---
+order = np.argsort(df["year"].to_numpy(), kind="stable")
+tscv = TimeSeriesSplit(n_splits=5)   # splits by row position, not by date
+scores = cross_val_score(model, X[order], y[order], cv=tscv, scoring="roc_auc")
+
+# --- Whole years held out (panel data: several rows per year) ---
+yr = df["year"].to_numpy()
+year_cv = [(np.where(yr < t)[0], np.where(yr == t)[0]) for t in [2017, 2018, 2019]]
+scores = cross_val_score(model, X, y, cv=year_cv, scoring="roc_auc")
+```
+
+`TimeSeriesSplit` cuts by row position, so with several rows per year a fold boundary can fall inside a year; the explicit `year_cv` list holds out whole years instead.
 
 ## Hyperparameter Search
 
@@ -300,6 +344,7 @@ for size, train_mean, test_mean in zip(
 | MSE / RMSE / MAE | `mean_squared_error()`, `root_mean_squared_error()`, `mean_absolute_error()` |
 | R-squared | `r2_score(y_true, y_pred)` |
 | Cross-validate | `cross_val_score(model, X, y, cv=5)` |
+| Grouped / temporal CV | `cross_val_score(model, X, y, groups=groups, cv=GroupKFold(n_splits=5))`, `TimeSeriesSplit(n_splits=5)` |
 | Grid search | `GridSearchCV(model, params, cv=5)` |
 | Random search | `RandomizedSearchCV(model, params, n_iter=50)` |
 | Learning curve | `learning_curve(model, X, y, cv=5)` |

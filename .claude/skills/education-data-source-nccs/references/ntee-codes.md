@@ -17,7 +17,7 @@ The National Taxonomy of Exempt Entities (NTEE) is the classification system use
 
 ## NTEE Overview
 
-The NTEE system was developed by NCCS in the late 1980s to provide a standardized classification for nonprofit organizations. It replaced the earlier IRS Activity Code system.
+NCCS helped create the NTEE; the IRS adopted it in January 1995, replacing its Activity Code system.
 
 ### Key Characteristics
 
@@ -26,7 +26,7 @@ The NTEE system was developed by NCCS in the late 1980s to provide a standardize
 | **Purpose** | Descriptive taxonomy for statistical analysis |
 | **Maintained by** | IRS (official), NCCS (enhanced version) |
 | **Format** | Letter + 2-digit number (e.g., B42) |
-| **Categories** | 10 major groups, ~400 specific codes |
+| **Categories** | 26 major groups (A–Z); NTEEV2 groups them into 12 industry groups; specific-code count varies by IRS list version |
 | **Assignment** | Self-selected or IRS-assigned |
 
 ### Important Caveat
@@ -35,7 +35,7 @@ NTEE codes are **descriptive**, not **prescriptive**:
 - They categorize organizations for analysis purposes
 - They do NOT restrict what activities an organization can conduct
 - Many organizations have missions spanning multiple categories
-- ~25% of codes are estimated to be imprecise
+- ~25% of codes are estimated to be imprecise (NCCS, NTEE codes page: 'roughly one organization in four')
 
 **Do not** use NTEE codes as the sole criterion for:
 - Excluding organizations from funding consideration
@@ -84,8 +84,8 @@ Codes 01-19 represent organizational types that exist across all major groups:
 |--------|-------------|----------|
 | **A** | Arts, Culture, and Humanities | Museums, performing arts, historical societies |
 | **B** | Education | Schools, colleges, libraries, educational support |
-| **C** | Environment and Animals | Conservation, zoos, animal welfare |
-| **D** | Animal-Related | (Merged with C in some versions) |
+| **C** | Environment | Conservation, natural resources |
+| **D** | Animal-Related | Animal protection/welfare, zoos (NTEEV2 groups C and D as ENV) |
 | **E** | Health | Hospitals, clinics, health support |
 | **F** | Mental Health, Crisis Intervention | Mental health centers, addiction services |
 | **G** | Diseases, Disorders, Medical Disciplines | Disease-specific organizations |
@@ -194,7 +194,7 @@ NCCS developed NTEEV2 (NTEE Version 2.0) to improve the taxonomy for data analys
 
 | Aspect | Original NTEE | NTEEV2 |
 |--------|---------------|--------|
-| Format | Letter + 2 digits (B42) | Industry-Code-Type (EDU-B42-RG) |
+| Format | Letter + 2 digits (B42) | Industry-Code-Type (UNI-B42-RG) |
 | Org type | Mixed into code | Explicit suffix |
 | Industry | Implied by letter | Explicit prefix |
 | Readability | Requires lookup | More self-documenting |
@@ -242,7 +242,7 @@ XXX-Xxx-XX
 
 | Original | NTEEV2 | Description |
 |----------|--------|-------------|
-| B42 | EDU-B42-RG | Undergraduate college (regular) |
+| B42 | UNI-B42-RG | Undergraduate college (regular) |
 | B43 | UNI-B43-RG | University (regular) |
 | B01 | EDU-B00-AA | Education advocacy organization |
 | B82 | EDU-B82-RG | Scholarship organization |
@@ -256,16 +256,16 @@ XXX-Xxx-XX
 import polars as pl
 
 # Filter for all universities
-universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 
 # Filter for hospitals
-hospitals = df.filter(pl.col("NTEE_V2").str.starts_with("HOS-"))
+hospitals = df.filter(pl.col("nteev2").str.starts_with("HOS-"))
 
 # Filter for advocacy organizations in any sector
-advocacy = df.filter(pl.col("NTEE_V2").str.ends_with("-AA"))
+advocacy = df.filter(pl.col("nteev2").str.ends_with("-AA"))
 
 # Filter for education sector (excluding universities)
-education = df.filter(pl.col("NTEE_V2").str.starts_with("EDU-"))
+education = df.filter(pl.col("nteev2").str.starts_with("EDU-"))
 ```
 
 ```r
@@ -273,16 +273,16 @@ library(dplyr)
 library(stringr)
 
 # Filter for all universities
-universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities <- df |> filter(str_starts(nteev2, "UNI-"))
 
 # Filter for hospitals
-hospitals <- df |> filter(str_starts(NTEE_V2, "HOS-"))
+hospitals <- df |> filter(str_starts(nteev2, "HOS-"))
 
 # Filter for advocacy organizations in any sector
-advocacy <- df |> filter(str_ends(NTEE_V2, "-AA"))
+advocacy <- df |> filter(str_ends(nteev2, "-AA"))
 
 # Filter for education sector (excluding universities)
-education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
+education <- df |> filter(str_starts(nteev2, "EDU-"))
 ```
 
 ---
@@ -291,7 +291,7 @@ education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
 
 ### Sources of Inaccuracy
 
-**~25% of NTEE codes are estimated to be incomplete or inaccurate.**
+**~25% of NTEE codes are estimated to be incomplete or inaccurate** (NCCS, NTEE codes page: 'roughly one organization in four').
 
 | Source | Description |
 |--------|-------------|
@@ -301,14 +301,16 @@ education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
 | **Mission evolution** | Organizations change focus but code remains |
 | **Multi-mission orgs** | Single code can't capture multiple activities |
 
-### Two NTEE Variables in NCCS Data
+### NTEE Variables in NCCS Data
 
 | Variable | Description |
 |----------|-------------|
-| `NTEE_IRS` | Official code from IRS records |
-| `NTEE_NCCS` | NCCS-corrected code (may differ) |
+| `ntee_code_raw` / `ntee_code_clean` | Original NTEE code from the source file (1-4 characters) / standardized 3-character code (Unified BMF) |
+| `nteev2` | NCCS NTEEv2 code (SUBSECTOR-CODE-TYPE) |
 
-The `NTEE_NCCS` variable reflects manual corrections made by NCCS staff over time, but should be considered a research-quality estimate, not an official designation.
+> Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
+
+NCCS's guidance: treat the IRS code as the source of truth and NCCS corrections as a supplement (NCCS NTEE codes page).
 
 ### Best Practices
 
@@ -333,13 +335,14 @@ When applying for 501(c)(3) status, organizations:
 
 Per IRS Publication 557:
 
-> Organizations wishing to modify their NTEE code should send a written request to:
+> Organizations that wish to modify or obtain a National Taxonomy of Exempt Entities (NTEE) Code should send a written request to the Correspondence Unit with the relevant facts, including the Code currently assigned, if any, and the requested Code, as well as who selected the currently assigned Code initially, if known. (IRS Pub. 557, rev. January 2025)
 
 ```
 Internal Revenue Service
 Attn: Correspondence Unit
 P.O. Box 2508, Room 6403
 Cincinnati, Ohio 45201
+Fax: (855) 204-6184
 ```
 
 Include:
@@ -356,7 +359,7 @@ Include:
 - Process code change requests
 
 **NCCS does:**
-- Maintain enhanced `NTEE_NCCS` variable for research
+- Carried staff corrections in an `NTEE_NCCS` column in older NCCS BMF files (a supplement to the IRS code, per NCCS)
 - Provide documentation and resources
 - Develop improvements like NTEEV2
 
@@ -384,7 +387,7 @@ Developed by Candid (Foundation Center + GuideStar):
 Generic industry taxonomy used for economic analysis:
 - More granular in some areas
 - Used by Census Bureau and BLS
-- NCCS provides [NTEE-NAICS crosswalk](https://nccs.urban.org/nccs/widgets/ntee_tables/ntee-naics_table.html)
+- NCCS provides [NTEE-NAICS crosswalk](https://nccs.urban.org/nccs/datasets/ntee/browse/)
 
 ### ICNPO Codes
 
@@ -422,47 +425,47 @@ International Classification of Nonprofit Organizations:
 
 ### Filtering Examples
 
-> **Important:** NTEE codes are NOT included in the Portal dataset (`nccs/colleges_nccs_all`), which is already pre-filtered to higher education institutions. The filtering examples below apply to the **full NCCS BMF/Core data** downloaded directly from NCCS.
+> **Important:** NTEE codes are NOT included in the Portal dataset (`nccs/colleges_nccs_all`), which is already pre-filtered to higher education institutions. The filtering examples below apply to the **full NCCS BMF data** (the Unified BMF) downloaded directly from NCCS; the harmonized Core files have no NTEE column, so join the Unified BMF to them first.
 
 ```python
 import polars as pl
 
-# --- Full NCCS data (NOT Portal) ---
+# --- Full NCCS data (NOT Portal): Unified BMF, standardized 3-character NTEE code ---
 
 # All higher education (B40-B50)
-higher_ed = df.filter(pl.col("NTEECC").str.contains(r"^B4[0-9]|^B50"))
+higher_ed = df.filter(pl.col("ntee_code_clean").str.contains(r"^B4[0-9]|^B50"))
 
 # Just universities (B43)
-universities = df.filter(pl.col("NTEECC") == "B43")
+universities = df.filter(pl.col("ntee_code_clean") == "B43")
 
 # All K-12 schools (B20-B29)
-k12 = df.filter(pl.col("NTEECC").str.contains(r"^B2[0-9]"))
+k12 = df.filter(pl.col("ntee_code_clean").str.contains(r"^B2[0-9]"))
 
 # All education (B)
-all_education = df.filter(pl.col("NTEECC").str.starts_with("B"))
+all_education = df.filter(pl.col("ntee_code_clean").str.starts_with("B"))
 
 # Using NTEEV2 for universities
-universities_v2 = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities_v2 = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 ```
 
 ```r
 library(dplyr)
 library(stringr)
 
-# --- Full NCCS data (NOT Portal) ---
+# --- Full NCCS data (NOT Portal): Unified BMF, standardized 3-character NTEE code ---
 
 # All higher education (B40-B50)
-higher_ed <- df |> filter(str_detect(NTEECC, "^B4[0-9]|^B50"))
+higher_ed <- df |> filter(str_detect(ntee_code_clean, "^B4[0-9]|^B50"))
 
 # Just universities (B43)
-universities <- df |> filter(NTEECC == "B43")
+universities <- df |> filter(ntee_code_clean == "B43")
 
 # All K-12 schools (B20-B29)
-k12 <- df |> filter(str_detect(NTEECC, "^B2[0-9]"))
+k12 <- df |> filter(str_detect(ntee_code_clean, "^B2[0-9]"))
 
 # All education (B)
-all_education <- df |> filter(str_starts(NTEECC, "B"))
+all_education <- df |> filter(str_starts(ntee_code_clean, "B"))
 
 # Using NTEEV2 for universities
-universities_v2 <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities_v2 <- df |> filter(str_starts(nteev2, "UNI-"))
 ```

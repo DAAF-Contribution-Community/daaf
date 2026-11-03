@@ -12,9 +12,9 @@ Runs **only if the user accepts the Pre-Authoring Research Offer** presented aft
 
 **Why this exists.** Profiling establishes *what the data looks like*; it cannot establish the collection methodology, population coverage rationale, valid/invalid analytical patterns, or documented limitations that make a data source skill genuinely useful. Those live in the source's official documentation and the research/practitioner literature. Grounding the skill in real sources beats ungrounded inference (see `CLAUDE.md` § "Skill information awareness"). The research runs to completion and its findings are persisted **before** the DI-7 skill-authoring subagent is dispatched, so DI-7 can consume them as an input.
 
-**Executor.** Dispatch a `search-agent` (read-only, web-capable via WebSearch plus the DAAF fetch protocol — `web-retrieval` skill, DAAF-aware). Keeping the research in its own dispatch keeps it separate, auditable, and complete before authoring begins. Do NOT fold the research into the DI-7 authoring subagent — the separation is what makes the research trail reviewable and lets profiling (observed) be reconciled against literature (reported) as an explicit input.
+**Executor.** Dispatch a `search-agent` (web-capable via WebSearch plus the DAAF fetch protocol — `web-retrieval` skill, DAAF-aware). Keeping the research in its own dispatch keeps it separate, auditable, and complete before authoring begins. Do NOT fold the research into the DI-7 authoring subagent — the separation is what makes the research trail reviewable and lets profiling (observed) be reconciled against literature (reported) as an explicit input.
 
-> **Async dispatch note.** The pre-authoring research is a single `search-agent` dispatch, not a wave. Under async dispatch it returns via a completion notification; do not persist its notes, dispatch DI-7, or advance until that return has arrived and been written to disk. See `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Async dispatch note.** The pre-authoring research is a single `search-agent` dispatch, not a wave. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Do not persist its notes, dispatch DI-7, or advance until that return has arrived and been written to disk.
 
 **Model tier.** Mechanical documentation lookup stays `sonnet` (search-agent's default). If the accepted scope is **Deep** — interpretive synthesis across methodology literature and practitioner guides rather than straight documentation retrieval — add an explicit `model: opus` override on the dispatch, per the orchestrator SKILL.md Model Selection doctrine ("a search-agent dispatch is review-role or interpretive-synthesis work … rather than mechanical lookup"). Focused/documentation-only research stays `sonnet`.
 
@@ -101,7 +101,7 @@ exclusions"}
 ### Learning Signal
 **Learning Signal:** [Category] — [One-line insight] | "None"
 
-After completing the skill's Required Actions, return findings using the format above.""",
+After loading the skill and researching, return the findings in the format above.""",
     subagent_type: "search-agent"
     # For Deep scope only, add:  model: "opus"
 })
@@ -125,7 +125,7 @@ Prepend the standard provenance header (per orchestrator SKILL.md § Subagent Re
 
 Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
 
-> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). Under async dispatch, it returns via a completion notification rather than a synchronous tool return. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
+> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
 
 **Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
 
@@ -138,6 +138,14 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name 'skill-authoring'.
 Read `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical 12-section order.
+Write the skill to `agent_reference/DOCUMENTATION_STANDARDS.md` as agent-facing text. As
+sources, cite only files inside the skill folder (its `references/` and bundled `scripts/`),
+other shipped DAAF files, or public URLs, never this onboarding project's notes, STATE.md or
+execution logs under `research/`: state a profiling finding in a sentence instead (§ S4
+Self-Contained). The Data Access section still says where the data files live. Give a fact
+taken from the provider's documentation or API a stamp in the form "verified against <source>
+on YYYY-MM-DD" (§ Dated Stamps). The data's own history across years is in scope; a change story about the
+skill is not (§ S5 Current State).
 
 **PROJECT DIRECTORY:** {project_dir}
 
@@ -149,11 +157,16 @@ Read the full STATE.md file. Key sections for skill authoring:
 - **Profiling Progress** — script paths for all executed profiling scripts
 
 **SOURCE DOCUMENTATION:** Before authoring, read any available documentation files referenced
-in STATE.md (codebook PDFs, README files, technical documentation, methodology papers).
+in STATE.md (codebook PDFs via the `pdf-reading` skill, README files, technical documentation,
+methodology papers).
 These are the source of methodological context, study design information, population coverage,
 and analytical limitations that cannot be derived from profiling scripts alone. Reference
 files must synthesize both profiling-derived observations AND documentation-derived context.
-If a documentation website URL is in STATE.md, fetch key pages for methodology context.
+If a documentation website URL is in STATE.md, read the pages already saved under
+`{project_dir}/web_fetches/` (the scoping read before setup confirmation fetches provider pages
+there with `web_fetch.sh`). If a key page is missing, list its URL in your return for the
+orchestrator to fetch: web retrieval runs only in the contexts the `web-retrieval` skill
+permits, and the built-in WebFetch is blocked.
 
 **PROFILING PRELIMINARY NOTES:** Consolidated profiling findings from each phase are at:
 - {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
@@ -292,8 +305,8 @@ Density targets for reference files:
     data could be confused with more recent or more frequent data, flag this prominently.
   * **Valid and Invalid Analyses:** Structured tables showing what analyses are appropriate
     vs. problematic, with reasoning. Use concrete examples with real place names, variable
-    names, or values where possible (following the OI Neighborhoods analytical-context.md
-    pattern):
+    names, or values where possible (following the Valid and Invalid Comparisons tables in
+    `education-data-source-ipeds/references/graduation-rates.md`):
     ### Valid Analyses
     | Analysis | Why Valid |
     |----------|----------|
@@ -334,40 +347,90 @@ without analytical guidance produces reference files that are less useful than t
 raw data itself.
 
 Part 2 — CPP-SKILL Validation:
-7. Run CPP-SKILL validation (checklist below). ALL checks must pass.
+7. Run CPP-SKILL validation. The code is canonical in `agent_reference/VALIDATION_CHECKPOINTS.md`
+   § Profiling Validation Checkpoints > CPP-SKILL: Post-Authoring Validation — copy that block
+   verbatim into a Python script and execute it via `run_with_capture.sh`. It is Python-only:
+   the artifact under test is markdown, so there is no R variant even on R projects. To re-run
+   it after revising the skill, make a new version of the script with
+   `bash {BASE_DIR}/scripts/create_script_revision.sh <latest version> <next version>` (`_a`,
+   then `_b`): `run_with_capture.sh` refuses a script that already carries an execution log.
+
+**Config stanza — assign these in the CPP-SKILL script's `# --- Config ---` region before
+the block** (the canonical stanza and the `not_applicable` key list live at
+`agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP-SKILL:
+Post-Authoring Validation):
+```python
+# Every variable the block reads is bound here. An unbound variable is a NameError — a
+# crash instead of a reported outcome; None means "the upstream step produced nothing",
+# which the block reports as [NOT VERIFIED].
+skill_draft_dir = "/daaf/.claude/skills/{skill_name}"   # absolute path to the drafted skill directory
+profiled_columns = ["ncessch", "year", "enrollment"]    # every column name carried forward from Part A
+not_applicable = {}   # e.g. {"cross_dataset_join": "source shares no join keys with any DAAF skill"}
+# One determination per manual checklist item. Each value starts with "PASS: " or
+# "FAIL: " and carries at least 20 characters of evidence after the colon — "PASS: ok"
+# satisfies a prefix test while asserting nothing reviewable, so it counts [NOT VERIFIED].
+manual_determinations = {
+    "related_skills_crossref": "PASS: Related Data Sources names education-data-explorer and education-data-query with paths",
+    "coded_values_complete": "PASS: coded-values.md enumerates all 5 sentinels 03_column-profile.py found (-1,-2,-3,-9,-99)",
+    "data_quality_complete": "PASS: data-quality.md catalogs all 9 anomalies from scripts 04 and 06, each with its counts",
+    "variable_definitions_grouped": "PASS: variable-definitions.md groups 212 columns into 8 semantic families, each described",
+    "interpretive_share": "PASS: sampled 200 lines across 5 reference files; 108 are interpretive guidance (54%)",
+    "topic_specific_file": "PASS: source has 4 distinct use cases; enrollment-analysis.md is the topic-specific file",
+    "cross_dataset_join": "PASS: analytical-context.md carries a worked ncessch join example against the CCD skill",
+}
+```
 
 **CPP-SKILL VALIDATION:**
 
-Skill template compliance:
-- [ ] All 12 canonical sections in correct order
-- [ ] Frontmatter includes provenance dates
-- [ ] Value Encodings Warning in position 4 with comparison table
-- [ ] Decision Trees: at least 2
-- [ ] Missing Data Codes subsection in Quick Reference
-- [ ] Truth Hierarchy blockquote in Data Access
-- [ ] Common Pitfalls: 3-column table with >=3 rows
-- [ ] Related Data Sources includes domain explorer and query skills (if they exist)
-- [ ] Total SKILL.md under 500 lines
+Every item below is covered exactly one of two ways, and the block prints one outcome line per
+item either way:
 
-Reference file density:
-- [ ] columns.md covers ALL columns (not just a subset)
-- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling (or value-interpretation.md if no codes — documenting negative value semantics, null patterns, expected ranges)
-- [ ] data-quality.md catalogs ALL anomalies from profiling scripts
-- [ ] variable-definitions.md groups columns by semantic family with descriptions
-- [ ] analytical-context.md exists with study design, population coverage, temporal scope, and valid/invalid analysis sections
-- [ ] analytical-context.md Population Coverage contains explicit "What is NOT Included" subsection with >= 2 exclusions
-- [ ] analytical-context.md contains Temporal Scope section documenting time coverage and comparison boundaries
-- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns (with concrete examples)
-- [ ] Total reference file lines >= 3x SKILL.md lines (hard minimum; target 4-6x for complex sources)
-- [ ] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
-- [ ] If source has 3+ distinct analytical use cases: at least one topic-specific reference file exists
-- [ ] If source shares join keys with other DAAF skills: cross-dataset join example present in Related Data Sources or analytical-context.md
-- [ ] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
-- [ ] CPP-SKILL results reported as itemized pass/fail per check item (not just overall status)
+- **[auto]** — the code checks it and emits `[PASS]` / `[FAIL]` with the observed numbers.
+- **[manual: `key`]** — the code cannot judge it. Record your determination in the block's
+  `manual_determinations` config as `"PASS: <evidence>"` or `"FAIL: <evidence>"` under that key.
+  An item left unadjudicated prints `[NOT VERIFIED]` and forces the verdict to `FAILED`, so a
+  `PASSED` CPP-SKILL verdict can never sit on top of an unexamined checklist item. If an item
+  genuinely does not apply (e.g. the source shares no join keys with any DAAF skill), declare it
+  in `not_applicable` with the reason so it counts as `[SKIPPED]` rather than missing evidence.
+
+Skill template compliance (9 items):
+- [ ] [auto] All 12 canonical sections in correct order (anchored `^## ` matching — a `## What is NOT Included` heading does not satisfy the `## What is [Source]?` requirement)
+- [ ] [auto] Frontmatter includes provenance dates
+- [ ] [auto] Value Encodings Warning in position 4 with comparison table
+- [ ] [auto] Decision Trees: at least 2 (counted as fenced blocks inside the Decision Trees section)
+- [ ] [auto] Missing Data Codes subsection in Quick Reference
+- [ ] [auto] Truth Hierarchy blockquote in Data Access
+- [ ] [auto] Common Pitfalls: 3-column table with >=3 rows
+- [ ] [manual: `related_skills_crossref`] Related Data Sources includes domain explorer and query skills (if they exist)
+- [ ] [auto] Total SKILL.md under 500 lines
+
+Reference file density (14 items):
+- [ ] [auto] columns.md covers ALL columns (not just a subset) — verified against `profiled_columns` carried forward from Part A
+- [ ] [auto existence + manual: `coded_values_complete`] coded-values.md enumerates ALL coded/sentinel values found during profiling (or value-interpretation.md if no codes — documenting negative value semantics, null patterns, expected ranges). Either filename satisfies the existence check
+- [ ] [auto existence + manual: `data_quality_complete`] data-quality.md catalogs ALL anomalies from profiling scripts
+- [ ] [auto existence + manual: `variable_definitions_grouped`] variable-definitions.md groups columns by semantic family with descriptions
+- [ ] [auto] analytical-context.md exists with study design, population coverage, temporal scope, and valid/invalid analysis sections
+- [ ] [auto] analytical-context.md Population Coverage contains explicit "What is NOT Included" subsection with >= 2 exclusions
+- [ ] [auto] analytical-context.md contains Temporal Scope section documenting time coverage and comparison boundaries
+- [ ] [auto] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns (with concrete examples)
+- [ ] [auto] Total reference file lines >= 3x SKILL.md lines (hard minimum; target 4-6x for complex sources)
+- [ ] [manual: `interpretive_share`] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
+- [ ] [manual: `topic_specific_file`] If source has 3+ distinct analytical use cases: at least one topic-specific reference file exists
+- [ ] [manual: `cross_dataset_join`] If source shares join keys with other DAAF skills: cross-dataset join example present in Related Data Sources or analytical-context.md
+- [ ] [auto] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
+- [ ] [auto] CPP-SKILL results reported per check item — satisfied by the block itself, which emits one outcome token per item plus a count line
+
+**Reporting the result.** Report the block's own output: the per-item outcome lines (each
+`[PASS]` carrying its numbers), the count line
+`Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`,
+and the verdict line `CPP-SKILL VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. Map the
+verdict to the reported status the same way every other checkpoint does: `PASSED WITH WARNINGS`
+on the log line is reported as `WARNING`. Do not summarize the itemization away — the itemized
+lines are the evidence.
 
 **OUTPUT FORMAT (3500-word hard cap):**
 ### Skill Authoring: {skill_name}
-- CPP-SKILL Status (template compliance) — itemized pass/fail per checklist item
+- CPP-SKILL verdict + count line, followed by the itemized per-item outcome lines (one `[PASS]` / `[WARNING]` / `[FAIL]` / `[NOT VERIFIED]` / `[SKIPPED]` line per checklist item, each carrying its observed numbers)
 - Line count: SKILL.md [N] lines, reference files [N] total lines ([ratio]x)
 - Reference files created: [list with line counts]
 - Skill maturity: Initial characterization (v1) — see delivery notes""",
@@ -405,7 +468,7 @@ After DI-7 completes and the skill passes CPP-SKILL compliance, the orchestrator
 
    > "I've made two rounds of revisions. For the more substantial changes you're describing, Framework Development mode would give us more flexibility to restructure the skill. Want me to switch?"
 
-3. **After each iteration:** Re-run CPP-SKILL validation on the revised skill. Update STATE.md Skill Authoring Status.
+3. **After each iteration:** Re-run CPP-SKILL validation on the revised skill, as a new version of the CPP-SKILL script made with `bash {BASE_DIR}/scripts/create_script_revision.sh <latest version> <next version>` (`run_with_capture.sh` refuses a script that already carries an execution log). Update STATE.md Skill Authoring Status.
 
 ### Skill Maturity Framing
 

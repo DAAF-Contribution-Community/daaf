@@ -6,36 +6,36 @@
 #   parameter (any value) and ALLOW the dispatch, so the subagent runs
 #   in-place instead of in an isolated worktree/remote environment.
 #
-#   NOTE ON FILENAME: this file is still named block-remote-isolation.sh for
-#   registration stability (settings.json PreToolUse matchers reference it by
-#   name). "block" is now a slight misnomer — the hook no longer DENIES; it
-#   SANITIZES (strips the param) and allows. The name is retained deliberately
-#   to avoid a settings.json edit and re-registration.
+#   NOTE ON FILENAME: the name says block, but the hook strips the parameter
+#   and allows the dispatch; the name stays because settings.json registers
+#   the hook by file name.
 #
 #   isolation: "remote" — remote cloud environments are gated/unavailable in
 #   the DAAF container, and such dispatches never return a tool_result — the
 #   session waits silently until killed.
 #
-#   isolation: "worktree" — worktrees are checked out from the repo default
-#   branch (origin/main), NOT the live session branch: subagents run inside a
-#   stale framework snapshot (old CLAUDE.md/hooks/agents) and cannot see
-#   untracked files (benchmark fixtures, uncommitted work). Worktrees also
-#   accumulate under .claude/worktrees/ and require manual cleanup.
+#   isolation: "worktree" — new worktrees branch from
+#   origin/<default-branch> unless the worktree.baseRef setting is "head"
+#   (Claude Code settings docs, verified 2026-11-02), and DAAF sets no
+#   baseRef. So a subagent runs inside the remote default branch's framework
+#   snapshot (its CLAUDE.md, hooks and agents), NOT the live session branch,
+#   and cannot see untracked files (benchmark fixtures, uncommitted work).
+#   Worktrees also accumulate under .claude/worktrees/ and require manual
+#   cleanup.
 #
 #   Both values are undesirable in DAAF, so the isolation KEY is stripped
 #   whenever present, regardless of its value.
 #
 # WHY STRIP INSTEAD OF DENY
-#   First observed in the GPT DAAFBench smoke battery (2026-07-09/10): GPT
-#   (OpenAI) models fill the optional `isolation` param on EVERY Agent
-#   dispatch — and, critically, re-fill it on every retry after a deny. The
-#   prior DENY-on-isolation behavior therefore produced deny->retry loops that
-#   exhausted the turn budget without ever dispatching a subagent (observed:
-#   DAAFBench dispatch_compliance scored agent_dispatched 0/12 for
-#   GPT-5.6-Luna). Stripping the param lets the dispatch proceed in-place on
-#   the first try, for all models, with no retry loop. Claude models rarely
-#   fill this param, so the hook is usually inert for them; when they do fill
-#   it, the strip applies uniformly.
+#   GPT (OpenAI) models fill the optional `isolation` param on EVERY Agent
+#   dispatch and fill it again on every retry after a deny, so a deny loops
+#   until the turn budget runs out without a subagent ever being dispatched
+#   (observed 2026-07-10 in DAAFBench: GPT-5.6-Luna scored agent_dispatched
+#   0/12).
+#   Stripping the param lets the dispatch proceed in-place on the first try,
+#   for all models, with no retry loop. Claude models rarely fill this param,
+#   so the hook is usually inert for them; when they do fill it, the strip
+#   applies uniformly.
 #
 # DECISION  (keyed on KEY PRESENCE, not truthiness — see the guard below)
 #   tool_input has the "isolation" key (ANY value: "remote", "worktree", an
@@ -44,21 +44,22 @@
 #   isolation key absent (or tool_input missing / not an object) -> ALLOW
 #     (exit 0, no JSON)
 #
-#   Note: this INCLUDES isolation:"" — an empty string now STRIPS (whereas a
-#   truthiness guard would pass it through). strip-the-key-whenever-present is
-#   a cleaner contract, matches the provider shim sanitizer exactly
-#   (anthropic_openai_shim.py:996 — `if tool_name in ("Agent","Task") and
-#   "isolation" in args: args.pop("isolation")`), and an empty string would
-#   fail the Agent tool's enum schema anyway. This shared contract with the
-#   shim is deliberate.
+#   Note: this INCLUDES isolation:"" — an empty string STRIPS (a truthiness
+#   guard would pass it through). Strip-the-key-whenever-present is a cleaner
+#   contract, matches the provider shim's tool-argument sanitizer exactly
+#   (scripts/provider_shim/anthropic_openai_shim.py, which pops isolation from
+#   Agent and Task calls whatever its value), and an empty string would fail
+#   the Agent tool's enum schema anyway. This shared contract with the shim is
+#   deliberate.
 #
 # MECHANISM
 #   PreToolUse hooks may mutate tool input via
 #   hookSpecificOutput.updatedInput, combinable with permissionDecision:
-#   "allow" in the same response. Per the official docs
-#   (https://code.claude.com/docs/en/hooks.md): "PreToolUse: updatedInput
-#   directly under hookSpecificOutput REPLACES a tool's arguments before it
-#   runs." updatedInput is a full REPLACEMENT of tool_input, NOT a merge —
+#   "allow" in the same response. The Claude Code hooks reference
+#   (https://code.claude.com/docs/en/hooks, verified 2026-11-02) says:
+#   "PreToolUse: updatedInput directly under hookSpecificOutput replaces a
+#   tool's arguments before it runs." updatedInput is a full REPLACEMENT of
+#   tool_input, NOT a merge —
 #   there is no documented JSON merge-patch / null-deletion mechanism, so
 #   `null` is NOT a deletion marker. Whatever object we emit under
 #   updatedInput becomes the ENTIRE new tool_input. Therefore the hook must
@@ -67,26 +68,16 @@
 #   (description, prompt, subagent_type, ...) and the Agent/Task tool rejects
 #   the dispatch as schema-invalid.
 #
-# DEFECT HISTORY
-#   v3 (commit 3444e11) emitted a PARTIAL object `{"isolation": null}` under
-#   the incorrect assumption that updatedInput is merge-patched into
-#   tool_input (with null deleting the field). Because updatedInput actually
-#   REPLACES tool_input wholesale, this replaced the entire Agent/Task payload
-#   with just `{"isolation": null}`, dropping `description` and `prompt` and
-#   breaking EVERY isolation-filled dispatch with a schema validation error
-#   ("The required parameter 'description' is missing / The required parameter
-#   'prompt' is missing"). Fixed in v4 by full-object reconstruction:
-#   `.tool_input | del(.isolation)`.
-#   Regression tests: tests/bash/block_remote_isolation.bats.
+#   A partial object such as `{"isolation": null}` would therefore replace
+#   the whole Agent/Task payload and drop `description` and `prompt`, failing
+#   the dispatch's schema validation.
 #
-#   v4.1 (2026-07-13): advisory wording only — no behavioral change. During
-#   cross-container validation, a GPT session issued FIVE redundant re-dispatches
-#   after misreading the sanitized (isolation-free) rendered tool input as a
-#   failed parameter submission: the old advisory said "do not re-add the
-#   isolation parameter on retry" but never said the dispatch itself had
-#   SUCCEEDED, so the model retried the whole dispatch. The additionalContext
-#   now leads with dispatch success and explicitly instructs no re-dispatch.
-#   The anti-re-dispatch phrases are pinned by the regression tests.
+# ADVISORY
+#   The additionalContext opens by saying the dispatch succeeded and tells the
+#   model not to re-dispatch: a model that sees the isolation field missing
+#   from the rendered tool input otherwise reads it as a failed submission and
+#   retries the whole dispatch. tests/bash/block_remote_isolation.bats pins
+#   both phrases.
 #
 # FAIL-OPEN RATIONALE
 #   This is an availability/sanitization guard (prevents a hang and a stale
@@ -100,14 +91,11 @@
 #         Strip: permissionDecision=allow + updatedInput=(full tool_input with
 #         isolation removed) JSON.
 #
-# DEPLOYMENT
-#   Authored as a session-workspace deliverable
-#   (research/2026-07-12_FrameworkDev_AgentDispatchHookFix/deliverables/),
-#   deployed to .claude/hooks/ (human-only, permission-gated path). The hook
-#   is registered under TWO separate PreToolUse matchers — "Task"
-#   (settings.json line ~162) and "Agent" (line ~187) — not a single
-#   "Task|Agent" matcher. Filename unchanged on deploy so no settings.json
-#   edit is required.
+# REGISTRATION
+#   Registered under two PreToolUse matchers in .claude/settings.json,
+#   "Task" and "Agent" (not one "Task|Agent" matcher). Hooks are changed only
+#   by the user (CLAUDE.md § Safety-System Integrity). Regression tests:
+#   tests/bash/block_remote_isolation.bats.
 # ---------------------------------------------------------------------------
 
 set -uo pipefail

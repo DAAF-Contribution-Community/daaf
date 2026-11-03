@@ -13,7 +13,17 @@
 #   load_daaf_settings -- export the whitelisted DAAF_* vars (four multi-instance
 #                         keys + the DAAF_DEV build flag + the DAAF_BRANCH updater
 #                         ref + the DAAF_DATA_VOLUME_NAME data-volume override) from
-#                         environment_settings.txt
+#                         environment_settings.txt, recording which keys it adopted
+#                         from the file (provenance tracker _DAAF_KEYS_FROM_FILE);
+#                         returns non-zero, without printing, if the file exists
+#                         but cannot be read
+#   reload_daaf_settings -- re-read environment_settings.txt after it was edited:
+#                         drop only the keys the loader adopted from the file, then
+#                         load again (user-exported values keep winning); returns
+#                         non-zero on an unreadable file, like the loader
+#   resolve_project_name -- echo the Compose project name: DAAF_PROJECT_NAME (default
+#                         "daaf") normalized the way Docker Compose normalizes it;
+#                         empty when nothing usable is left
 #   resolve_data_volume_name -- echo the resolved data-volume name, honoring the
 #                         optional DAAF_DATA_VOLUME_NAME full-name override
 #   upsert_settings_key -- insert/update a single KEY=value line in a settings
@@ -32,21 +42,30 @@ if [ "${_DAAF_LIB_LOADED:-}" = "1" ]; then
 fi
 _DAAF_LIB_LOADED=1
 
+# Provenance tracker for load_daaf_settings / reload_daaf_settings: a
+# space-separated list of the whitelisted keys the loader adopted FROM THE FILE
+# in this shell. Deliberately NOT exported (child scripts run their own loader),
+# and reset here at library load so a same-named variable inherited from the
+# caller's environment can never steer reload_daaf_settings' `unset`.
+_DAAF_KEYS_FROM_FILE=""
+
 # --- Multi-Instance / Build-Flag Settings Loader ---
 # Bridge environment_settings.txt -> host shell environment for the seven
 # whitelisted DAAF_* variables: the four multi-instance keys
 # (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO, DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE)
 # plus DAAF_DEV, the opt-in BUILD flag consumed as
 # `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml, plus DAAF_BRANCH,
-# the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.sh), plus
+# the branch the updater follows (update_daaf.sh also reads it from the file with
+# its own loader; because the panel exports it, an updater the panel starts finds
+# it already set in its environment), plus
 # DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
 # data volume (consumed by resolve_data_volume_name below and by the backup /
 # restore tools; whitelisting it lets a value persisted in the settings file reach
-# those tools and compose interpolation of the external `daaf-data` volume). The
-# build flag, branch ref, and data-volume override ride the same bridge for the
-# same reason: env_file feeds the container env only, while compose interpolation
-# (and build args) resolve from the host shell env.
+# those tools. docker-compose.yml never interpolates it: the external `daaf-data`
+# block names the volume with a literal `name:`, which must match it). The build
+# flag, branch ref, and data-volume override ride the same bridge for the same
+# reason: env_file feeds the container env only, while compose interpolation (and
+# build args) and the host tools resolve from the host shell env.
 #
 # WHY THIS EXISTS: environment_settings.txt is wired into docker-compose.yml as a
 # service-level `env_file`, which feeds the CONTAINER environment only. Docker
@@ -67,7 +86,17 @@ _DAAF_LIB_LOADED=1
 # PRECEDENCE: an already-set shell environment variable WINS over the file value.
 # This matches Docker Compose's own precedence (shell env > .env file) so running
 # `DAAF_PORT_MARIMO=3000 bash daaf.sh` overrides the file exactly as bare compose
-# would. Absent file = no-op (defaults in docker-compose.yml apply).
+# would. Absent file = no-op (defaults in docker-compose.yml apply). A file that
+# exists but cannot be read = non-zero return, nothing adopted, nothing printed
+# (see the open check in the body).
+#
+# PROVENANCE: every key this function adopts from the file is appended (once) to
+# _DAAF_KEYS_FROM_FILE. Keys that were already set when the loader ran -- a user's
+# own `export`, or a value adopted by an earlier call -- are not re-adopted and so
+# are not re-recorded. That record is what lets reload_daaf_settings (below)
+# re-read an edited file without a second hardcoded key list: it drops exactly the
+# file-sourced keys and re-runs this loader, so the whitelist in the `case` arm
+# below stays the single source of truth.
 #
 # Bash 3.2 safe: no associative arrays, no mapfile, no ${var,,}.
 load_daaf_settings() {
@@ -77,6 +106,21 @@ load_daaf_settings() {
     if [ ! -f "${settings_file}" ]; then
         return 0
     fi
+
+    # Open check: the read-failure signal. A file that exists but cannot be
+    # opened (permissions, or another program holding a lock) returns 1 here
+    # with nothing adopted. The braces scope the 2>/dev/null to this one open,
+    # so only bash's own raw "Permission denied" line is discarded: any other
+    # error later in this function still reaches the caller's stderr. Callers
+    # therefore call the loader WITHOUT 2>/dev/null and print their own message
+    # on failure. Inside a condition (`if ! load_daaf_settings`) the
+    # `|| return 1` makes the failure a tested status, so the caller's ERR trap
+    # does not fire; a plain call under `set -e` still stops the script.
+    # `true`, not `:`: `:` is a POSIX special builtin, and in POSIX mode (bash
+    # --posix, or POSIXLY_CORRECT set in the user's environment) a redirection
+    # error on a special builtin exits the whole shell silently instead of
+    # returning a status. `true` is a regular builtin and returns 1 either way.
+    { true < "${settings_file}"; } 2>/dev/null || return 1
 
     local key val line
     # Read line by line (Bash 3.2: while read, not mapfile). Strip CR so CRLF
@@ -102,13 +146,108 @@ load_daaf_settings() {
                 # variable is currently unset OR empty in the environment.
                 if [ -z "${!key:-}" ]; then
                     export "${key}=${val}"
+                    # Record the adoption once. The space-padded `case` match is
+                    # the Bash 3.2 stand-in for a set lookup (no associative
+                    # arrays); a duplicate KEY= line whose first value was empty
+                    # is adopted again but never listed twice.
+                    case " ${_DAAF_KEYS_FROM_FILE:-} " in
+                        *" ${key} "*) ;;
+                        *) _DAAF_KEYS_FROM_FILE="${_DAAF_KEYS_FROM_FILE:+${_DAAF_KEYS_FROM_FILE} }${key}" ;;
+                    esac
                 fi
                 ;;
             *) continue ;;
         esac
-    done < "${settings_file}"
+    done < "${settings_file}" || return 1
+    # `|| return 1` is the race backstop for the open check above. If the file
+    # becomes unreadable in the moment between that check and this redirection,
+    # the loop never runs, nothing is adopted, and the loader still returns 1.
+    # In that (accepted) case bash's raw "Permission denied" line does reach
+    # stderr above the caller's message. Without the `|| return`, a caller
+    # testing the result (`if ! load_daaf_settings`) would see 0, because
+    # `set -e` is off inside a condition and the `return 0` below would still
+    # run. The loop's own status is otherwise 0 (its body ends in `case`/`if`
+    # constructs that return 0), so only the open fails it.
 
     return 0
+}
+
+# --- Settings Reload (after environment_settings.txt was edited) ---
+# Re-read environment_settings.txt in a long-running shell (the Control Panel)
+# so edited DAAF_* values take effect. Calling load_daaf_settings a second time
+# is NOT enough: its "already-set env wins" rule would keep every value it
+# adopted on the first call, so a changed DAAF_PORT_MARIMO would be ignored by
+# compose interpolation while env_file handed the container the new value.
+#
+# Design (no second key list): unset exactly the keys recorded in
+# _DAAF_KEYS_FROM_FILE, clear the record, and run the loader again. Values the
+# user exported before launching were never recorded, so they still win -- the
+# loader's precedence rules are unchanged. A key that was deleted from the file
+# ends up unset, so the docker-compose.yml default applies again. Any key added
+# to the loader's whitelist later takes part automatically.
+#
+# Defense in depth: only DAAF_* names are ever unset, even though the tracker is
+# only written by the loader's whitelisted `case` arm.
+#
+# Returns the loader's status: non-zero when the file exists but cannot be read.
+# The tracked keys are unset BEFORE the read, so on that failure they stay unset
+# and the tracker stays empty. A caller that must keep its settings (the Control
+# Panel's Restart Container) snapshots them first and restores them on failure.
+#
+# Usage: reload_daaf_settings [settings_file]   (default ./environment_settings.txt)
+# Bash 3.2 safe: word-splits a space-separated list of [A-Z_] names (no arrays).
+reload_daaf_settings() {
+    local settings_file="${1:-./environment_settings.txt}"
+    local _k
+    # Unquoted on purpose: word-splits the space-separated list of [A-Z_] names.
+    for _k in ${_DAAF_KEYS_FROM_FILE:-}; do
+        case "${_k}" in
+            DAAF_*) unset -v "${_k}" ;;
+        esac
+    done
+    _DAAF_KEYS_FROM_FILE=""
+    load_daaf_settings "${settings_file}" || return 1
+}
+
+# --- Compose Project Name Resolver ---
+# Echo the project name Docker Compose actually uses, so every Docker name a host
+# script derives from the project ("<project>_daaf-data",
+# "<project>_daaf-claude-config", "<project>-daaf-docker-1") is the name Compose
+# created. Compose does not use the top-level `name: ${DAAF_PROJECT_NAME:-daaf}`
+# verbatim: compose-go normalizes a name read from the compose file
+# (NormalizeProjectName: lowercase, keep only [a-z0-9_-], trim leading '_' and '-').
+# Verified against Compose's compose-go `loader/loader.go` (main) on 2026-11-01.
+# So a settings file that says `Work` gives the volume "work_daaf-data", not
+# "Work_daaf-data". That every Compose release DAAF supports (Docker 25+)
+# normalizes the same way is assumed, not checked per release.
+#
+# Unset or empty DAAF_PROJECT_NAME => "daaf", unchanged. A value that normalizes to
+# nothing (e.g. "___" or "@@") prints an EMPTY line; the function still returns 0
+# (so `x="$(resolve_project_name)"` is safe under `set -e`) and the CALLER must
+# refuse an empty result -- what Compose does with such a name is not something to
+# rely on.
+#
+# Byte-wise and locale-safe (LC_ALL=C; Bash 3.2 has no ${v,,}): ASCII letters are
+# lowercased and every other byte outside [a-z0-9_-] is dropped, so a non-ASCII
+# letter is dropped. Go's Unicode lowercasing maps a few non-ASCII letters to ASCII
+# ones it would keep (the Kelvin sign U+212A becomes 'k'); neither this helper nor
+# its twins follow it there.
+#
+# SYNC NOTE: the same two normalization lines are in install.sh and run_daaf.sh
+# (inline, they run standalone), and this whole function is carried
+# BYTE-IDENTICAL in backup_daaf.sh, restore_from_backup.sh, update_daaf.sh and the
+# maintainer harness test_migration.sh (standalone scripts that do not source this
+# library). The PowerShell twin is Resolve-DaafProjectName in daaf_lib.ps1.
+# tests/bash/daaf_lib.bats pins the copies, the installer and run_daaf.sh to the
+# same results on a fixed input set.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
 }
 
 # --- Data Volume Name Resolver ---
@@ -117,26 +256,38 @@ load_daaf_settings() {
 #
 # PRECEDENCE (printed to stdout, captured by callers via `$(resolve_data_volume_name)`):
 #   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
-#      volume name (no project prefix is added). This is the escape hatch for
-#      pointing two installs at ONE shared workspace volume; it must match the
-#      `name:` under the external `daaf-data` block in docker-compose.yml.
-#   2. Otherwise "${DAAF_PROJECT_NAME:-daaf}_daaf-data" -- the Compose-prefixed
-#      default. So an UNSET DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the
-#      historical hardcoded derivation, and a second instance with
-#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data".
+#      volume name (no project prefix is added, and it is NOT normalized: it is a
+#      literal Docker volume name that must match the `name:` under the external
+#      `daaf-data` block in docker-compose.yml). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume.
+#   2. Otherwise "<project>_daaf-data", where <project> is resolve_project_name
+#      (DAAF_PROJECT_NAME normalized as Compose does, default "daaf"). So an UNSET
+#      DAAF_DATA_VOLUME_NAME with no project name is byte-for-byte identical to the
+#      historical hardcoded derivation, a second instance with
+#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data", and `Work` resolves to
+#      "work_daaf-data", the volume Compose created.
+#      When the project name normalizes to nothing, this prints NOTHING and returns
+#      1: there is no derived name to give.
 # A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default (the
-# `:-` test treats empty and unset alike), matching how load_daaf_settings adopts
+# `-n` test treats empty and unset alike), matching how load_daaf_settings adopts
 # a whitelisted key only when it is non-empty.
 #
 # The claude-config volume is deliberately NOT resolved here: per-install auth
-# isolation is by design, so it keeps its project-prefixed default everywhere and
-# has no analogous override.
+# isolation is by design, so it keeps its project-prefixed default everywhere
+# ("$(resolve_project_name)_daaf-claude-config") and has no analogous override.
 #
 # Callers that need a value persisted in environment_settings.txt to win should
 # `load_daaf_settings` first (which bridges DAAF_DATA_VOLUME_NAME into the shell
-# env), then call this. Bash 3.2 safe: pure parameter expansion, no arrays.
+# env), then call this. Bash 3.2 safe: no arrays.
 resolve_data_volume_name() {
-    printf '%s\n' "${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
+    if [ -n "${DAAF_DATA_VOLUME_NAME:-}" ]; then
+        printf '%s\n' "${DAAF_DATA_VOLUME_NAME}"
+        return 0
+    fi
+    local project
+    project="$(resolve_project_name)"
+    [ -n "${project}" ] || return 1
+    printf '%s\n' "${project}_daaf-data"
 }
 
 # --- Color Setup ---
@@ -223,14 +374,11 @@ open_url() {
 # Check if a service is listening on a port inside the DAAF container.
 # Returns 0 if listening, 1 otherwise.
 #
-# The probe reads /proc/net/tcp{,6} directly rather than shelling out to `ss`:
-# the `ss` binary (iproute2) is NOT installed in the DAAF image, so the old
-# iproute2-based probe always failed silently and check_port always returned 1.
-# The /proc/net/tcp approach needs no extra binary and matches the pattern
-# already proven in generate_log_viewer.sh and launch_code_server.sh. In that
-# file, column 2 is "local_address" formatted as HEXIP:HEXPORT and column 4 is
-# the socket state, where 0A means LISTEN. We match the listening port by its
-# uppercase 4-hex-digit representation.
+# The probe reads /proc/net/tcp{,6} directly: the DAAF image has no `ss`
+# (iproute2), and /proc needs no extra binary (generate_log_viewer.sh and
+# launch_code_server.sh use the same pattern). In /proc/net/tcp, column 2 is
+# "local_address" as HEXIP:HEXPORT and column 4 is the socket state, where 0A
+# means LISTEN; the port is matched by its uppercase 4-hex-digit form.
 check_port() {
     local port="${1:?check_port requires a port number}"
 
@@ -266,7 +414,9 @@ check_port() {
 # Returns 0 when the container is running (already up or just started), 1 on
 # failure. Callers gate on the return code (`if ! ensure_container; then ...`);
 # there is no exported status variable (the PowerShell twin Confirm-DaafContainer
-# likewise returns a boolean rather than setting a flag).
+# likewise returns a boolean rather than setting a flag). `up -d` runs with its
+# stderr discarded, so a caller reporting the failure sends the user to a path
+# that shows Docker's message (run_daaf.sh runs `up -d` with stderr visible).
 ensure_container() {
     # In dry-run mode, just pretend the container is running
     if [ "${DAAF_DRY_RUN:-}" = "1" ]; then

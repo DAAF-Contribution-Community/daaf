@@ -1,0 +1,4 @@
+Synthetic Contract Fixture Three
+In an invented survey of 2,560 pupils, reading scores were 0.09 standard deviations (standard error 0.03) higher where libraries opened late.
+The survey measured library hours once, and the authors note that families who chose late libraries may differ.
+

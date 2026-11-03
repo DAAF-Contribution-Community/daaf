@@ -1,0 +1,31 @@
+{
+ "rows": [
+  {
+   "confidence": "low",
+   "data_answerable": false,
+   "data_note": null,
+   "evidence_of_absence_json": "[{\"backends_answered\":[\"openalex\",\"eric\"],\"command\":\"find\",\"failed_backends\":[],\"kind\":\"zero_results\",\"manifest\":\"lit_search/round1/MANIFEST.jsonl\",\"query\":\"tutoring rural boarding schools\",\"result_count\":0,\"row_sha256\":\"24e714177d6d2cd95e00414a25ccbb52dfb37bd9c72f9e35f4710043333b39fd\",\"timestamp\":\"2026-10-31T00:00:00Z\"}]",
+   "gap_id": "G01",
+   "input_sha256": "fcd23a9b0925e58dc60107cfbc0d293489ee252a322146ffa463e61ef75200cb",
+   "miles_type": "population",
+   "recorded_version": 1,
+   "sa_mode": "neglect",
+   "statement": "No study of tutoring in rural boarding schools was found.",
+   "supporting_claim_ids_json": "[]"
+  },
+  {
+   "confidence": "low",
+   "data_answerable": false,
+   "data_note": null,
+   "evidence_of_absence_json": "[{\"backends_answered\":[\"openalex\",\"eric\"],\"command\":\"find\",\"failed_backends\":[],\"kind\":\"none_eligible\",\"manifest\":\"lit_search/round1/MANIFEST.jsonl\",\"query\":\"adult reading clubs\",\"result_count\":1,\"row_sha256\":\"6c63bfd9e2f68e0511da6d20d1a0f636d8bbad8844e474ec25f3bf4c161da97e\",\"timestamp\":\"2026-10-31T00:00:00Z\"}]",
+   "gap_id": "G02",
+   "input_sha256": "fcd23a9b0925e58dc60107cfbc0d293489ee252a322146ffa463e61ef75200cb",
+   "miles_type": "unclassified",
+   "recorded_version": 1,
+   "sa_mode": "unclassified",
+   "statement": "Reading clubs for adults were outside every included study.",
+   "supporting_claim_ids_json": "[]"
+  }
+ ],
+ "source": "data/gap_register_v1.parquet"
+}

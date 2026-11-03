@@ -124,8 +124,10 @@ mirrors:
       inventory evidence for one build, not a permanent completeness guarantee.
       Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
       Provenance: files are Polars-written. Some declare string columns as Arrow
-      'string_view' in the parquet-native schema (confirmed: saipe/districts_saipe,
-      edfacts/schools_edfacts_grad_rates_2015..2019). Python (Polars/pyarrow) reads
+      'string_view' in the parquet-native schema (75 of the 406 data parquets at
+      rev 0ad00ce0, probed 2026-10-28, all carried forward from v1, e.g.
+      edfacts/{schools,districts}_edfacts_grad_rates_2010..2019;
+      saipe/districts_saipe, rebuilt for v2, has none). Python (Polars/pyarrow) reads
       these fine, but the R arrow binding fails at Table->data.frame with
       'cannot handle Array of type <utf8_view>'. R readers MUST use the view-safe
       parquet read pattern (read as Arrow Table, cast view types to materialized,
@@ -134,7 +136,7 @@ mirrors:
       R large-file timeout: arrow::read_parquet(url) and readr::read_csv(url) both
       transfer via R's download.file(), which caps the whole transfer at
       getOption("timeout") (default 60s), so large files here (e.g.
-      ccd/schools_ccd_directory.parquet, ~224MB) truncate at ~60s and silently fall
+      ccd/schools_ccd_directory.parquet, ~269MB) truncate at ~60s and silently fall
       through to the next mirror in priority order. The timeout: 300 above is not consulted by the R
       readers — raise it in-script with options(timeout = max(600, getOption("timeout")))
       before the mirror loop (or use curl::multi_download for very large files).
@@ -170,7 +172,11 @@ mirrors:
       Urban-hosted bulk CSV/XLS inventory; do not equate it with endpoint-catalog
       declarations or actual live API responses. Dated reconciliation on 2026-07-21
       found 958 presentation rows that deduplicated by exact file_dir/file_name to
-      495 unique objects (404 CSV data files, 91 XLS codebooks). Manifest rows are
+      495 unique objects (404 CSV data files, 91 XLS codebooks). Re-observed
+      2026-10-28: 990 rows deduplicating to 527 objects (435 CSV, 92 XLS), more
+      CSV data objects than the pinned HF mirror's 406 data parquets, so a fetch
+      that falls through to this mirror can reach objects the pinned vintage lacks
+      (which objects are new was not computed). Manifest rows are
       endpoint-linked presentation records and can map many-to-many to objects.
       Large files (500MB+); always use lazy loading with filters.
       Some datasets are split into yearly files (e.g., ccd/schools_ccd_enrollment_{year}.csv)

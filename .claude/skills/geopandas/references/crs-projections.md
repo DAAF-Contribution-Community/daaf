@@ -171,7 +171,7 @@ gdf_custom = gdf.to_crs(custom_crs)
 
 ## CRS Matching Before Spatial Operations
 
-All spatial operations (join, overlay, distance, etc.) require both inputs to be in the same CRS. geopandas raises a `CRSMismatchError` if they differ.
+All spatial operations (join, overlay, clip, distance, etc.) require both inputs to be in the same CRS. geopandas does **not** raise when they differ: it emits a `UserWarning` ("CRS mismatch between the CRS of left geometries and the CRS of right geometries.") and runs the operation on the raw coordinates, which typically returns an empty or wrong result. Check (or `assert`) `gdf1.crs == gdf2.crs` before every spatial operation.
 
 ```python
 # Check if two GeoDataFrames share the same CRS
@@ -246,7 +246,7 @@ print(f"EPSG:{utm_results[0].code}")  # e.g., EPSG:32618
 | `set_crs` used instead of `to_crs` | Data plots in wrong hemisphere/location | Use `to_crs` to reproject |
 | Web Mercator for analysis | Areas wildly wrong (Greenland = Africa) | Use equal-area projection |
 | Missing CRS after pandas operation | `gdf.crs` is None | Re-set CRS: `gdf = gdf.set_crs("EPSG:4326")` |
-| Mixed CRS in spatial join | `CRSMismatchError` | Reproject to common CRS |
+| Mixed CRS in spatial join | `UserWarning: CRS mismatch …`; the join still runs and returns empty or wrong matches | Reproject to common CRS; `assert left.crs == right.crs` |
 
 ---
 

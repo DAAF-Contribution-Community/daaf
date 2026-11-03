@@ -21,9 +21,10 @@ Run these checks immediately after loading ANY new dataset.
 **Python:**
 ```python
 import polars as pl
+import polars.selectors as cs
 
 # Load data
-df = pl.read_csv("data.csv")
+df = pl.read_parquet("data.parquet")
 
 # Basic inspection
 print(f"Shape: {df.shape[0]} rows x {df.shape[1]} columns")
@@ -33,11 +34,11 @@ print(f"Memory usage: {df.estimated_size() / 1024 / 1024:.2f} MB")
 
 **R:**
 ```r
-library(readr)
+library(arrow)
 library(dplyr)
 
 # Load data
-df <- read_csv("data.csv")
+df <- read_parquet("data.parquet")
 
 # Basic inspection
 cat(sprintf("Shape: %d rows x %d columns\n", nrow(df), ncol(df)))
@@ -183,7 +184,7 @@ Three types of missingness (important for handling strategy):
 # Look for: columns that are always missing together
 
 # Check if missingness correlates across columns
-missing_cols = [col for col in df.columns if df[col].null_count().item() > 0]
+missing_cols = [col for col in df.columns if df[col].null_count() > 0]
 if len(missing_cols) > 1:
     # Create missingness indicator DataFrame
     missing_indicators = df.select([
@@ -192,7 +193,7 @@ if len(missing_cols) > 1:
     ])
     # Correlation of missingness patterns
     print("Missingness correlation (high = missing together):")
-    # Examine cross-tabulations of missingness
+    print(missing_indicators.cast(pl.Int8).corr())
 ```
 
 **R:**
@@ -228,6 +229,13 @@ for col in df.select(pl.col(pl.String)).columns:
         count = value_counts.filter(pl.col(col) == sv)
         if len(count) > 0:
             print(f"Column '{col}' has {count[0, 'count']} instances of '{sv}'")
+
+# Numeric sentinel codes (e.g., -999; Education Data Portal -1/-2/-3) are invisible to the string scan
+numeric_sentinels = [-1, -2, -3, -9, -99, -999, 9999]
+for col in df.select(cs.numeric()).columns:
+    counts = df.filter(pl.col(col).is_in(numeric_sentinels)).group_by(col).len()
+    for value, count in counts.iter_rows():
+        print(f"Column '{col}' has {count} instances of {value} (possible missing-value code)")
 ```
 
 **R:**
@@ -244,6 +252,18 @@ for (col in char_cols) {
     }
   }
 }
+
+# Numeric sentinel codes (e.g., -999; Education Data Portal -1/-2/-3) are invisible to the character scan
+numeric_sentinels <- c(-1, -2, -3, -9, -99, -999, 9999)
+num_cols <- names(df)[sapply(df, is.numeric)]
+for (col in num_cols) {
+  for (sv in numeric_sentinels) {
+    count <- sum(df[[col]] == sv, na.rm = TRUE)
+    if (count > 0) {
+      cat(sprintf("Column '%s' has %d instances of %s (possible missing-value code)\n", col, count, sv))
+    }
+  }
+}
 ```
 
 ## Distribution Analysis
@@ -256,7 +276,7 @@ for (col in char_cols) {
 print(df.describe())
 
 # For each numerical column, check:
-for col in df.select(pl.col(pl.NUMERIC_DTYPES)).columns:
+for col in df.select(cs.numeric()).columns:
     stats = df.select([
         pl.col(col).min().alias("min"),
         pl.col(col).quantile(0.25).alias("q25"),
@@ -294,7 +314,7 @@ for (col in num_cols) {
               format(quantile(vals, 0.75, na.rm = TRUE), big.mark = ","),
               format(max(vals, na.rm = TRUE), big.mark = ","),
               format(sd(vals, na.rm = TRUE), big.mark = ","),
-              format(moments::skewness(vals, na.rm = TRUE), digits = 3)))
+              format(e1071::skewness(vals, na.rm = TRUE, type = 1), digits = 3)))
 
   # Red flags:
   # - Large difference between mean and median (skewness)
@@ -352,7 +372,7 @@ for (col in char_cols) {
 **Python:**
 ```python
 # For datetime columns
-for col in df.select(pl.col(pl.TEMPORAL_DTYPES)).columns:
+for col in df.select(cs.temporal()).columns:
     print(f"\n{col}:")
     print(f"  Min: {df[col].min()}")
     print(f"  Max: {df[col].max()}")
@@ -442,8 +462,7 @@ cat(sprintf("'%s': mean=%.2f, sd=%.2f, %d outliers with |z| > %.1f (%.1f%%)\n",
 
 **Python:**
 ```python
-# Examine outliers in context
-outliers = detect_outliers_iqr(df, "amount")
+# Examine outliers in context (using IQR method from above)
 if len(outliers) > 0:
     print("\nOutlier records (examine these!):")
     print(outliers.head(10))
@@ -603,10 +622,10 @@ for (col in names(df)) {
 **Python:**
 ```python
 # Pearson correlation for numerical columns
-numeric_cols = df.select(pl.col(pl.NUMERIC_DTYPES)).columns
+numeric_cols = df.select(cs.numeric()).columns
 if len(numeric_cols) > 1:
     # Polars correlation
-    corr_matrix = df.select(numeric_cols).corr()
+    corr_matrix = df.select(numeric_cols).drop_nulls().corr()  # complete cases; any null gives NaN
     print("Correlation matrix:")
     print(corr_matrix)
     
@@ -707,7 +726,7 @@ for col in df.columns:
     nulls = df[col].null_count()
     uniques = df[col].n_unique()
     print(f"  {col}: {dtype}, {nulls} nulls, {uniques} unique")
-print(f"\nNumeric summary:\n{df.select(pl.col(pl.NUMERIC_DTYPES)).describe()}")
+print(f"\nNumeric summary:\n{df.select(cs.numeric()).describe()}")
 ```
 
 **R:**

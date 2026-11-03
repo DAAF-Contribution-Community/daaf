@@ -36,9 +36,27 @@ if [ "${_BATS_HELPERS_LOADED}" != "true" ]; then
             return 1
         fi
     }
+    # Optional expected status, as in bats-assert (`assert_failure 3`). Without it, a
+    # fallback run passed every status-specific pin (exit 1 vs 3 vs 130) whenever the
+    # status was merely nonzero, so in-container runs could not catch a wrong exit code.
+    # A non-numeric expected status (a typo such as `assert_failure l`) fails LOUDLY:
+    # otherwise `[ ... -ne "$1" ]` errors out, its test is false, and the pin passes.
     assert_failure() {
+        if [ "$#" -gt 0 ]; then
+            case "$1" in
+                ''|*[!0-9]*)
+                    echo "assert_failure failed: expected status '$1' is not a number"
+                    return 1
+                    ;;
+            esac
+        fi
         if [ "${status}" -eq 0 ]; then
             echo "assert_failure failed: expected non-zero exit"
+            echo "output: ${output}"
+            return 1
+        fi
+        if [ "$#" -gt 0 ] && [ "${status}" -ne "$1" ]; then
+            echo "assert_failure failed: expected status $1, got ${status}"
             echo "output: ${output}"
             return 1
         fi
@@ -94,6 +112,119 @@ common_teardown() {
 }
 
 # ============================================================================
+# Shared docker arms: the startup checks of backup_daaf.sh / restore_from_backup.sh
+# ============================================================================
+# Fix pass #26 (F1 compatibility; maintainer-only audit, not shipped:
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md) added three docker calls BEFORE anything is created:
+#   docker version --format '{{.Client.Version}} {{.Server.Version}}'   (refuse < 25)
+#   docker image inspect <pinned busybox>                               (present?)
+#   docker pull <pinned busybox>                                        (only if absent)
+# A mock arm that prints nothing on exit 0 reads as "Could not read the Docker version"
+# and every run refuses (pass #26: 181 bats failures had that one cause), so EVERY docker
+# mock -- mock_docker below and each suite's inline docker() -- delegates these calls to
+# ONE shared function instead of copying the arms. Use as the FIRST line of a stub:
+#
+#   docker() {
+#       if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+#       ...the stub's own arms...
+#   }
+#
+# It returns 0 when it HANDLED the call (the call's exit code is in
+# MOCK_DOCKER_ARM_STATUS) and 1 when the stub must handle it. Run inside `if`, so the
+# script's `set -e` never sees the 1. A stub that logs its calls keeps logging only the
+# calls it handles, so existing call-log assertions keep their meaning; the full argv
+# log is MOCK_DOCKER_ARGV_LOG below. Knobs (all optional, read at call time):
+#   MOCK_DOCKER_VERSION        stdout of `docker version` (default "29.1.3 29.1.3"; set it
+#                              to "" for NO output, e.g. an unreadable version)
+#   MOCK_DOCKER_VERSION_EXIT   its exit code (default 0)
+#   MOCK_DOCKER_IMAGE_INSPECT_EXIT  `docker image inspect` exit (default 0 = image present;
+#                              nonzero prints Docker's "No such image" line on stderr)
+#   MOCK_DOCKER_PULL_EXIT      `docker pull` exit (default 0)
+#   MOCK_DOCKER_PULL_STDERR    stderr text of a FAILED pull (may hold several lines)
+#   MOCK_DOCKER_ARGV_LOG       a file: EVERY docker call that reaches a stub (handled here
+#                              or not) is appended as one line, each argument followed by
+#                              the unit separator \037 (embedded newlines folded to spaces),
+#                              so the image argument of a run/create can be found exactly
+# The pinned helper image (the ONE string in backup_daaf / restore_from_backup /
+# migrate_daaf {.sh,.ps1} and docker-compose.yml). A test that expects a different string
+# must fail: a digest change is deliberate and updates this line in the same commit.
+DAAF_BUSYBOX_PIN='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+# The same string escaped for grep -E / BRE patterns (only `.` is special in it); sed,
+# not ${x//./\\.}, whose backslash handling inside double quotes changed in bash 4.3.
+DAAF_BUSYBOX_PIN_RE="$(printf '%s\n' "${DAAF_BUSYBOX_PIN}" | sed 's/\./\\./g')"
+export DAAF_BUSYBOX_PIN DAAF_BUSYBOX_PIN_RE
+
+mock_docker_shared_arms() {
+    MOCK_DOCKER_ARM_STATUS=0
+    if [ -n "${MOCK_DOCKER_ARGV_LOG:-}" ]; then
+        local _mda_arg _mda_line=""
+        for _mda_arg in "$@"; do _mda_line="${_mda_line}${_mda_arg//$'\n'/ }"$'\037'; done
+        printf '%s\n' "${_mda_line}" >> "${MOCK_DOCKER_ARGV_LOG}"
+    fi
+    case "${1:-}" in
+        version)
+            # ${VAR-default}, no colon: an explicitly EMPTY MOCK_DOCKER_VERSION prints nothing.
+            if [ -n "${MOCK_DOCKER_VERSION-29.1.3 29.1.3}" ]; then
+                printf '%s\n' "${MOCK_DOCKER_VERSION-29.1.3 29.1.3}"
+            fi
+            MOCK_DOCKER_ARM_STATUS="${MOCK_DOCKER_VERSION_EXIT:-0}"
+            return 0
+            ;;
+        image)
+            if [ "${2:-}" = "inspect" ]; then
+                MOCK_DOCKER_ARM_STATUS="${MOCK_DOCKER_IMAGE_INSPECT_EXIT:-0}"
+                if [ "${MOCK_DOCKER_ARM_STATUS}" != "0" ]; then
+                    echo "Error response from daemon: No such image: ${3:-}" >&2
+                fi
+                return 0
+            fi
+            ;;
+        pull)
+            MOCK_DOCKER_ARM_STATUS="${MOCK_DOCKER_PULL_EXIT:-0}"
+            if [ "${MOCK_DOCKER_ARM_STATUS}" = "0" ]; then
+                echo "1.37.0: Pulling from library/busybox"
+                echo "Status: Downloaded newer image for ${2:-}"
+            elif [ -n "${MOCK_DOCKER_PULL_STDERR:-}" ]; then
+                printf '%s\n' "${MOCK_DOCKER_PULL_STDERR}" >&2
+            fi
+            return 0
+            ;;
+    esac
+    return 1
+}
+export -f mock_docker_shared_arms
+
+# Print a MOCK_DOCKER_ARGV_LOG file ($1) readably: one call per line, every argument in
+# [brackets], so argument BOUNDARIES are visible (`[version] [--format] [{{.Client.Version}}
+# {{.Server.Version}}]` proves the format string arrived as ONE argument).
+mock_docker_argv_show() {
+    awk -F '\037' '{ s = ""; for (i = 1; i < NF; i++) s = s (i > 1 ? " " : "") "[" $i "]"; print s }' "$1"
+}
+
+# Print the IMAGE argument of every `docker run` / `docker create` in a
+# MOCK_DOCKER_ARGV_LOG file ($1), one per line: the first argument after the subcommand
+# that is not an option and not the value of an option that takes one (-v/--volume,
+# --label/-l, --name, -e/--env, -w/--workdir, -u/--user, --entrypoint, --network,
+# --mount, --platform). A run/create with no image prints "<no image>", so a
+# miscounted parse cannot hide a call.
+mock_docker_argv_images() {
+    awk -F '\037' '
+        $1 == "run" || $1 == "create" {
+            img = "<no image>"
+            for (i = 2; i < NF; i++) {
+                a = $i
+                if (a ~ /^(-v|--volume|--label|-l|--name|-e|--env|-w|--workdir|-u|--user|--entrypoint|--network|--mount|--platform)$/) { i++; continue }
+                if (a ~ /^-/) continue
+                img = a
+                break
+            }
+            print img
+        }
+    ' "$1"
+}
+export -f mock_docker_argv_show mock_docker_argv_images
+
+# ============================================================================
 # Docker mock (Strategy 1 -- function override)
 # ============================================================================
 # After calling mock_docker, any `docker` invocation in the script under test
@@ -147,6 +278,10 @@ mock_docker() {
 
     docker() {
         DOCKER_CALLS+=("$*")
+        # version / image inspect / pull: the shared arms above (knobs MOCK_DOCKER_VERSION,
+        # MOCK_DOCKER_IMAGE_INSPECT_EXIT, MOCK_DOCKER_PULL_*; full argv log
+        # MOCK_DOCKER_ARGV_LOG).
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)
                 return "${MOCK_DOCKER_INFO_EXIT:-0}"
@@ -208,7 +343,44 @@ mock_docker() {
                 return "${MOCK_DOCKER_CP_EXIT:-0}"
                 ;;
             volume)
+                # `docker volume inspect <name>-restore-tmp` is restore_from_backup.sh's
+                # exact-name check for a TEMPORARY volume left by an earlier restore.
+                # Default: ABSENT (exit 1), whatever MOCK_DOCKER_VOLUME_EXIT says about the
+                # live volume -- otherwise every test reaching the copy-then-swap section
+                # would see a phantom leftover and its stdin would answer the leftover
+                # prompt. No other script uses that suffix, so other callers are unchanged.
+                # "Absent" says so on stderr like Docker: restore treats any OTHER inspect
+                # failure as "could not check" and refuses (review round 1, I2).
+                if [ "${2:-}" = "inspect" ]; then
+                    case "${3:-}" in
+                        *-restore-tmp)
+                            if [ "${MOCK_DOCKER_RESTORE_TMP_EXIT:-1}" != "0" ]; then
+                                echo "Error response from daemon: get ${3}: no such volume" >&2
+                            fi
+                            return "${MOCK_DOCKER_RESTORE_TMP_EXIT:-1}"
+                            ;;
+                    esac
+                fi
                 return "${MOCK_DOCKER_VOLUME_EXIT:-0}"
+                ;;
+            container)
+                # `docker container inspect --format ... <name>-restore-swap` is restore's
+                # exact-name check for a swap container left by an earlier restore.
+                # Default: ABSENT (exit 1). Every other `docker container ...` call keeps
+                # the old default-arm behavior (MOCK_DOCKER_EXIT).
+                if [ "${2:-}" = "inspect" ]; then
+                    local _last=""
+                    for _last in "$@"; do :; done
+                    case "${_last}" in
+                        *-restore-swap)
+                            if [ "${MOCK_DOCKER_RESTORE_SWAP_EXIT:-1}" != "0" ]; then
+                                echo "Error: No such container: ${_last}" >&2
+                            fi
+                            return "${MOCK_DOCKER_RESTORE_SWAP_EXIT:-1}"
+                            ;;
+                    esac
+                fi
+                return "${MOCK_DOCKER_EXIT:-0}"
                 ;;
             run)
                 # Distinguish the detached staging launch (`run -d ...`) from the

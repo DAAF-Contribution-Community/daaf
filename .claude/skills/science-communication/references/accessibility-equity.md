@@ -61,7 +61,7 @@ The evidence-based approach is to present data through multiple concurrent forma
 3. **Data table** — for precise values, screen readers, and independent verification
 4. **Accessible download** — Excel/ODS file for further analysis (when applicable)
 
-This strategy simultaneously satisfies WCAG requirements, serves diverse user needs, and aligns with the IES recommendation to "lead with the headline" in both visual and text form.
+This strategy simultaneously satisfies WCAG requirements, serves diverse user needs, and extends the IES advice to "Lead with the headline" (Miller & Piver-Renna, 2022) to both visual and text form.
 
 ### Screen Reader Considerations
 
@@ -100,7 +100,7 @@ Default to language that foregrounds personhood, then describes characteristics.
 | Illegals, illegal immigrants | Undocumented immigrants, undocumented residents | People are not "illegal" — actions may be |
 | Dropouts | Students who left school, students who did not complete | "Dropout" implies choice and blame |
 | At-risk youth | Young people facing systemic barriers | "At-risk" locates the problem in the person, not the system |
-| Blacks, whites (as nouns) | Black people, white people | Use as adjectives, not nouns — people first |
+| Blacks, Whites (as nouns) | Black people, White people | Use as adjectives, not nouns, as AMA style directs — people first. Capitalize racial and ethnic group names, including White, per APA 7 and AMA style |
 | Diabetics, asthmatics | People with diabetes, people with asthma | Condition modifies the person, not the other way around |
 
 ### Nuance: Identity-First Language
@@ -111,7 +111,7 @@ People-first language is the default, but some communities prefer identity-first
 
 Language evolves continuously. Some notes on current usage in research contexts:
 
-- **Hispanic/Latino/Latina/Latinx/Latine:** A 2020 Pew survey found only 3% of Hispanic/Latino adults use "Latinx." "Latine" is an emerging alternative. When survey data use one term, you may use updated language in your communication if explicitly noted. When uncertain, use the term the community uses most widely in your context.
+- **Hispanic/Latino/Latina/Latinx/Latine:** A Pew Research Center survey of U.S. Hispanic adults (December 2019, published 2020) found that 23% had heard of "Latinx" and 3% used it to describe themselves (Noé-Bustamante, Mora, & Lopez, 2020). "Latine" is an emerging alternative. When survey data use one term, you may use updated language in your communication if explicitly noted. When uncertain, use the term the community uses most widely in your context.
 - **BIPOC:** Useful as shorthand but can obscure meaningful differences between the groups it aggregates. Prefer specific group names when the analysis supports disaggregation.
 - **Gender language:** Many major surveys still offer only "male/female." When such groups are absent from data, call it out explicitly: "This survey did not offer nonbinary response options."
 
@@ -119,7 +119,7 @@ Language evolves continuously. Some notes on current usage in research contexts:
 
 ## Urban Institute Do No Harm Principles
 
-The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visualization" (Schwabish & Feng, 2021) provides a comprehensive framework for equity-aware data communication. Its central diagnostic question is: *"If I were one of the data points on this visualization, would I feel offended?"*
+The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visualization" (Schwabish & Feng, 2021) provides a comprehensive framework for equity-aware data communication. Its recurring diagnostic question, from journalist Kim Bui, is: *"If I were one of the data points on this visualization, would I feel offended?"*
 
 ### Core Principles
 
@@ -129,11 +129,11 @@ The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visua
 
 3. **Name forces of oppression directly.** Titles and annotations are prime real estate for naming racism, sexism, and structural discrimination — don't bury these forces in body text or leave them for the reader to infer.
 
-4. **Frame around systems, not deficits.** "Black students are suspended at 3x the rate" locates the problem in Black students. "Schools suspend Black students at 3x the rate" locates the problem in the system. The second framing is almost always more accurate.
+4. **Frame around systems, not deficits.** The guide warns that charts comparing every group with the best-performing one can invite a "deficit-based perspective", and it shows D'Ignazio and Klein retitling a jail chart to name the force at work ("Racism in Jail: People of color less likely to get mental health diagnosis"). DAAF example: "Schools suspend Black students at 3x the rate" names the actor; "Black students are suspended at 3x the rate" does not. The guide notes that a deficit reading is less likely when enough historical context is given.
 
-5. **Question default comparison groups.** Major federal surveys list "white" as the first response option and code it as "1." This causes analysts to default to white as the comparison baseline — not by active choice, but by data structure. Consider: if your study focuses on a particular community, present that group first. Sort by the variable of interest, not by dataset order.
+5. **Question default comparison groups.** Major US surveys (the decennial census, the Current Population Survey, the Federal Reserve's Survey of Consumer Finances, and Michigan's Panel Study of Income Dynamics) list "White" first and code it "1" (Schwabish & Feng, 2021). This causes analysts to default to White as the comparison baseline — not by active choice, but by data structure. Consider: if your study focuses on a particular community, present that group first. Sort by the variable of interest, not by dataset order.
 
-6. **Be thoughtful about aggregation.** Combining racial or ethnic subgroups into broad categories can mask critical variation. Aggregated "Asian or Pacific Islander" poverty rates range from 4.5% to 27.8% across detailed subgroups. When you must aggregate, note what is hidden.
+6. **Be thoughtful about aggregation.** Combining racial or ethnic subgroups into broad categories can mask critical variation. Aggregated "Asian or Pacific Islander" poverty rates hide a range from 4.5% (people identifying as both Chinese and Japanese) to 27.8% (Mongolian) across detailed subgroups in the 2019 American Community Survey (Schwabish & Feng, 2021). When you must aggregate, note what is hidden.
 
 7. **Acknowledge absent groups.** When data exist for a group but sample sizes are too small, say so explicitly rather than silently omitting the group. Transparency about absence is better than invisible exclusion.
 
@@ -150,7 +150,7 @@ The Urban Institute's "Do No Harm Guide: Applying Equity Awareness in Data Visua
 
 The order in which demographic groups appear in charts and tables communicates values:
 
-- **Do not default to dataset order.** Raw data ordering inherits historical biases (white first, male first).
+- **Do not default to dataset order.** Raw data ordering inherits historical biases (White first, male first).
 - **Consider your study's focus.** If your analysis centers a particular community, present that group first.
 - **Sort by the variable of interest** when there is a natural ordering (e.g., by magnitude of the result).
 - **Alphabetical order** is a neutral default when no other ordering is justified.
@@ -166,7 +166,7 @@ Titles are among the first things readers scan. They present an opportunity to f
 | "Low-Income Families Struggle to Access Care" | "Healthcare Systems Fail Low-Income Communities" |
 | "Minority Students Drop Out at Higher Rates" | "Schools Retain White Students at Higher Rates Than Students of Color" |
 
-The systems framing is almost always more accurate — outcomes are produced by systems, not by the characteristics of affected people.
+Systems framing is often the more accurate choice, because outcomes are produced by systems, not only by the characteristics of affected people; give enough historical context that readers do not read gaps as deficits of the group.
 
 ### Do No Harm Checklist
 
@@ -180,14 +180,14 @@ Before finalizing any deliverable containing demographic data:
 - [ ] Have alternatives to "Other" been considered? ("Other" literally others individuals)
 - [ ] Have all icons and images been reviewed with an equity lens?
 - [ ] Would alternative chart types better serve the data and the communities represented?
-- [ ] Does the framing locate problems in systems rather than in affected communities?
+- [ ] Does the framing locate problems in systems rather than in affected communities? (DAAF addition; not in the guide's checklist)
 - [ ] Does the final product meet the needs of its audience, including members of the communities studied?
 
 ---
 
 ## Colorblind-Safe Communication Design
 
-Approximately 8% of males and 0.5% of females have some form of color vision deficiency. The data-scientist visualization references cover color palette selection and redundant encoding in detail. This section covers the **communication-level** considerations that go beyond chart construction.
+Inherited red-green color vision deficiency affects about 8% of men and 0.4% of women of European ancestry, and 4-6.5% of Chinese and Japanese men (Birch, 2012). The data-scientist visualization references cover color palette selection and redundant encoding in detail. This section covers the **communication-level** considerations that go beyond chart construction.
 
 ### Communication-Level Principles
 
@@ -234,7 +234,13 @@ Apply before releasing any deliverable:
 
 ## References and Further Reading
 
-Urban Institute. (2021). "Do No Harm Guide: Applying Equity Awareness in Data Visualization." https://www.urban.org/research/publication/do-no-harm-guide-applying-equity-awareness-data-visualization
+Schwabish, J., & Feng, A. (2021, June 9). *Do No Harm Guide: Applying Equity Awareness in Data Visualization*. Urban Institute. https://www.urban.org/research/publication/do-no-harm-guide-applying-equity-awareness-data-visualization
+
+Birch, J. (2012). "Worldwide prevalence of red-green color deficiency." *Journal of the Optical Society of America A*, 29(3), 313. https://doi.org/10.1364/josaa.29.000313
+
+Noé-Bustamante, L., Mora, L., & Lopez, M. H. (2020, August 11). "About One-in-Four U.S. Hispanics Have Heard of Latinx, but Just 3% Use It." Pew Research Center. https://www.pewresearch.org/race-and-ethnicity/2020/08/11/about-one-in-four-u-s-hispanics-have-heard-of-latinx-but-just-3-use-it/
+
+Miller, L. C., & Piver-Renna, J. (2022, October 27). "Six strategies for effectively communicating research findings to decision makers." Institute of Education Sciences. https://ies.ed.gov/learn/blog/six-strategies-effectively-communicating-research-findings-decision-makers
 
 Urban Institute. "Data Visualization Style Guide." https://urbaninstitute.github.io/graphics-styleguide/
 

@@ -1,17 +1,17 @@
 ---
 name: education-data-source-saipe
 description: >-
-  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. ~18-month lag. No race/ethnicity disaggregation at district level — use ACS 5-year for that.
+  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. Released ~12-13 months after the income year ends (DAAF inference). No race/ethnicity disaggregation at district level — use ACS 5-year for that.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-08-06"
+  skill-last-updated: "2026-10-15"
 ---
 
 # SAIPE Data Source Reference
 
-Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates have ~18-month lag and no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
+Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates are released ~12-13 months after the end of the income year (~18 months from its midpoint; DAAF inference from Census release dates) and have no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states. SAIPE is the only annual, district-level poverty source and the legally mandated basis for Title I education funding allocations.
 
@@ -36,7 +36,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Collector**: U.S. Census Bureau
 - **Coverage**: All 50 states, 3,100+ counties, 13,000+ school districts
 - **Key measure**: Related children ages 5-17 in families in poverty
-- **Update frequency**: Annual (released each December, ~18-month lag)
+- **Update frequency**: Annual (historically released November–December; the 2024 estimates were released January 27, 2026). That is ~12-13 months after the end of the income year (~18 months from its midpoint; DAAF inference from Census release dates)
 - **Available years**: 1995-2024 (gaps at 1996, 1998; annual from 1999). The v2 mirror (build validated 2026-08-06) extends `districts_saipe` through 2024.
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
@@ -113,7 +113,7 @@ All SAIPE estimate columns in the Education Data Portal use the `est_` prefix:
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `fips` | Integer | State | `6` | State FIPS code (no leading zeros in Portal) |
-| `leaid` | String | District | `0100005` | NCES district ID; join key to CCD |
+| `leaid` | Integer | District | `622710` | NCES district ID stored without leading zeros (`0622710` → `622710`); zero-pad to 7 characters before joining to CCD — see `./references/variable-definitions.md` |
 | `year` | Integer | Time | `2022` | Estimate reference year |
 
 ### School District Estimates
@@ -123,7 +123,7 @@ All SAIPE estimate columns in the Education Data Portal use the `est_` prefix:
 | `est_population_total` | Total population in district | Not enrollment - residential population |
 | `est_population_5_17` | Children ages 5-17 | School-age population, all enrollment types |
 | `est_population_5_17_poverty` | Related children 5-17 in families in poverty | Numerator for poverty calculations |
-| `est_population_5_17_poverty_pct` | Percent of children 5-17 in poverty | **Not a true rate** - see notes |
+| `est_population_5_17_poverty_pct` | Share of children 5-17 in poverty, on a **0-1 proportion** scale despite the `_pct` name | **Not a true rate**, and **not 0-100** — see the scale trap in `./references/variable-definitions.md` |
 
 ### State/County Estimates (additional)
 
@@ -167,7 +167,7 @@ Interpretation: We are 90% confident the true value falls
 between 4,200 and 5,800.
 ```
 
-**School district estimates do NOT have published confidence intervals** - use CV guidance:
+**School district estimates do NOT have published confidence intervals** - use CV guidance. From the Census Bureau evaluation for SAIPE 2009 (pre-ACS method); Census describes these as an approximate upper bound for SAIPE 2010 school-district estimates (applying them to later years is DAAF inference):
 
 | District Population | Median CV | Approximate 90% CI Width |
 |---------------------|-----------|--------------------------|
@@ -201,7 +201,7 @@ url = get_codebook_url("saipe/codebook_districts_saipe")
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "saipe/codebook_districts_saipe", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "saipe/codebook_districts_saipe", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
@@ -225,9 +225,11 @@ df_valid = df.filter(
 )
 
 # High-poverty districts (above 20%)
+# SCALE: est_population_5_17_poverty_pct is a 0-1 PROPORTION despite the _pct name.
+# 20% is 0.20 — a `>= 20` threshold selects zero rows. See references/variable-definitions.md.
 df_high = df.filter(
     pl.col("est_population_5_17_poverty_pct").is_not_null()
-    & (pl.col("est_population_5_17_poverty_pct") >= 20)
+    & (pl.col("est_population_5_17_poverty_pct") >= 0.20)
 )
 ```
 
@@ -242,8 +244,10 @@ df_state <- df |> filter(fips == 6, year == 2022)
 df_valid <- df |> filter(!is.na(est_population_5_17_poverty))
 
 # High-poverty districts (above 20%)
+# SCALE: est_population_5_17_poverty_pct is a 0-1 PROPORTION despite the _pct name.
+# 20% is 0.20 — a `>= 20` threshold selects zero rows. See references/variable-definitions.md.
 df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
-                         est_population_5_17_poverty_pct >= 20)
+                         est_population_5_17_poverty_pct >= 0.20)
 ```
 
 ## Common Pitfalls
@@ -251,12 +255,13 @@ df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Model-based estimates | Not direct counts; contain model uncertainty | Always use confidence intervals; check CV for small districts |
-| ~18 month lag | e.g. 2023 estimates released Dec 2024; data never "current" (v2 mirror now reaches 2024) | Accept lag for federal allocations; document vintage |
+| ~12-13 month lag | e.g. 2023 estimates released Dec 17, 2024; 2024 estimates released Jan 27, 2026 (~12-13 months after the income year ends, ~18 months from its midpoint; DAAF inference); data never "current" (v2 mirror now reaches 2024) | Accept lag for federal allocations; document vintage |
 | No race/ethnicity | School district estimates are not disaggregated by demographics | Use ACS 5-year estimates for racial breakdowns |
 | Not enrollment | Population-based (residential), not enrolled students | Different from FRPL counts; do not equate with enrollment |
 | Boundary timing | May not reflect very recent district consolidations or splits | Check SDRP update cycle in `./references/historical-changes.md` |
 | County allocation | Districts inherit county model uncertainty plus allocation uncertainty | Larger CV for small districts; use CV table for reliability |
 | Missing `est_` prefix | Portal columns use `est_` prefix not shown in some documentation | Always use `est_`-prefixed column names when working with Portal data |
+| `_pct` scale trap | `est_population_5_17_poverty_pct` is a 0-1 proportion, not 0-100; MEPS `meps_poverty_pct` is 0-100 | Threshold on proportions (`>= 0.20`, not `>= 20`); verify `.max() <= 1`; scale by 100 at most once when comparing to MEPS |
 | Pre/post 2010 comparison | Methodology break at 2010 decennial update invalidates naive trends | Do not compare school district estimates across the 2010 boundary |
 
 ## Poverty Definition

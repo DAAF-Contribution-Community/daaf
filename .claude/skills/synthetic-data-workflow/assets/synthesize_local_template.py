@@ -29,6 +29,12 @@ ENFORCE_MIN_MAX       = False   # True clamps synthetic values to REAL min/max -
 # -----------------------------------------------------------------------------
 
 # --- Config (imports) --------------------------------------------------------
+# INTENT: assertions are release gates, so optimized Python must never run this synthesizer.
+# REASONING: -O/-OO/PYTHONOPTIMIZE remove assert statements but would leave PASS reporting,
+# so a synthetic file could be declared verified without any check having executed.
+if not __debug__:
+    raise SystemExit("SYNTHESIS VALIDATION: FAILED -- optimized Python is unsupported; run without -O/-OO or PYTHONOPTIMIZE. No synthetic output written.")
+
 import os
 import numpy as np
 import pandas as pd
@@ -64,8 +70,42 @@ k = n_real if N_SYNTHETIC is None else N_SYNTHETIC
 synthetic = synth.sample(num_rows=k)
 
 # --- Validate ----------------------------------------------------------------
-assert len(synthetic) == k, "synthetic row count mismatch"
-assert list(synthetic.columns) == list(real.columns), "column set mismatch"
+# INTENT: every check prints one counted outcome line; the verdict is DERIVED from the
+# counters, never asserted. REASONING: a gate whose evidence is missing has not gated.
+synthesis = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+if len(synthetic) == k:
+    synthesis["passed"] += 1
+    print(f"[PASS] synthetic_row_count: {len(synthetic)} rows generated == {k} requested")
+else:
+    synthesis["failed"] += 1
+    print(f"[FAIL] synthetic_row_count: {len(synthetic)} rows generated vs {k} requested")
+if list(synthetic.columns) == list(real.columns):
+    synthesis["passed"] += 1
+    print(f"[PASS] column_set_and_order: {len(synthetic.columns)} columns match the real frame")
+else:
+    missing = [c for c in real.columns if c not in synthetic.columns]
+    extra = [c for c in synthetic.columns if c not in real.columns]
+    synthesis["failed"] += 1
+    print(f"[FAIL] column_set_and_order: missing {missing}, unexpected {extra}")
+# INTENT: the seed must be recorded, because an unrecorded seed makes this irreproducible.
+if type(SEED) is int:
+    synthesis["passed"] += 1
+    print(f"[PASS] seed_recorded: generation seed {SEED} is set and will be written to the log")
+else:
+    synthesis["failed"] += 1
+    print("[FAIL] seed_recorded: SEED is not an integer; the run is not reproducible")
+print("Checks: {passed} passed, {warning} warnings, {failed} failed, "
+      "{not_verified} not verified, {skipped} skipped".format(**synthesis))
+if (synthesis["failed"] > 0 or synthesis["not_verified"] > 0 or
+        synthesis["passed"] + synthesis["warning"] + synthesis["failed"] == 0):
+    synthesis_verdict = "FAILED"
+elif synthesis["warning"] > 0:
+    synthesis_verdict = "PASSED WITH WARNINGS"
+else:
+    synthesis_verdict = "PASSED"
+print("SYNTHESIS VALIDATION: " + synthesis_verdict)
+if synthesis_verdict == "FAILED":
+    raise SystemExit("SYNTHESIS VALIDATION: FAILED -- nothing written; do not share any partial output.")
 print(f"Generated {len(synthetic)} synthetic rows.")
 
 # --- Save (ONLY synthetic rows + log cross the boundary) ---------------------

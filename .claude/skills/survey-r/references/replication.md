@@ -62,7 +62,7 @@ des <- svrepdesign(
 |-----------|-------------|
 | `weights` | Formula for the main analysis weight |
 | `repweights` | Regex pattern matching replicate weight column names, OR a matrix/data.frame of replicate weights |
-| `type` | Replication type: `"BRR"`, `"Fay"`, `"JK1"`, `"JKn"`, `"bootstrap"`, `"ACS"`, `"successive-difference"`, `"mrbbootstrap"` |
+| `type` | Replication type: `"BRR"`, `"Fay"`, `"JK1"`, `"JKn"`, `"bootstrap"`, `"ACS"`, `"successive-difference"`, `"JK2"`, `"other"` (`"mrbbootstrap"` and `"subbootstrap"` are `as.svrepdesign()` types) |
 | `rho` | Fay's coefficient for `type = "Fay"` (typically 0.3-0.5) |
 | `data` | Data frame |
 | `mse` | If `TRUE`, compute variance around the full-sample estimate (not the mean of replicates). Default `FALSE` for most types, `TRUE` for ACS |
@@ -109,7 +109,7 @@ des_jkn <- as.svrepdesign(des_taylor, type = "JKn")
 des_boot <- as.svrepdesign(des_taylor, type = "bootstrap",
                             replicates = 200)
 
-# Convert to BRR (requires exactly 2 PSUs per stratum)
+# Convert to BRR (2 PSUs per stratum; even counts are split into pairs)
 des_brr <- as.svrepdesign(des_taylor, type = "BRR")
 ```
 
@@ -117,7 +117,8 @@ des_brr <- as.svrepdesign(des_taylor, type = "BRR")
 
 - Estimating quantiles or medians (replicate methods more robust)
 - Creating replicate weights for distribution to other analysts
-- BRR conversion requires exactly 2 PSUs per stratum (common in federal surveys)
+- BRR conversion needs 2 PSUs per stratum, or an even number it can split into
+  pairs (2 is common in federal surveys)
 
 ---
 
@@ -129,7 +130,9 @@ computing the estimate for each balanced combination.
 ### Requirements
 
 - Exactly 2 PSUs per stratum (standard in many federal survey designs)
-- If more than 2 PSUs, use JKn or bootstrap instead
+- If more than 2 PSUs, `as.svrepdesign(type = "BRR")` splits strata with an
+  even number of PSUs into pairs (default `large = "split"`) but stops on odd
+  counts and on single-PSU strata; JKn or bootstrap avoid this
 
 ### Setup
 
@@ -142,7 +145,7 @@ des <- svrepdesign(
   data = df
 )
 
-# Convert from Taylor (requires 2 PSUs/stratum)
+# Convert from Taylor (2 PSUs/stratum; even counts are split into pairs)
 des_brr <- as.svrepdesign(des_taylor, type = "BRR")
 ```
 
@@ -180,20 +183,27 @@ des <- svrepdesign(
   type = "JK1",
   data = df
 )
+# Without scale = (n - 1)/n (n = number of PSUs), svrepdesign() warns and takes
+# n = number of replicates.
 ```
 
 ### JKn -- Delete-One-Group (Stratified) Jackknife
 
-For stratified designs. Drops one PSU from each stratum. Most common jackknife
-method for federal surveys.
+For stratified designs. Drops one PSU at a time (one replicate per PSU) and
+reweights the rest of its stratum. Most common jackknife method for federal
+surveys.
 
 ```r
 des <- svrepdesign(
   weights = ~finalwgt,
   repweights = "jk[0-9]+",
   type = "JKn",
+  scale = 1,                       # JKn: overall multiplier
+  rscales = jk_rscales,            # per-replicate (n_h - 1)/n_h from the survey documentation
   data = df
 )
+# Without scale/rscales, svrepdesign() stops: "Must provide rscales for
+# combined JKn weights".
 
 # Or convert from Taylor
 des_jkn <- as.svrepdesign(des_taylor, type = "JKn")

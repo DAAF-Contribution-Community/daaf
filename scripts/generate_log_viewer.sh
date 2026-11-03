@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# generate_log_viewer.sh — Generate an interactive HTML session viewer for a DAAF project
+# generate_log_viewer.sh — Build the session manifest for the DAAF Log Explorer and serve it
 #
 # Processes JSONL session transcripts into a structured manifest, then starts
 # an HTTP server so the interactive Log Explorer is accessible in a browser.
@@ -10,7 +10,6 @@
 #
 # Examples:
 #   bash /daaf/scripts/generate_log_viewer.sh /daaf/research/2026-03-29_College_Analysis
-#   bash /daaf/scripts/generate_log_viewer.sh /daaf/research/2026-03-29_College_Analysis --port 2720
 #   bash /daaf/scripts/generate_log_viewer.sh --archive
 #
 # Prerequisites:
@@ -70,13 +69,14 @@ while [ $# -gt 0 ]; do
             echo "Usage: bash $0 <project_path> [--port PORT] [--background]"
             echo "       bash $0 --archive [--port PORT] [--background]"
             echo ""
-            echo "Generates an interactive HTML viewer for DAAF session logs"
-            echo "and starts an HTTP server (default port: 2719)."
+            echo "Builds the session manifest for the DAAF Log Explorer"
+            echo "and starts its HTTP server (default port: 2719)."
             echo ""
             echo "Arguments:"
             echo "  project_path    Absolute path to a DAAF research project"
             echo "  --archive       View all sessions from the DAAF-wide log archive"
-            echo "  --port PORT     Use a custom port for the HTTP server (default: 2719)"
+            echo "  --port PORT     Port for the HTTP server (default: 2719; another port"
+            echo "                  is reachable only from inside the container)"
             echo "  --background    Start the server in the background and exit"
             echo "  --no-serve      Generate the manifest without starting a server"
             echo ""
@@ -147,7 +147,12 @@ if [ ! -d "$LOGS_DIR" ]; then
         echo "        bash $0 /daaf/research/<project>"
     else
         echo "ERROR: No logs/ directory found in: $PROJECT_PATH"
-        echo "Hint: Run collect_session_logs.sh first to gather session transcripts."
+        echo "Hint: a session's transcript reaches a project's logs/ folder only through"
+        echo "      collect_session_logs.sh; a session that runs it should be copied when it ends"
+        echo "      (if its transcript is still missing, run the script again in a later session)."
+        echo "      To copy the archived sessions that mention this project, run:"
+        echo "        bash $SCRIPT_DIR/collect_session_logs.sh $PROJECT_PATH"
+        echo "      To browse every archived session instead, run: bash $0 --archive"
     fi
     exit 1
 fi
@@ -161,7 +166,12 @@ if [ "$ORCH_COUNT" -eq 0 ]; then
         echo "      Run a DAAF session, or view a specific project instead:"
         echo "        bash $0 /daaf/research/<project>"
     else
-        echo "Hint: Run collect_session_logs.sh first to gather session transcripts."
+        echo "Hint: a session's transcript reaches a project's logs/ folder only through"
+        echo "      collect_session_logs.sh; a session that runs it should be copied when it ends"
+        echo "      (if its transcript is still missing, run the script again in a later session)."
+        echo "      To copy the archived sessions that mention this project, run:"
+        echo "        bash $SCRIPT_DIR/collect_session_logs.sh $PROJECT_PATH"
+        echo "      To browse every archived session instead, run: bash $0 --archive"
     fi
     exit 1
 fi
@@ -202,7 +212,7 @@ VIEWER_URL="scripts/log_viewer.html?manifest=$RELATIVE_MANIFEST"
 # --- Summary ---
 
 echo ""
-echo "=== Log Viewer Generated ==="
+echo "=== Log Explorer manifest ready ==="
 echo "  Manifest: $MANIFEST"
 echo ""
 
@@ -267,7 +277,8 @@ if [ "$SERVE" = true ]; then
             fi
         else
             echo "ERROR: Port $PORT is in use but the owning process could not be identified."
-            echo "Free the port manually or use --port to specify a different one."
+            echo "Fix: choose 11) Restart Container in the DAAF Control Panel, which frees every port (it also ends any open Claude Code session), then run this again."
+            echo "Keep the default port: your browser reaches the Log Explorer only through container port 2719, so --port is for use inside the container only."
             exit 1
         fi
     else

@@ -384,6 +384,7 @@ Box.test(residuals(fit_arima), lag = 10, type = "Box-Pierce")
 | KPSS test | `tseries::kpss.test(y)` | `sm.tsa.kpss(y)` |
 | Ljung-Box | `Box.test(resid, type = "Ljung-Box")` | `sm.stats.acorr_ljungbox(resid)` |
 | Holt-Winters | `HoltWinters(y)` | `sm.tsa.ExponentialSmoothing(y).fit()` |
+| VAR | No installed R VAR package (`vars`): escalate to the orchestrator | `sm.tsa.VAR(y).fit(p)` |
 
 Key difference: R's `ts()` class carries frequency metadata natively, making
 seasonal analysis cleaner. Python time series rely on pandas DatetimeIndex with

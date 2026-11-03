@@ -12,7 +12,17 @@
 #   Import-DaafSettingsFile -- export the whitelisted DAAF_* vars (four multi-instance
 #                              keys + the DAAF_DEV build flag + the DAAF_BRANCH
 #                              updater ref + the DAAF_DATA_VOLUME_NAME data-volume
-#                              override) from environment_settings.txt
+#                              override) from environment_settings.txt, recording
+#                              which keys it adopted from the file (provenance
+#                              tracker $script:DaafKeysFromFile); throws if the
+#                              file exists but cannot be read
+#   Sync-DaafSettingsFile -- re-read environment_settings.txt after it was edited:
+#                              drop only the keys the loader adopted from the file,
+#                              then import again (user-set values keep winning);
+#                              throws on an unreadable file, like the loader
+#   Resolve-DaafProjectName -- return the Compose project name: DAAF_PROJECT_NAME
+#                              (default "daaf") normalized the way Docker Compose
+#                              normalizes it; empty when nothing usable is left
 #   Resolve-DaafDataVolumeName -- echo the resolved data-volume name, honoring the
 #                              optional DAAF_DATA_VOLUME_NAME full-name override
 #   Set-DaafSettingsKey -- insert/update a single KEY=value line in a settings
@@ -21,21 +31,17 @@
 #   Open-DaafUrl        -- open a URL in the default browser (best-effort)
 #   Test-DaafPort       -- test whether a port is listening inside the container
 #   Confirm-DaafContainer -- start the DAAF container if it is not running
+#   ConvertTo-DaafNativeArg -- quote one argument for a Windows-style command line
+#                              (Start-Process -ArgumentList); canonical copy of a
+#                              helper that standalone scripts carry INLINE
 #
 # Container-side probe payloads (the /proc/net/tcp + awk strings) are copied
 # VERBATIM from daaf_lib.sh: they run inside the Linux container, so they must
 # remain Linux shell, not PowerShell. Only the outer invocation wrapper is
 # PowerShell here. The payloads are delivered as a base64 TOKEN passed as a
-# native argument (transport v3): `bash -c 'echo $1 | base64 -d | bash ...' _ $b64`.
-# A base64 token contains only [A-Za-z0-9+/=] -- no quotes, no spaces, no CR --
-# so it survives PS 5.1's native-arg marshalling intact and involves no stdin.
-# This replaced two earlier transports that both failed on real Windows:
-#   v1 `bash -c <payload>` -- PS 5.1 mangles embedded double quotes in native
-#      args (the awk `"` patterns); fixed only in PS 7.3+.
-#   v2 `<payload> | bash -s` (stdin) -- PS appends CRLF when piping a string to
-#      a native process, leaving a stray \r on the last line, and the PS
-#      pipeline -> docker.exe npipe stdin wiring is unreliable on Windows.
-# See Test-DaafPort for the fully annotated call site.
+# native argument: `bash -c 'echo $1 | base64 -d | bash ...' _ $b64`. Test-DaafPort
+# holds the one full note on why (and why `bash -c <payload>` and stdin do not
+# work from Windows PowerShell); the other call sites point there.
 #
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
 #
@@ -75,8 +81,9 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # interpolation in docker-compose.yml (${DAAF_PROJECT_NAME:-daaf},
 # ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV, the opt-in
 # BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`, plus DAAF_BRANCH,
-# the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.ps1), plus
+# the branch the updater follows (update_daaf.ps1 also reads it from the file with
+# its own loader; because the panel sets it, an updater the panel starts finds it
+# already set in its environment), plus
 # DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
 # data volume (consumed by Resolve-DaafDataVolumeName below and by the backup /
 # restore tools).
@@ -92,7 +99,22 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # regex on KEY=VALUE. CR is stripped for CRLF tolerance.
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
-# Docker Compose precedence: shell env > .env file). Absent file = no-op.
+# Docker Compose precedence: shell env > .env file). Absent file = no-op. A file
+# that exists but cannot be read (permissions, or locked by another program) =
+# a terminating error, nothing adopted: the read uses -ErrorAction Stop, so it
+# throws whatever the caller's $ErrorActionPreference is. Without that, a caller
+# running under 'Continue' would get a non-terminating error and the function
+# would carry on as if the file were empty. This is the twin of daaf_lib.sh's
+# non-zero return.
+#
+# PROVENANCE: every key this function adopts from the file is added (once) to the
+# script-scoped $script:DaafKeysFromFile list -- the PowerShell twin of daaf_lib.sh's
+# _DAAF_KEYS_FROM_FILE. Keys that were already set when the loader ran (a user's
+# own $env: value, or one adopted by an earlier call) are not re-adopted and so are
+# not re-recorded. Sync-DaafSettingsFile (below) uses that record to re-read an
+# edited file without a second hardcoded key list, so $known stays the single
+# source of truth. The tracker is read through Get-Variable so a first call under
+# the caller's Set-StrictMode never touches a never-assigned variable.
 function Import-DaafSettingsFile {
     [CmdletBinding()]
     param(
@@ -105,11 +127,17 @@ function Import-DaafSettingsFile {
 
     $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
 
+    $tracked = @()
+    $trackerVar = Get-Variable -Name 'DaafKeysFromFile' -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $trackerVar -and $null -ne $trackerVar.Value) { $tracked = @($trackerVar.Value) }
+
     # -Encoding UTF8 pins BOM-less UTF-8 decoding: a bare Get-Content on Windows
     # PowerShell 5.1 misreads BOM-less UTF-8 as legacy ANSI (cp1252), corrupting
     # any non-ASCII value. The write side (Set-DaafSettingsKey) is BOM-less UTF-8,
     # so reads must be pinned to match. Harmless on PS 7 (UTF-8 by default).
-    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
+    # -ErrorAction Stop: an unreadable file throws here, before anything is
+    # adopted and before the tracker below is written (see PRECEDENCE above).
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8 -ErrorAction Stop)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
@@ -134,8 +162,88 @@ function Import-DaafSettingsFile {
         $current = [Environment]::GetEnvironmentVariable($key, "Process")
         if ([string]::IsNullOrEmpty($current)) {
             Set-Item -Path ("Env:" + $key) -Value $val
+            # Record the adoption once (a duplicate KEY= line whose first value
+            # was empty is adopted again but never listed twice).
+            if ($tracked -notcontains $key) { $tracked += $key }
         }
     }
+
+    $script:DaafKeysFromFile = $tracked
+}
+
+# --- Settings Reload (after environment_settings.txt was edited) ---
+# PowerShell counterpart to daaf_lib.sh reload_daaf_settings. Re-read
+# environment_settings.txt in a long-running session (the Control Panel) so edited
+# DAAF_* values take effect. Calling Import-DaafSettingsFile a second time is NOT
+# enough: its "already-set env wins" rule would keep every value it adopted on the
+# first call, so a changed DAAF_PORT_MARIMO would be ignored by compose
+# interpolation while env_file handed the container the new value.
+#
+# Design (no second key list): remove exactly the keys recorded in
+# $script:DaafKeysFromFile, clear the record, and import again. Values the user set
+# before launching were never recorded, so they still win. A key deleted from the
+# file ends up unset, so the docker-compose.yml default applies again. Any key
+# added to $known later takes part automatically. Only DAAF_* names are ever
+# removed (defense in depth; the tracker is only written by the whitelist path).
+#
+# Throws what Import-DaafSettingsFile throws: a terminating error when the file
+# exists but cannot be read. The tracked keys are removed BEFORE the read, so on
+# that failure they stay unset and the tracker stays empty. A caller that must
+# keep its settings (the Control Panel's Restart Container) snapshots them first
+# and restores them on failure.
+#
+# Named Sync- (an approved verb outside PSScriptAnalyzer's
+# PSUseShouldProcessForStateChangingFunctions list) rather than Update-/Reset-,
+# which would demand SupportsShouldProcess ceremony for an in-process env refresh.
+# Strict-clean: the tracker is read through Get-Variable, never as a bare variable.
+function Sync-DaafSettingsFile {
+    [CmdletBinding()]
+    param(
+        [string]$SettingsFile = "./environment_settings.txt"
+    )
+
+    $trackerVar = Get-Variable -Name 'DaafKeysFromFile' -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $trackerVar -and $null -ne $trackerVar.Value) {
+        foreach ($key in @($trackerVar.Value)) {
+            if ($key -like 'DAAF_*') {
+                Remove-Item -Path ("Env:" + $key) -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    $script:DaafKeysFromFile = @()
+    Import-DaafSettingsFile -SettingsFile $SettingsFile
+}
+
+# --- Compose Project Name Resolver ---
+# PowerShell counterpart to daaf_lib.sh resolve_project_name (see there for the
+# full rationale and source). Return the project name Docker Compose actually uses,
+# so every Docker name a host script derives from the project ("<project>_daaf-data",
+# "<project>_daaf-claude-config", "<project>-daaf-docker-1") is the name Compose
+# created: compose-go's NormalizeProjectName lowercases the top-level `name:`, keeps
+# only [a-z0-9_-] and trims leading '_' and '-', so `Work` gives "work".
+#
+# Unset or empty DAAF_PROJECT_NAME => "daaf", unchanged. A value that normalizes to
+# nothing (e.g. "___" or "@@") returns an EMPTY string; the CALLER must refuse it.
+#
+# Order matters: every character outside ASCII [A-Za-z0-9_-] is dropped BEFORE
+# lowercasing (-creplace, case-sensitive), so the result is ASCII and matches the
+# bash twin's byte-wise `LC_ALL=C tr`. ToLowerInvariant first would map a few
+# non-ASCII letters to ASCII ones it would then keep (the Kelvin sign U+212A becomes
+# 'k').
+#
+# SYNC NOTE: the same expression is in install.ps1 and run_daaf.ps1 (inline, they
+# run standalone), and this whole function is carried BYTE-IDENTICAL in
+# backup_daaf.ps1, restore_from_backup.ps1, update_daaf.ps1 and the maintainer
+# harness test_migration.ps1 (standalone scripts that do not dot-source this
+# library). tests/powershell/daaf_lib.Tests.ps1 pins the copies, the installer and
+# run_daaf.ps1 to the same results on a fixed input set. PS 5.1 safe; strict-clean
+# (only $env: reads and string ops).
+function Resolve-DaafProjectName {
+    [CmdletBinding()]
+    param()
+    $project = 'daaf'
+    if ($env:DAAF_PROJECT_NAME) { $project = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+    return $project
 }
 
 # --- Data Volume Name Resolver ---
@@ -145,22 +253,26 @@ function Import-DaafSettingsFile {
 #
 # PRECEDENCE (returned to the caller):
 #   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
-#      volume name (no project prefix is added). This is the escape hatch for
-#      pointing two installs at ONE shared workspace volume; it must match the
-#      `name:` under the external `daaf-data` block in docker-compose.yml.
-#   2. Otherwise "<project>_daaf-data", where <project> is DAAF_PROJECT_NAME or
-#      the "daaf" default -- the Compose-prefixed default. So an UNSET
-#      DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the historical
-#      hardcoded derivation, and a second instance with DAAF_PROJECT_NAME=daaf2
-#      still owns "daaf2_daaf-data".
+#      volume name (no project prefix is added, and it is NOT normalized: it is a
+#      literal Docker volume name that must match the `name:` under the external
+#      `daaf-data` block in docker-compose.yml). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume.
+#   2. Otherwise "<project>_daaf-data", where <project> is Resolve-DaafProjectName
+#      (DAAF_PROJECT_NAME normalized as Compose does, default "daaf"). So an UNSET
+#      DAAF_DATA_VOLUME_NAME with no project name is byte-for-byte identical to the
+#      historical hardcoded derivation, a second instance with
+#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data", and `Work` resolves
+#      to "work_daaf-data", the volume Compose created.
+#      When the project name normalizes to nothing, this returns an EMPTY string
+#      (the bash twin prints nothing and returns 1): there is no derived name.
 # A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default: an
 # empty string is falsy in PowerShell, so the `if ($env:DAAF_DATA_VOLUME_NAME)`
-# guard treats empty and unset alike, matching the bash `:-` semantics and the
+# guard treats empty and unset alike, matching the bash `-n` test and the
 # way Import-DaafSettingsFile adopts a whitelisted key only when it is non-empty.
 #
 # The claude-config volume is deliberately NOT resolved here: per-install auth
-# isolation is by design, so it keeps its project-prefixed default everywhere and
-# has no analogous override.
+# isolation is by design, so it keeps its project-prefixed default everywhere
+# ("<Resolve-DaafProjectName>_daaf-claude-config") and has no analogous override.
 #
 # Callers that need a value persisted in environment_settings.txt to win should
 # Import-DaafSettingsFile first (which bridges DAAF_DATA_VOLUME_NAME into the
@@ -171,8 +283,8 @@ function Resolve-DaafDataVolumeName {
     if ($env:DAAF_DATA_VOLUME_NAME) {
         return $env:DAAF_DATA_VOLUME_NAME
     }
-    $projectName = "daaf"
-    if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
+    $projectName = Resolve-DaafProjectName
+    if ([string]::IsNullOrEmpty($projectName)) { return '' }
     return "${projectName}_daaf-data"
 }
 
@@ -229,6 +341,67 @@ function Open-DaafUrl {
     }
 }
 
+# --- Native Argument Quoting ---
+# Quote ONE argument so it survives the round trip through a Windows command
+# line: Start-Process -ArgumentList string -> child process argv. CANONICAL
+# definition; backup_daaf.ps1 and test_migration.ps1 are standalone (they do not
+# dot-source this library) and carry an INLINE COPY of the function that must stay
+# byte-identical to this one (pinned by tests/powershell/native_arg_quoting.Tests.ps1).
+#
+# WHY: Start-Process does NOT quote array elements. Its docs say it "joins the
+# array into a single string with each element of the array separated by a single
+# space", and the child then re-splits that string with the Windows argv rules
+# (CommandLineToArgvW; .NET on Linux/macOS applies the same rules). So an element
+# such as "C:\Users\John Smith\daaf-docker\backup_daaf.ps1" arrives as TWO argv
+# entries, and an embedded double quote is silently stripped (PowerShell#5576,
+# which lists Windows PowerShell 5.1 as affected). The issue's recommended
+# workaround is ONE pre-joined string with the quoting done by the caller -- this
+# helper does that quoting, and callers join its results with single spaces:
+#
+#   $argString = (@('-NoProfile', '-File', $childPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+#   Start-Process -FilePath $exe -ArgumentList $argString ...
+#
+# RULES (the inverse of the Windows argv parser):
+#   * A non-empty value with no whitespace and no double quote is returned bare.
+#   * Otherwise the value is wrapped in double quotes, every run of backslashes
+#     that precedes an embedded double quote is doubled and the quote escaped
+#     (\"), and a trailing run of backslashes is doubled so it cannot escape the
+#     closing quote. Backslashes elsewhere stay literal (C:\x y\z is unchanged
+#     inside the quotes). The empty string becomes "" so it survives as an
+#     explicit empty argument instead of vanishing. The trailing-run anchor is
+#     \z, not $: in .NET, $ also matches just before a final newline, which
+#     would double backslashes that are NOT at the end of the value.
+# Verified round-trip values (tests): '', 'plain', 'with space', 'q"z',
+# 'back\"slash', 'trail\', 'C:\Users\John Smith\OneDrive - Org\'.
+#
+# USAGE LIMITS:
+#   * Pass ONE value per call, as an argument -- not an array and not piped
+#     input. An array argument fails parameter binding ("Cannot convert value to
+#     type System.String"); piped input is not accepted (binding error) and the
+#     call still emits the default "" (both observed on pwsh 7). Map a list element
+#     by element: `$parts | ForEach-Object { ConvertTo-DaafNativeArg $_ }`, then
+#     -join ' '.
+#     Filter $null elements out first (`Where-Object { $null -ne $_ }`): $null
+#     binds as '' and becomes an explicit "" argument.
+#   * Quoting protects whitespace, quotes, and backslashes -- it does NOT stop a
+#     value with a leading '-' from binding as a PARAMETER NAME of a PowerShell
+#     child launched with `-File` (the argv parser removes the quotes before the
+#     child binds its parameters; observed on pwsh 7: a quoted "-Name" still
+#     bound -Name). Never forward untrusted values after `-File <script>`.
+#
+# Prefer direct invocation (`& $exe @argArray`) when the call needs neither
+# console inheritance nor a Process object to poll; PowerShell quotes each
+# whitespace-bearing element itself on that path (Windows PowerShell 5.1 is
+# reported to still mishandle an embedded double quote or a trailing backslash
+# there; native argument passing was reworked in 7.3).
+# Strict-clean (a [string] parameter never reads as $null).
+function ConvertTo-DaafNativeArg {
+    [CmdletBinding()]
+    param([string]$Value = '')
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    return '"' + (($Value -replace '(\\*)"', '$1$1\"') -replace '(\\+)\z', '$1$1') + '"'
+}
+
 # --- Port Check ---
 # Check if a service is listening on a port inside the DAAF container.
 # Returns $true if listening, $false otherwise.
@@ -270,27 +443,22 @@ function Test-DaafPort {
             /proc/net/tcp /proc/net/tcp6 2>/dev/null
 '@
 
-    # TRANSPORT v3 -- base64-as-argument (do NOT revert to either prior form):
-    #
-    #   v1 (`bash -c $probe _ $Port`): FAILED. Windows PowerShell 5.1 does not
-    #   correctly escape embedded double quotes when marshalling a string into a
-    #   native process's argument vector (fixed only in PS 7.3+). This payload
-    #   contains embedded `"` (the awk field patterns), so passing it via `-c`
-    #   under PS 5.1 delivered a mangled script and the probe read "not
-    #   listening" forever.
-    #
-    #   v2 (pipe the $probe string into `docker compose exec -T ... bash -s
-    #   $Port` on stdin): FAILED in the field. Piping a PS string into a native
-    #   process's stdin is unreliable on
-    #   Windows: PowerShell appends a Windows CRLF, so the payload's last line
-    #   carried a stray `\r` that broke the trailing awk redirect; and the
-    #   PS-object-pipeline -> docker.exe (npipe) stdin wiring is itself flaky.
-    #   Services worked but the probe never saw them.
-    #
-    #   v3 (this): encode the payload as base64 and pass the TOKEN as a native
-    #   argument. A base64 token is drawn from [A-Za-z0-9+/=] only -- no quotes,
-    #   no spaces, no CR -- so PS 5.1's arg marshalling cannot damage it, and
-    #   stdin is not involved at all. The container decodes and runs it.
+    # TRANSPORT (canonical note; daaf.ps1's Get-DaafPortStatus and stop-services
+    # payloads use the same transport and point here). The payload is base64-
+    # encoded and the TOKEN is passed as a native argument; the container decodes
+    # and runs it. Keep it that way; the two simpler forms fail from Windows:
+    #   * `bash -c $probe _ $Port`: Windows PowerShell 5.1 does not escape
+    #     embedded double quotes when it builds a native command line (fixed in
+    #     PowerShell 7.3). This payload has them (the awk field patterns), so
+    #     5.1 delivers a mangled script and the probe always reads "not
+    #     listening".
+    #   * piping $probe into `bash -s $Port` on stdin: PowerShell appends CRLF
+    #     when it pipes a string to a native process, so the last line carries a
+    #     stray `\r` that breaks the trailing awk redirect, and the pipe into
+    #     docker.exe (npipe) is unreliable on Windows.
+    # A base64 token is drawn from [A-Za-z0-9+/=] only -- no quotes, no spaces,
+    # no CR -- so 5.1's argument marshalling cannot damage it, and stdin is not
+    # involved.
     #
     # Why this exact remote shape:
     #   * The single-quoted PS literal below contains spaces but ZERO double
@@ -300,8 +468,8 @@ function Test-DaafPort {
     #     (`_` is $0, the b64 token is $1, the port is $2).
     #   * `echo $1` is UNQUOTED deliberately: the base64 alphabet has no
     #     whitespace or glob characters, so word-splitting/globbing cannot harm
-    #     it. Do NOT "fix" it to "$1" -- that would reintroduce double quotes into
-    #     the single-quoted literal and put us back on the v1 failure path.
+    #     it. Do NOT "fix" it to "$1": a double quote in the literal hits the 5.1
+    #     quoting bug above.
     #   * `bash -s -- $2` forwards the port to the decoded probe as its $1 (the
     #     `--` stops option parsing so a numeric port is never read as a flag).
     #   * ASCII encoding is correct: these host files are enforced-ASCII, and the
@@ -329,6 +497,9 @@ function Test-DaafPort {
 # Returns $true on success, $false on failure. Mirrors daaf_lib.sh
 # ensure_container; both use their return value as the single source of truth
 # (no exported status variable), so callers use `if (Confirm-DaafContainer) { ... }`.
+# `up -d` runs with its stderr discarded, so a caller reporting the failure sends
+# the user to a path that shows Docker's message (run_daaf.ps1 runs `up -d` with
+# stderr visible).
 function Confirm-DaafContainer {
     [CmdletBinding()]
     param()

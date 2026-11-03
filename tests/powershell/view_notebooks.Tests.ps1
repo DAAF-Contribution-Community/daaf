@@ -99,6 +99,19 @@ Describe "view_notebooks.ps1" {
             $Content | Should -Match 'DAAF container is running'
         }
 
+        It "asks the running server for its token with launch_marimo.sh --print-token over a TTY-less exec, stdout only" {
+            $Content | Should -Match ([regex]::Escape('docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token 2>$null'))
+        }
+
+        It "opens the tokenized URL on the HOST-published port (DAAF_PORT_MARIMO, default 2718)" {
+            $Content | Should -Match ([regex]::Escape('"http://localhost:$MarimoHostPort/?access_token=$MarimoToken"'))
+            $Content | Should -Match ([regex]::Escape('$MarimoHostPort = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }'))
+        }
+
+        It "accepts only a URL-safe token" {
+            $Content | Should -Match ([regex]::Escape("`$MarimoToken -match '^[A-Za-z0-9_-]+$'"))
+        }
+
         It "extracts the settings key column-0 strict (no .Trim(), rejects padded keys like bash)" {
             # Import-DaafSettingsInline must extract the key WITHOUT .Trim() so a
             # whitespace-padded "  DAAF_PROJECT_NAME=..." line falls through as
@@ -153,6 +166,13 @@ Describe "view_notebooks.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*DAAF container is running*"
     }
 
+    It "reaches the tokenized browser open in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/view_notebooks.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Opening the notebook browser in your default browser*"
+    }
+
     It "completes quickly in dry-run (no blocking)" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
@@ -160,5 +180,145 @@ Describe "view_notebooks.ps1 dry-run mode" {
         $null = & "$RepoRoot/scripts/host/view_notebooks.ps1" *>&1
         $sw.Stop()
         $sw.Elapsed.TotalSeconds | Should -BeLessThan 5
+    }
+}
+
+# ============================================================================
+# Native stderr handling (dispatch #63: G3 running check, G6 preference)
+# ============================================================================
+# G3: the running check tests `docker compose ps -q` output only for emptiness, so
+# it reads stdout only (2>$null). A 2>&1 merge let a stderr-only line (such as a
+# Compose warning) count as a container ID on pwsh 7; Windows PowerShell 5.1 drops
+# that line under SilentlyContinue, so the bug showed only on pwsh 7.
+
+Describe "view_notebooks.ps1 native stderr handling (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/view_notebooks.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G3: the running check reads stdout only (2>`$null, not a 2>&1 merge)" {
+        $cap = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$CidOutput')
+        }, $true))
+        $cap.Count | Should -Be 1
+        $cap[0].Right.Extent.Text | Should -BeExactly 'docker compose ps -q daaf-docker 2>$null'
+    }
+
+    It "G3: a stderr-only 'compose ps -q' (no container ID) is treated as NOT running" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # A native fake docker on PATH (not a PowerShell function), so the stderr line
+        # crosses the real native-command path. `compose up -d` fails, which ends the
+        # run right after the decision under test.
+        $work = Join-Path $TestDrive ("g3-" + [guid]::NewGuid().ToString('N'))
+        $bin = Join-Path $work 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $bin
+        New-FakeComposeFile -Directory $work
+        $callLog = Join-Path $TestDrive 'g3-calls.log'
+        $fake = "#!/usr/bin/env bash`nprintf '%s\n' `"`$*`" >> '$callLog'`ncase `"`$*`" in`n    info) exit 0 ;;`n    'compose ps -q daaf-docker') echo 'WARN[0000] fake compose warning on stderr' >&2; exit 0 ;;`n    'compose up -d') exit 1 ;;`n    *) exit 0 ;;`nesac`n"
+        [System.IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake)
+        & chmod +x (Join-Path $bin 'docker')
+        $saved = @{}
+        foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+        Push-Location -LiteralPath $work
+        try {
+            $env:PATH = $bin + [System.IO.Path]::PathSeparator + $saved['PATH']
+            Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+            $env:DAAF_NESTED = "1"
+            $out = & $ScriptPath *>&1 | Out-String
+            $code = $LASTEXITCODE
+        } finally {
+            Pop-Location
+            foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+        }
+        $out | Should -BeLike "*Starting DAAF container...*"
+        $out | Should -BeLike "*ERROR: Failed to start the container.*"
+        $out | Should -Not -BeLike "*DAAF container is running.*"
+        $code | Should -Be 1
+        @(Get-Content -LiteralPath $callLog) | Should -Contain 'compose up -d'
+    }
+}
+
+# ============================================================================
+# Access token (parity with view_notebooks.bats "Access token")
+# ============================================================================
+# A native fake docker on PATH answers launch_marimo.sh --print-token, and fake
+# openers (xdg-open on Linux, open on macOS -- what Start-Process resolves a URL
+# to off Windows) log the URL instead of launching a browser.
+
+Describe "view_notebooks.ps1 access token" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/view_notebooks.ps1"
+        $script:RunWithFakes = {
+            param([string]$PrintTokenArm)
+            $work = Join-Path $TestDrive ("tok-" + [guid]::NewGuid().ToString('N'))
+            $bin = Join-Path $work 'bin'
+            $null = New-Item -ItemType Directory -Force -Path $bin
+            New-FakeComposeFile -Directory $work
+            $openLog = Join-Path $work 'opened.log'
+            $fake = "#!/usr/bin/env bash`ncase `"`$*`" in`n    info) exit 0 ;;`n    'compose ps -q daaf-docker') echo abc123 ;;`n    *--print-token*) $PrintTokenArm ;;`n    *) exit 0 ;;`nesac`n"
+            [System.IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake)
+            $opener = "#!/usr/bin/env bash`nprintf '%s\n' `"`$1`" >> '$openLog'`n"
+            foreach ($name in @('docker', 'xdg-open', 'open')) {
+                if ($name -ne 'docker') { [System.IO.File]::WriteAllText((Join-Path $bin $name), $opener) }
+                & chmod +x (Join-Path $bin $name)
+            }
+            $saved = @{}
+            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED', 'DAAF_PORT_MARIMO')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+            Push-Location -LiteralPath $work
+            try {
+                $env:PATH = $bin + [System.IO.Path]::PathSeparator + $saved['PATH']
+                Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+                $env:DAAF_NESTED = "1"
+                $env:DAAF_PORT_MARIMO = "3001"
+                $out = & $ScriptPath *>&1 | Out-String
+            } finally {
+                Pop-Location
+                foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+            }
+            # Start-Process returns before the opener has run; give it a moment.
+            $deadline = (Get-Date).AddSeconds(5)
+            while (-not (Test-Path -LiteralPath $openLog) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            $opened = if (Test-Path -LiteralPath $openLog) { @(Get-Content -LiteralPath $openLog) } else { @() }
+            return @{ Out = $out; Opened = $opened }
+        }
+    }
+
+    It "opens the tokenized URL on the HOST-published port" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes 'echo feedc0de42'
+        $r.Out | Should -BeLike "*Opening the notebook browser in your default browser*"
+        $r.Opened | Should -Be @('http://localhost:3001/?access_token=feedc0de42')
+    }
+
+    It "opens nothing when --print-token fails (e.g. an older --no-token server, exit 5)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes 'echo started-without-token >&2; exit 5'
+        $r.Out | Should -Not -BeLike "*Opening the notebook browser in your default browser*"
+        @($r.Opened).Count | Should -Be 0
+    }
+
+    It "opens nothing when the token is malformed" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes "echo 'abc&next=//evil.example'"
+        @($r.Opened).Count | Should -Be 0
     }
 }

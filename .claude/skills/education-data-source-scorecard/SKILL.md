@@ -24,7 +24,7 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 > - **Earnings/counts**: `-3` integer code is the primary suppression indicator
 > - **Yes/No flags** (institutional characteristics): `null` for missing, `0`/`1` for valid
 > - **Rates** (repayment, default): `null` for missing
-> - The original Scorecard string `"PrivacySuppressed"` does NOT appear in Portal data
+> - The original Scorecard suppression string (`"PS"`; `"PrivacySuppressed"` in files before May 2024) does NOT appear in Portal data
 >
 > | Context | `pred_degree_awarded_ipeds` | HBCU / tribal flags | `religious_affiliation` |
 > |---------|----------------------------|---------------------|-------------------------|
@@ -86,7 +86,7 @@ Interpretation question?
 ├─ What does "6-year earnings" mean?
 │   └─ Cohort timing → ./references/earnings-data.md
 ├─ Why don't Scorecard rates match IPEDS?
-│   └─ Different cohorts → ./references/completion-rates.md
+│   └─ `C150_*`/`C200_*` come from IPEDS GR (same cohort); NSLDS-based measures use different cohorts → ./references/completion-rates.md
 ├─ What loans are included in debt?
 │   └─ Federal only → ./references/debt-repayment.md
 └─ How representative is this data?
@@ -129,10 +129,10 @@ The Portal uses **LONG format** with time horizon as a column, NOT the WIDE form
 |---------------|------|-------------|-------------------|
 | `unitid` | Int64 | IPEDS institution ID | `UNITID` |
 | `opeid` | String | OPE ID (8-digit, zero-padded) | `OPEID` |
-| `year` | Int64 | Data year (2003-2014, 2018) | File year |
-| `years_after_entry` | Int64 | Years since first enrollment (6-10) | Encoded in variable name |
+| `year` | Int64 | Calendar year in which earnings are measured (= `cohort_year` + `years_after_entry`; 2003-2014, 2018) | Measurement year |
+| `years_after_entry` | Int64 | Years since the estimated entry year at the institution (6-10) | Encoded in variable name |
 | `cohort_year` | Int64 | Entry cohort year | Encoded in variable name |
-| `earnings_med` | Int64 | Median earnings (W-2) | `MD_EARN_WNE_P*` |
+| `earnings_med` | Int64 | Median earnings (W-2 wages + Schedule SE self-employment) | `MD_EARN_WNE_P*` |
 | `earnings_mean` | Int64 | Mean earnings | `MN_EARN_WNE_P*` |
 | `earnings_sd` | Int64 | Standard deviation of earnings | `SD_EARN_WNE_P*` |
 | `earnings_pct10` | Int64 | 10th percentile earnings | `PCT10_EARN_WNE_P*` |
@@ -160,6 +160,8 @@ The Portal uses **LONG format** with time horizon as a column, NOT the WIDE form
 | `opeid` | 8-digit string | OPE (Title IV) | `"00100200"` | Zero-padded; present in all datasets |
 | `opeid6` | Integer | 6-digit OPE | `1002` | Numeric, no zero-padding |
 
+> **OPEID6 roll-up:** NSLDS- and tax-derived Scorecard outcomes (earnings, debt, repayment) are computed at the 6-digit OPEID level; every `unitid` sharing an OPEID6 carries the same value. Deduplicate on `opeid6` (+ `year` and the dataset's horizon column — `years_after_entry` for earnings, `years_since_entering_repay` for repayment/default) before counting institutions or weighting.
+
 ### Data Timing
 
 | Metric | Dimension Column | Values | Typical Lag |
@@ -168,7 +170,7 @@ The Portal uses **LONG format** with time horizon as a column, NOT the WIDE form
 | Default | `years_since_entering_repay` | 2, 3 | Varies |
 | Repayment | `years_since_entering_repay` | 1, 3, 5, 7 | Varies |
 
-**"After entry" means after first enrollment**, not after graduation.
+**"After entry" means after the estimated entry year at the institution** (first Title IV aid receipt there, adjusted by the FAFSA grade level), not after graduation.
 
 ### Categorical Value Encodings (Institutional Characteristics Dataset)
 
@@ -273,7 +275,7 @@ valid = valid.join(
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -288,7 +290,7 @@ valid <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3)
 
 # Institution names/control are NOT in the earnings dataset.
 # Join to inst_characteristics or IPEDS directory (filter years locally):
-url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
 inst <- arrow::read_parquet(url) |> filter(year == 2020)
 valid <- valid |> left_join(
   inst |> select(unitid, inst_name, pred_degree_awarded_ipeds),
@@ -316,8 +318,9 @@ valid <- valid |> left_join(
 
 Scorecard tracks ONLY students who received federal financial aid (Title IV):
 - Pell Grants
-- Federal student loans (Direct, Perkins, PLUS)
-- Federal work-study
+- Federal student loans (undergraduate)
+
+(Scorecard's NSLDS cohorts include students who receive a Pell Grant or an undergraduate federal loan; Federal Work-Study alone does not place a student in the cohort — Scorecard technical documentation)
 
 | Excluded Group | Impact |
 |----------------|--------|
@@ -326,14 +329,7 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 | International students | Not eligible for federal aid |
 | Some graduate students | If they received no federal aid |
 
-**Coverage varies dramatically by institution type:**
-
-| Institution Type | Typical Title IV Coverage |
-|-----------------|---------------------------|
-| For-profit colleges | 80-90%+ |
-| Community colleges | 60-80% |
-| Public flagships | 50-70% |
-| Selective private colleges | 30-50% |
+Coverage varies widely by sector and selectivity; no published national ranges are cited here. Compute coverage for your sample (e.g., IPEDS SFA share of undergraduates receiving Pell or federal loans, or Scorecard `PCTPELL`/`PCTFLOAN`).
 
 **Data systematically overrepresents lower-income students** who are more likely to need federal aid.
 
@@ -342,8 +338,8 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 | Excluded | Why It Matters |
 |----------|----------------|
 | Non-Title IV students | Often higher-income; different outcomes |
-| Self-employment income | 1099 income excluded from earnings |
-| Students still in school | Not working = not in earnings data |
+| Unreported / non-labor income | Not in tax-record earnings |
+| Students still in school | Enrolled (in-school deferment for at least 30 days of the measurement year) = not in earnings data, whether or not working |
 | Private student loans | Only federal loans tracked |
 | Students who left the country | Lost to follow-up |
 
@@ -351,9 +347,9 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 
 | Aspect | College Scorecard | IPEDS |
 |--------|------------------|-------|
-| **Who's tracked** | Title IV aid recipients | First-time, full-time students |
-| **Includes part-time** | Yes | No (for grad rates) |
-| **Includes transfers-in** | Yes | No (tracked at origin) |
+| **Who's tracked** | Title IV aid recipients (NSLDS- and tax-derived measures) | First-time, full-time students |
+| **Includes part-time** | Yes (NSLDS-based measures; Scorecard `C150_*`/`C200_*` are IPEDS GR rates and exclude part-time) | No (for grad rates) |
+| **Includes transfers-in** | Yes (NSLDS-based measures; not in `C150_*`/`C200_*`) | No (tracked at origin) |
 | **Outcome focus** | Earnings, debt, repayment | Completion, retention |
 | **Data source** | NSLDS + IRS | Institution-reported |
 

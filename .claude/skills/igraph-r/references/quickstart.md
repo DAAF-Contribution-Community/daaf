@@ -116,14 +116,17 @@ head(igraph::as_data_frame(g, what = "edges"))  # edge table with named endpoint
 ```
 
 **Always check `edge_attr_names(g)` early.** If it includes `"weight"`, then
-centrality and community functions will auto-consume it as a **distance** unless
-you pass `weights = NA` (see `centrality.md` and `gotchas.md`). This one check
+igraph functions auto-consume it unless you pass `weights = NA`: path-based
+centrality and `cluster_edge_betweenness()` read it as a **distance**, Louvain,
+Leiden and walktrap as a strength, and `cluster_leiden()` uses it even with
+`weights = NA` (see `centrality.md` and
+`gotchas.md`). This one check
 prevents the most common silent error in igraph.
 
 ```r
 # INTENT: Confirm whether a 'weight' attribute is present before running centrality
 if ("weight" %in% edge_attr_names(g)) {
-  cat("WARNING: graph has a 'weight' attribute — it will be auto-used as a distance.\n")
+  cat("WARNING: graph has 'weight' — auto-used as a DISTANCE by path measures and edge betweenness, a STRENGTH by Louvain/Leiden/walktrap.\n")
 } else {
   cat("No 'weight' attribute — unweighted analysis is the default.\n")
 }

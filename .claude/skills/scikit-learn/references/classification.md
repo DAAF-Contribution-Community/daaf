@@ -6,7 +6,7 @@ Supervised classification with scikit-learn: LogisticRegression, DecisionTreeCla
 
 | Classifier | Interpretable? | Handles Nonlinear? | Scales to Large N? | Key Strength |
 |------------|---------------|--------------------|--------------------|--------------|
-| LogisticRegression | Yes (coefficients) | No (linear boundary) | Yes | Baseline; regularization |
+| LogisticRegression | Yes (penalized coefficients) | No (linear boundary) | Yes | Baseline; regularization |
 | DecisionTree | Yes (tree viz) | Yes | Moderate | Interpretable rules |
 | RandomForest | Moderate (importances) | Yes | Yes | Robust; low tuning |
 | GradientBoosting | Moderate (importances) | Yes | Moderate | High accuracy |
@@ -22,10 +22,9 @@ Linear classifier with probabilistic output. The standard baseline for classific
 from sklearn.linear_model import LogisticRegression
 
 model = LogisticRegression(
-    penalty="l2",            # Regularization: 'l1', 'l2', 'elasticnet', None
-                             # Note: penalty param deprecated in 1.8+; L2 is still the default behavior
     C=1.0,                   # Inverse regularization strength (smaller = stronger)
-    solver="lbfgs",          # Solver: 'lbfgs' (default), 'saga' (for l1/elasticnet)
+    l1_ratio=0.0,            # Penalty type (replaces penalty=, deprecated in 1.8): 0 = L2, 1 = L1, between = elastic net
+    solver="lbfgs",          # Solver: 'lbfgs' (default; L2 or none), 'saga' (for L1/elastic net)
     max_iter=1000,           # Increase if convergence warning
     class_weight=None,       # 'balanced' for imbalanced classes
     random_state=42
@@ -36,10 +35,18 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)  # Class probabilities
 
-# --- Coefficients (interpretable) ---
+# --- Coefficients (shrunk toward zero by the default penalty; see note below) ---
 print(f"Coefficients: {model.coef_}")
 print(f"Intercept: {model.intercept_}")
 ```
+
+**Default coefficients are penalized.** With the defaults (`C=1.0`, L2 penalty), `coef_` is shrunk toward zero, and how much depends on each feature's scale. These are not the maximum-likelihood estimates that `statsmodels` or Stata `logit` report, and scikit-learn gives no standard errors. For prediction, tune `C` by cross-validation. For unpenalized estimates, use a very large `C`:
+
+```python
+model_mle = LogisticRegression(C=1e10, max_iter=1000).fit(X_train, y_train)   # effectively unpenalized
+```
+
+In 1.8.0 both documented unpenalized spellings warn: `penalty=None` raises a FutureWarning (deprecated in 1.8, to be removed in 1.10), and `C=np.inf` raises a UserWarning ("Setting penalty=None will ignore the C and l1_ratio parameters") that scikit-learn issue #33871 reports as spurious. With the default `tol=1e-4` the estimates can differ from `statsmodels` in the third significant digit; add `tol=1e-8` when they must match. For coefficient inference (SEs, p-values), use the `statsmodels` skill.
 
 ### Solver Selection
 
@@ -47,7 +54,7 @@ print(f"Intercept: {model.intercept_}")
 |--------|-------------------|------------|-------|
 | `lbfgs` | l2, None | Yes (multinomial) | Default; good all-around |
 | `saga` | l1, l2, elasticnet, None | Yes | Needed for l1/elasticnet |
-| `liblinear` | l1, l2 | One-vs-rest only | Fast for small datasets |
+| `liblinear` | l1, l2 | No (binary only; wrap in `OneVsRestClassifier`) | Fast for small datasets |
 
 ## DecisionTreeClassifier
 
@@ -145,7 +152,7 @@ model.fit(X_train, y_train)     # Handles NaN values natively (no imputation nee
 | Speed | Slower | Much faster (histogram binning) |
 | Large datasets | Slow on >10K rows | Handles millions of rows |
 | Missing values | Requires imputation | Handles NaN natively |
-| Categorical features | Requires encoding | Native support (1.4+) |
+| Categorical features | Requires encoding | Native (`categorical_features="from_dtype"` default since 1.6) |
 | API | `n_estimators`, `max_depth` | `max_iter`, `max_leaf_nodes` |
 
 ## SVC (Support Vector Classifier)
@@ -205,10 +212,10 @@ y_pred_custom = (y_proba >= 0.3).astype(int)  # Lower threshold for minority cla
 
 ```python
 # --- Most classifiers handle multi-class natively ---
-model = LogisticRegression(multi_class="multinomial", max_iter=1000)
+model = LogisticRegression(max_iter=1000)   # multinomial by default; multi_class= was removed (TypeError in 1.8)
 model.fit(X_train, y_train)  # y has >2 classes
 
-# --- For classifiers that don't (e.g., SVC with non-linear kernel) ---
+# --- To force one-vs-rest (SVC is natively one-vs-one; liblinear LogisticRegression is binary-only) ---
 from sklearn.multiclass import OneVsRestClassifier
 model = OneVsRestClassifier(SVC(kernel="rbf", probability=True))
 ```
@@ -263,9 +270,9 @@ model.fit(X_train, y_train)
 | Feature | HistGradientBoosting | LightGBM | XGBoost |
 |---------|---------------------|----------|---------|
 | In Dockerfile | Yes | Yes | No (optional) |
-| SHAP TreeExplainer | Approximate | Native (fast) | Native (fast) |
+| SHAP TreeExplainer | Native (fast) | Native (fast) | Native (fast) |
 | Custom loss functions | No | Yes | Yes |
 | Categorical features | Native | Native | Native support via `enable_categorical=True` (1.5+); otherwise requires encoding |
 | GPU support | No | Yes | Yes |
 
-> **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use LightGBM when SHAP TreeExplainer performance matters. Use XGBoost for custom loss functions.
+> **Guidance:** For most DAAF use cases, HistGradientBoosting is sufficient. Use XGBoost for custom loss functions.

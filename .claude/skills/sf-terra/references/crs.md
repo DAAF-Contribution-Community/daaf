@@ -161,7 +161,7 @@ x_custom <- st_transform(x, crs = custom_crs)
 
 ## CRS Matching Before Spatial Operations
 
-All spatial operations (join, overlay, distance) require both inputs to be in the same CRS. sf raises an error if they differ.
+All spatial operations (join, overlay, distance) require both inputs to be in the same CRS. sf raises an error if they differ (including when one CRS is NA; two NA CRSs pass unchecked).
 
 ```r
 # Check if two sf objects share the same CRS
@@ -199,7 +199,7 @@ tracts <- st_read("tracts.gpkg") |> st_transform(TARGET_CRS)
 | `st_crs<-` used instead of `st_transform` | Data plots in wrong location | Use `st_transform()` to reproject |
 | Web Mercator for analysis | Areas wildly wrong at high latitudes | Use equal-area projection |
 | CRS lost after non-sf operation | `st_crs(x)` returns NA | Re-set CRS or use sf-aware functions |
-| Mixed CRS in spatial operation | Error: CRS mismatch | Reproject to common CRS |
+| Mixed CRS in spatial operation | Error: `st_crs(x) == st_crs(y) is not TRUE` (rbind: `arguments have different crs`) | Reproject to common CRS |
 
 ---
 

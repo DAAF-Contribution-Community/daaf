@@ -88,7 +88,7 @@ Interpretation: A CV of 0.30 means the standard error is 30% of the estimate.
 
 ### CV by District Size
 
-From Census Bureau evaluation studies:
+From the Census Bureau evaluation for SAIPE 2009 (pre-ACS method); Census describes these as an approximate upper bound for SAIPE 2010 school-district estimates (applying them to later years is DAAF inference):
 
 | Population | Median CV | 90% CI Width Factor |
 |------------|-----------|---------------------|
@@ -149,7 +149,7 @@ Low geocoding rate → more reliance on ACS shares → older baseline data.
 
 | Limitation | Impact |
 |------------|--------|
-| 18-month lag | Data not current |
+| ~12-13 month lag after the income year ends (~18 months from its midpoint; DAAF inference from Census release dates) | Data not current |
 | Boundary updates | May not reflect recent changes |
 | Economic shocks | Slow to reflect rapid changes |
 | Year-to-year volatility | Single years may mislead |

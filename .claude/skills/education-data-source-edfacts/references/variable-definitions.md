@@ -21,14 +21,35 @@ EDFacts uses specific numeric codes to indicate missing or suppressed data:
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/Not applicable | Data element not applicable to this entity |
-| `-2` | Not reported | State did not report this data |
+| `-1` | Missing/not reported | Value missing or not reported |
+| `-2` | Not applicable | Data element not applicable to this entity |
 | `-3` | Suppressed | Data suppressed for privacy |
-| `-9` | Rounds to zero | Value rounds to 0% |
+| `-9` | Not found in Portal data | See "`-9` (not found in Portal data)" below |
+
+The `-1`/`-2`/`-3` labels follow the Portal varlist for the EDFacts assessment and graduation-rate value columns: `"-1" : "Missing/not reported","-2" : "Not applicable","-3" : "Suppressed data"` (live varlist for `schools/edfacts/assessments`, checked 2026-10-28; the generated `education-data-explorer` dictionary carries the same labels for the grad-rate columns). It is the Portal's generic sentinel legend, not EDFacts-specific semantics: the assessment varlist declares the same string on 20 of its 26 variables, including `year`, `school_name` and `leaid`.
+
+Observed on the pinned mirror (HF revision `0ad00ce0`, school files, probed 2026-10-28): assessment value columns carry only `-3` and `-2`, grad-rate value columns carry only `-3`, and `-1` does not occur. District files were not probed.
 
 ### Understanding Each Code
 
-#### `-1` (Missing/Not Applicable)
+#### `-1` (Missing/Not Reported)
+
+The value is missing or was not reported:
+- State-level reporting issue
+- Data collection problem
+- Indicator not collected that year
+
+```python
+# Example (illustrative): a graduation-rate value coded -1
+# grad_rate_midpt = -1 (missing/not reported)
+```
+
+```r
+# Example (illustrative): a graduation-rate value coded -1
+# grad_rate_midpt = -1 (missing/not reported)
+```
+
+#### `-2` (Not Applicable)
 
 Data does not apply to this record:
 - School doesn't serve tested grades
@@ -36,30 +57,13 @@ Data does not apply to this record:
 - Data element doesn't exist for this entity
 
 ```python
-# Example: Elementary school has no graduation rate
-# grad_rate_midpt = -1 (not applicable)
+# Example (illustrative): a proficiency value coded -2
+# read_test_pct_prof_midpt = -2 (not applicable)
 ```
 
 ```r
-# Example: Elementary school has no graduation rate
-# grad_rate_midpt = -1 (not applicable)
-```
-
-#### `-2` (Not Reported)
-
-State did not submit this data:
-- State-level reporting issue
-- Data collection problem
-- Indicator not collected that year
-
-```python
-# Example: State didn't report participation rates
-# read_test_pct_part = -2 (not reported)
-```
-
-```r
-# Example: State didn't report participation rates
-# read_test_pct_part = -2 (not reported)
+# Example (illustrative): a proficiency value coded -2
+# read_test_pct_prof_midpt = -2 (not applicable)
 ```
 
 #### `-3` (Suppressed for Privacy)
@@ -79,21 +83,9 @@ Data suppressed to protect student privacy:
 # math_test_pct_prof_midpt = -3 (suppressed)
 ```
 
-#### `-9` (Rounds to Zero)
+#### `-9` (not found in Portal data)
 
-Actual value rounds to 0% but isn't truly zero:
-- Very small percentage
-- Distinguishes from true 0%
-
-```python
-# Example: 0.4% proficient rounds to 0
-# read_test_pct_prof_midpt = -9 (rounds to zero)
-```
-
-```r
-# Example: 0.4% proficient rounds to 0
-# read_test_pct_prof_midpt = -9 (rounds to zero)
-```
+Earlier versions of this skill listed `-9` as "rounds to zero"; no source for that code was found. The Portal varlist corpus does not contain it (explorer `variable-codes.md`), and no pinned-mirror school-level assessment (2009-2018, 2020) or graduation-rate (2010-2019) value column contains it (HF revision `0ad00ce0`, probed 2026-10-28; district files were not probed). Filters below that drop `-9` together with `-1`/`-2`/`-3` are harmless.
 
 ### Filtering Missing Data
 
@@ -275,37 +267,7 @@ Extended graduation rate variables (`grad_rate_5yr_midpt`, `grad_rate_6yr_midpt`
 
 ## Participation Variables
 
-### Participation Rate Variables
-
-| Variable | Description |
-|----------|-------------|
-| `read_test_pct_part` | Reading test participation rate |
-| `math_test_pct_part` | Math test participation rate |
-
-### 95% Participation Threshold
-
-| Rate | Status |
-|------|--------|
-| ≥95% | Meets federal requirement |
-| <95% | Does not meet requirement |
-
-### Using Participation Data
-
-```python
-# Identify schools below participation threshold
-low_participation = df.filter(
-    (pl.col("read_test_pct_part") < 95) |
-    (pl.col("math_test_pct_part") < 95)
-)
-```
-
-```r
-library(dplyr)
-
-# Identify schools below participation threshold
-low_participation <- df |>
-  filter(read_test_pct_part < 95 | math_test_pct_part < 95)
-```
+The Portal's EDFacts assessment files carry no participation-rate variable: the live varlist for `schools/edfacts/assessments` (26 variables, checked 2026-10-28) and the mirror dictionary list only `read_/math_test_num_valid` and `read_/math_test_pct_prof_{low,midpt,high}`. `*_test_num_valid` counts students who completed the test and were assigned a proficiency level; it is not a participation rate. For participation (including ESSA's 95% requirement), use ED's EDFacts participation files (SY 2012-13 onward), which are outside the Portal.
 
 ## Subgroup Codes
 
@@ -313,7 +275,7 @@ low_participation <- df |>
 
 ### Race/Ethnicity Codes (Portal Integer Encoding)
 
-> **Empirically verified** from 2018 assessment data. Only these values appear in the `race` column.
+> **Empirically verified** from 2018 assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only these values appear in the `race` column.
 
 | Portal Code | NCES Code | Description |
 |-------------|-----------|-------------|
@@ -576,10 +538,9 @@ def suppression_report(df, value_col):
     suppression_counts = {
         "total_records": total,
         "valid": (df[value_col] >= 0).sum(),
-        "missing_na": (df[value_col] == -1).sum(),
-        "not_reported": (df[value_col] == -2).sum(),
+        "missing_not_reported": (df[value_col] == -1).sum(),
+        "not_applicable": (df[value_col] == -2).sum(),
         "suppressed": (df[value_col] == -3).sum(),
-        "rounds_to_zero": (df[value_col] == -9).sum()
     }
     
     suppression_counts["pct_valid"] = suppression_counts["valid"] / total * 100
@@ -595,17 +556,15 @@ def suppression_report(df, value_col):
 value_col <- "read_test_pct_prof_midpt"
 total <- nrow(df)
 valid <- sum(df[[value_col]] >= 0, na.rm = TRUE)
-missing_na <- sum(df[[value_col]] == -1, na.rm = TRUE)
-not_reported <- sum(df[[value_col]] == -2, na.rm = TRUE)
+missing_not_reported <- sum(df[[value_col]] == -1, na.rm = TRUE)
+not_applicable <- sum(df[[value_col]] == -2, na.rm = TRUE)
 suppressed <- sum(df[[value_col]] == -3, na.rm = TRUE)
-rounds_to_zero <- sum(df[[value_col]] == -9, na.rm = TRUE)
 
 cat("Total records:", total, "\n")
 cat("Valid:", valid, sprintf("(%.1f%%)", valid / total * 100), "\n")
-cat("Missing/NA (-1):", missing_na, "\n")
-cat("Not reported (-2):", not_reported, "\n")
+cat("Missing/not reported (-1):", missing_not_reported, "\n")
+cat("Not applicable (-2):", not_applicable, "\n")
 cat("Suppressed (-3):", suppressed, sprintf("(%.1f%%)", suppressed / total * 100), "\n")
-cat("Rounds to zero (-9):", rounds_to_zero, "\n")
 ```
 
 ### Working with Ranges
@@ -693,7 +652,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # `education-data-query/references/fetch-patterns.md`.
 
 # School-level assessments (yearly dataset)
-df <- read_parquet(paste0(mirror$root_url, "/",
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/",
                           "edfacts/schools_edfacts_assessments_2018", ".", mirror$format))
 
 # Filter to California, grade 4
@@ -701,7 +660,7 @@ ca_grade4 <- df |>
   filter(fips == 6, grade_edfacts == 4)
 
 # School-level graduation rates (yearly dataset)
-grad_df <- read_parquet(paste0(mirror$root_url, "/",
+grad_df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/",
                                "edfacts/schools_edfacts_grad_rates_2019", ".", mirror$format))
 ```
 

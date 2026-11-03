@@ -1,0 +1,11 @@
+{"paper_key": "user_f1c70001", "stage": "ta", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70002", "stage": "ta", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70003", "stage": "ta", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70004", "stage": "ta", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "W900000005", "stage": "ta", "pass": "primary", "decision": "exclude", "reason_code": "population", "rationale": "adults, not pupils", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "W900000005", "stage": "ta", "pass": "second", "decision": "maybe", "rationale": "unclear ages", "screener": {"agent": "fixture-second", "model_id": "fixture-synthetic"}}
+{"paper_key": "W900000005", "stage": "ta", "pass": "resolution", "decision": "exclude", "reason_code": "population", "rationale": "the abstract says adults", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70001", "stage": "ft", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70002", "stage": "ft", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70003", "stage": "ft", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}
+{"paper_key": "user_f1c70004", "stage": "ft", "pass": "primary", "decision": "include", "screener": {"agent": "fixture", "model_id": "fixture-synthetic"}}

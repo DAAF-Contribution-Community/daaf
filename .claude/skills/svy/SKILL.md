@@ -307,7 +307,7 @@ coef_table = model.to_polars()   # ['term','estimate','std_err','conf_low','conf
 When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
-> Diallo, M.S. svy: Python package for complex survey sampling and analysis [Computer software]. (Formerly samplics.)
+> Samplics LLC. svy: End-to-end surveys: design, sample, analyze, report [Computer software]. https://github.com/samplics-org/svy (Formerly samplics.)
 
 **Cite when:** svy is used for survey-weighted estimation with complex survey designs (strata, PSU, replicate weights).
 **Do not cite when:** Only imported but no survey estimation performed.

@@ -107,17 +107,50 @@ expected = {
     "gpt-5.60": None,
     "gpt-5.6sol": None,
     "gpt-5.6+trailing": None,
+    "gpt-6-astra": 1050000,
+    "gpt-6-astra[1m]": 1050000,
+    "openai/gpt-6-astra": 1050000,
+    "gpt-6": None,
+    "xgpt-6-astra": None,
+    # USER POLICY DECISION 2026-09-29 (not validation): gpt-6-sol/-luna and the
+    # flagship -pro forms read as their bases (1,050,000); the 919k lane cap for
+    # them is inferred from Sol/Astra, not measured.
+    "gpt-6-astra-pro": 1050000,
+    "gpt-6-sol": 1050000,
+    "gpt-6-sol[1m]": 1050000,
+    "openai/gpt-6-sol": 1050000,
+    "gpt-6-luna": 1050000,
+    "openai/gpt-6-luna[1m]": 1050000,
+    "gpt-6-sol-pro[1m]": 1050000,
+    "openai/gpt-6-luna-pro": 1050000,
+    "gpt-5.6-sol-pro": 1050000,
+    "gpt-6-astra[1m]#xhigh": 1050000,
+    "gpt-6-terra": None,
+    "gpt-6-sol-mini": None,
+    "gpt-6-sol-chat": None,
+    "gpt-6-astra-pro-x": None,
+    "gpt-6-sol-pro[1m]x": None,
+    "gpt-6-astra[1m]x": None,
+    "xgpt-6-sol": None,
+    # USER POLICY DECISION 2026-10-12 (not validation): gpt-6.1-sol reads as
+    # gpt-6-sol; one exact alternative, no gpt-6.1-* wildcard.
+    "gpt-6.1-sol": 1050000,
+    "openai/gpt-6.1-sol": 1050000,
+    "gpt-6.1-sol-pro[1m]": 1050000,
+    "gpt-6.1-luna": None,
+    "gpt-6.1-sol-mini": None,
+    "gpt-6x1-sol": None,
 }
 for model_id, want in expected.items():
     got = _gpt_physical_window(model_id)
     assert got == want, (model_id, got, want)
-print("GPT physical mapping: 18/18 cases passed")
+print(f"GPT physical mapping: {len(expected)}/{len(expected)} cases passed")
 '
     assert_success
-    assert_output "GPT physical mapping: 18/18 cases passed"
+    assert_output "GPT physical mapping: 46/46 cases passed"
 }
 
-@test "route diagnostic enforces canonical decimal and all four effective GPT selectors" {
+@test "route diagnostic enforces canonical decimal and every effective GPT selector (incl. default, haiku, fable)" {
     run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${SMOKE_PROBES_DIR}:${REPO_ROOT}" python3 -c '
 from route_detection import (
     MODEL_SELECTOR_VARS,
@@ -154,8 +187,11 @@ all_mapped = {
     "DAAF_PROVIDER_SHIM": "openai",
     "SHIM_BACKEND_MODE": "chatgpt",
     "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_MODEL": "gpt-6-sol[1m]",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5.5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.6-terra",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-astra[1m]",
     "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-5.6-sol[1m]",
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000",
 }
@@ -169,10 +205,11 @@ for declaration in invalid[1:]:
     got = probe_context_window_coherence(build_route_info(env), env)
     assert got.verdict == Verdict.FAIL, (declaration, got.verdict, got.detail)
     assert "canonical positive decimal" in got.detail, (declaration, got.detail)
-print("canonical declarations and selector remaps: 41/41 cases passed")
+assert len(MODEL_SELECTOR_VARS) == 7, MODEL_SELECTOR_VARS
+print("canonical declarations and selector remaps: 53/53 cases passed")
 '
     assert_success
-    assert_output "canonical declarations and selector remaps: 41/41 cases passed"
+    assert_output "canonical declarations and selector remaps: 53/53 cases passed"
 }
 
 @test "route diagnostic keeps wide routes and non-flagship controls separate" {
@@ -196,12 +233,39 @@ cases = [
     ("OpenRouter keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter does not generalize [1m]", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol[1m]"}, Verdict.FAIL),
     ("native route rejects an explicit overflow declaration", {"ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "9223372036854775808"}, Verdict.FAIL),
+    # USER POLICY DECISION 2026-09-29: GPT-6 Sol/Luna and flagship -pro forms take
+    # the exact-ChatGPT-lane 919000 ceiling (inferred from Sol/Astra, not measured).
+    ("ChatGPT gpt-6-sol above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("ChatGPT gpt-6-sol-pro[1m] above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol-pro[1m] at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("ChatGPT gpt-6-sol-pro[1m] needs explicit declaration", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-luna remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-astra-pro subagent pin above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-6-astra-pro", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT effort-suffixed gpt-6-astra above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-astra[1m]#xhigh", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("retired gpt-6-terra is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-terra", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    ("OpenRouter gpt-6-sol keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    # USER POLICY DECISION 2026-10-12: gpt-6.1-sol takes the same 919k lane cap
+    # (its ChatGPT-lane ceiling was measured 2026-10-13: accepted 919,744, rejected 921,973).
+    ("ChatGPT gpt-6.1-sol above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6.1-sol at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    # 2026-10-12 four-tier alias coverage: HAIKU/FABLE slots get the same window
+    # scrutiny as OPUS/SONNET, and the soft ANTHROPIC_DEFAULT_MODEL is a selector.
+    ("ChatGPT gpt-6-luna haiku remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol fable remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT four-tier remap at lane cap", {**base_chatgpt, "ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("direct API four-tier [1m] remap is complete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]"}, Verdict.PASS),
+    ("direct API haiku slot missing [1m] is incomplete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna"}, Verdict.FAIL),
+    ("direct API fable slot missing [1m] is incomplete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]"}, Verdict.FAIL),
+    ("native soft default alias needs no declaration", {"ANTHROPIC_DEFAULT_MODEL": "opus"}, Verdict.INFO),
 ]
 for label, env, want in cases:
     got = probe_context_window_coherence(build_route_info(env), env)
     assert got.verdict == want, (label, got.verdict, want, got.detail)
-print("route and model controls: 12/12 cases passed")
+    if want == Verdict.FAIL and "lane cap" in label:
+        assert "919000" in got.detail, (label, got.detail)
+print(f"route and model controls: {len(cases)}/{len(cases)} cases passed")
 '
     assert_success
-    assert_output "route and model controls: 12/12 cases passed"
+    assert_output "route and model controls: 31/31 cases passed"
 }

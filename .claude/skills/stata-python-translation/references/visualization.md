@@ -808,8 +808,9 @@ fig.write_html("output/figures/economic.html")
 ## Section 12: Binscatter
 
 Binscatter is a workhorse visualization in applied economics. The `binsreg`
-package is maintained by the same team (Cattaneo, Crump, Farrell, Feng) across
-Stata, R, and Python, with virtually identical APIs.
+package comes from one nppackages project across Stata, R, and Python (Cattaneo,
+Crump, Farrell, Feng; PyPI also lists Ricardo Masini), with virtually identical
+APIs.
 
 ### Basic Binscatter
 
@@ -858,13 +859,15 @@ manually using pyfixest before passing to binsreg if FE absorption is needed.
 | Stata | Python | Purpose |
 |-------|--------|---------|
 | `binsreg y x` | `binsreg.binsreg(y, x)` | Binscatter with CI |
-| `binslogit y x` | `binsreg.binslogit(y, x)` | Binscatter with logit |
+| `binslogit y x` | `binsreg.binsglm(y, x, dist="Binomial", link="Logit")` | No Python binslogit; use binsglm |
 | `binstest y x` | `binsreg.binstest(y, x)` | Hypothesis testing |
 | `binspwc y x, by(group)` | `binsreg.binspwc(y, x, by=group)` | Pairwise comparison |
 | `binsregselect y x` | `binsreg.binsregselect(y, x)` | Data-driven bin selection |
 
-All functions share identical syntax across Stata, R, and Python because they are
-maintained by the same methodological authors.
+The Stata, R, and Python versions come from one nppackages project and share
+function names and options, except that `binslogit` and `binsprobit` are
+Stata-only; in Python use `binsreg.binsglm(y, x, dist="Binomial", link="Logit")`
+(or `link="Probit"`).
 
 ---
 
@@ -889,7 +892,7 @@ maintained by the same methodological authors.
 | `graph pie` | No plotnine equivalent | Use matplotlib directly |
 | `coefplot` | `pf.coefplot()` | pyfixest |
 | `marginsplot` | Manual from `marginaleffects` output | No single-function equivalent |
-| `binscatter y x` | `binsreg.binsreg(y, x)` | Same authors, same API |
+| `binscatter y x` | `binsreg.binsreg(y, x)` | Different author from Stata `binscatter` (Stepner); API mirrors Stata `binsreg` |
 | `graph export "f.png"` | `p.save("f.png", dpi=300)` | |
 
 ---
@@ -929,7 +932,9 @@ maintained by the same methodological authors.
 > 2026-03-28); pyfixest documentation, coefplot and iplot functions
 > (pyfixest.org, v0.60.0, accessed 2026-07-24); Cattaneo, Crump, Farrell, & Feng,
 > binsreg package documentation (nppackages.github.io/binsreg/, accessed
-> 2026-03-28); Turrell, "Data Visualisation using the Grammar of Graphics with
-> Plotnine" in *Coding for Economists* (aeturrell.github.io, accessed
+> 2026-03-28; now redirects to github.com/nppackages/binsreg);
+> Turrell, "Data Visualisation using the Grammar of Graphics with
+> Plotnine" in *Coding for Economists*
+> (https://aeturrell.github.io/coding-for-economists/, accessed
 > 2026-03-28); Plotly Python documentation (plotly.com/python/, accessed
 > 2026-03-28)

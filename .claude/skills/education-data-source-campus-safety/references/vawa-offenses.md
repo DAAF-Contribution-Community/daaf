@@ -8,13 +8,13 @@ The Violence Against Women Reauthorization Act (VAWA) of 2013 amended the Clery 
 - Establish procedures for handling these offenses
 - Provide written notification of victim rights and resources
 
-These requirements took effect with the 2014 calendar year (reported in 2015).
+VAWA 2013 (Pub. L. 113-4) required good-faith reporting of these offenses starting with calendar-year 2013 statistics in the October 1, 2014 ASR; the final regulations (79 FR 62752, Oct. 20, 2014) took effect July 1, 2015, and statistics for 2013–2014 did not have to be revised to the final definitions. The first ASR with three full years under the final definitions was due October 1, 2018.
 
 ## Dating Violence
 
 ### Definition
 
-**Federal Definition** (34 U.S.C. 12291(a)(10)):
+**Clery Definition** (34 CFR 668.46(a)):
 Violence committed by a person who is or has been in a social relationship of a romantic or intimate nature with the victim. The existence of such a relationship shall be determined based on the reporting party's statement and with consideration of the length of the relationship, the type of relationship, and the frequency of interaction between the persons involved in the relationship.
 
 ### Key Elements
@@ -60,7 +60,7 @@ Dating violence applies when the relationship is **romantic/intimate but does no
 
 ### Definition
 
-**Federal Definition** (34 U.S.C. 12291(a)(8)):
+**Clery Definition** (34 CFR 668.46(a)):
 A felony or misdemeanor crime of violence committed by:
 - A current or former spouse or intimate partner of the victim
 - A person with whom the victim shares a child in common
@@ -98,7 +98,7 @@ Institutions must understand their state's definition of domestic violence and w
 
 ### Definition
 
-**Federal Definition** (34 U.S.C. 12291(a)(30)):
+**Clery Definition** (34 CFR 668.46(a)):
 Engaging in a course of conduct directed at a specific person that would cause a reasonable person to:
 - Fear for the person's safety or the safety of others; or
 - Suffer substantial emotional distress
@@ -156,7 +156,7 @@ Stalking conducted through electronic means:
 
 **One Count Per Victim**:
 - Stalking is counted once per victim regardless of the number of acts
-- If stalking continues into a new calendar year, it may be counted in both years
+- If a report of stalking includes activity in more than one calendar year, it must be recorded for each year in which the course of conduct is reported (34 CFR 668.46(c)(6))
 
 **Geographic Considerations**:
 - Count if ANY act in the course of conduct occurred in Clery geography
@@ -251,8 +251,8 @@ Studies consistently show that campus sexual assault, dating violence, domestic 
 
 ### Comparability Issues
 
-**Pre-2014 Data**:
-- VAWA offenses not reported before 2014
+**Pre-2013 Data**:
+- VAWA offenses not reported before calendar-year 2013 statistics (CY2013–2014 good-faith/transitional; final definitions from CY2015)
 - No historical baseline for comparison
 
 **Institutional Variation**:

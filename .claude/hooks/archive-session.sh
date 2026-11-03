@@ -9,11 +9,12 @@
 # processes each top-level JSON object in the JSONL stream independently,
 # converting the entire transcript in one process spawn.
 #
-# Subagent archiving: Discovers subagent transcripts directly from Claude
-# Code's raw file hierarchy ({session-uuid}/subagents/), reading agent
-# metadata from .meta.json files alongside each transcript. This replaces
-# the previous registry-based approach and works for both normal archiving
-# and crash recovery (where no registry would exist).
+# Subagent archiving: subagent transcripts are found in Claude Code's own
+# layout, {transcript dir}/{session-uuid}/subagents/agent-{id}.jsonl, with the
+# agent type in the sibling agent-{id}.meta.json (field agentType) (observed
+# 2026-11-02, Claude Code 2.1.281). Reading the layout directly needs no state
+# of DAAF's own, so it works the same for SessionEnd archiving and for crash
+# recovery.
 #
 # Idempotency: Uses file-size comparison to skip sessions that have already
 # been archived with the same or more content. If the source transcript has
@@ -24,7 +25,7 @@
 # archive timestamp is derived from the last entry in the JSONL transcript
 # rather than the current wall clock. This ensures recovered archives sort
 # chronologically by when the session actually ran, not when recovery
-# discovered them. Normal SessionEnd archiving uses wall clock as before.
+# discovered them. Normal SessionEnd archiving uses the wall clock.
 #
 # Archive naming convention:
 #   {date}_{time}_{session-short}_orchestrator.jsonl   -- main session transcript
@@ -32,8 +33,10 @@
 #   {date}_{time}_{session-short}_subagent_{agent-id-short}.jsonl -- subagent transcripts
 #   {date}_{time}_{session-short}_subagent_{agent-id-short}.md   -- subagent human-readable rendering
 
-# Fail OPEN: archival is observability-only, not a security gate.
-# A malformed JSONL line should produce a gap in the archive, not kill it entirely.
+# Fail OPEN: archival is observability-only, not a security gate. The hook never
+# sets -e, so a failing command does not stop it, and it always exits 0. A
+# malformed JSONL line ends the Markdown rendering at that line (jq stops at the
+# first parse error); the .jsonl copy is still complete.
 trap '' ERR
 
 # Read JSON input from stdin
@@ -191,7 +194,10 @@ def render_tool_use:
       "**File:** `\(.input.file_path // "")`"
     elif .name == "Read" then
       "**File:** `\(.input.file_path // "")`"
-    elif .name == "Task" then
+    elif (.name == "Agent") or (.name == "Task") then
+      # A subagent dispatch. Claude Code names the tool "Agent" (observed
+      # 2026-11-02, Claude Code 2.1.281); transcripts from older versions name
+      # it "Task". Both carry subagent_type and description.
       "**Type:** \(.input.subagent_type // "")  \n**Task:** \(.input.description // "")"
     else
       "```json\n" + ((.input | tojson) | trunc(500)) + "\n```"
@@ -251,12 +257,19 @@ elif $role == "assistant" then
   # Tool uses
   ([$blocks[] | select(.type == "tool_use") | render_tool_use] | join("\n")) +
 
-  # Token usage
+  # Token usage. input_tokens is only the uncached part of the prompt; cache
+  # reads and writes are reported separately, so "in" is the sum of all three
+  # (the same total context-reporter.sh and context-bar.sh use). The cached
+  # share is shown when present. Non-numeric fields count as 0, so a malformed
+  # usage block cannot abort the render.
   (if .message.usage != null then
-    (.message.usage.input_tokens // 0) as $in |
-    (.message.usage.output_tokens // 0) as $out |
+    ([.message.usage | (.input_tokens, .cache_read_input_tokens,
+        .cache_creation_input_tokens, .output_tokens)]
+      | map(if type == "number" then . else 0 end)) as [$base, $cr, $cw, $out] |
+    ($base + $cr + $cw) as $in |
     if ($in > 0) or ($out > 0) then
-      "*Tokens: in=\($in), out=\($out)*\n\n"
+      "*Tokens: in=\($in)" + (if $cr > 0 then " (cached=\($cr))" else "" end)
+        + ", out=\($out)*\n\n"
     else "" end
   else "" end) +
 
@@ -321,16 +334,22 @@ JQEOF
                         SA_TYPE="unknown"
                     fi
 
-                    # Extract metrics from transcript in a single jq invocation
+                    # Extract metrics from transcript in a single jq invocation.
+                    # Line-wise (fromjson?): a line that is not valid JSON, such
+                    # as a partly written last line, is skipped instead of
+                    # failing the whole parse and zeroing every metric. stderr
+                    # is redirected before stdin, so an unreadable transcript
+                    # prints nothing.
                     mapfile -t _sa_metrics < <(
-                        jq -s '
+                        jq -Rn '
                             def tool_count: [.[].message.content[]? | select(.type == "tool_use")] | length;
                             def first_ts: [.[].timestamp // null | select(. != null)] | first // "";
                             def last_ts: [.[].timestamp // null | select(. != null)] | last // "";
+                            [inputs | fromjson? | objects] |
                             (tool_count | tostring),
                             first_ts,
                             last_ts
-                        ' "$SA_JSONL" 2>/dev/null
+                        ' 2>/dev/null < "$SA_JSONL"
                     )
                     SA_TOOLS="${_sa_metrics[0]:-0}"
                     SA_FIRST_TS="${_sa_metrics[1]:-}"

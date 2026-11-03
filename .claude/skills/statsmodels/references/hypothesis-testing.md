@@ -104,7 +104,7 @@ distribution:
 ```python
 import numpy as np
 
-# Wald test (chi-squared by default)
+# Wald test (F when results.use_t is True, as for default OLS; chi-squared otherwise)
 wald = results.wald_test("x1 = 0, x2 = 0")
 print(wald)
 
@@ -129,7 +129,7 @@ print(wald.df_num)      # degrees of freedom (numerator for F)
 
 Key distinction between `f_test` and `wald_test`:
 - `f_test` always returns an F-statistic
-- `wald_test` returns chi-squared by default; use `use_f=True` for F
+- `wald_test` uses F when `results.use_t` is True (default nonrobust OLS) and chi-squared otherwise (robust `cov_type`, GLM); pass `use_f=` to choose
 - For OLS, `f_test` and `wald_test(..., use_f=True)` give identical results
 - Wald tests are asymptotic — use F-version for finite samples when available
 
@@ -143,8 +143,8 @@ of freedom equal to the number of restrictions.
 
 ### For OLS Models
 
-LR tests are not directly available as a statsmodels function for OLS; compute
-manually:
+For OLS, `results_full.compare_lr_test(results_restricted)` returns
+`(lr_stat, p_value, df_diff)`; the manual computation gives the same statistic:
 
 ```python
 from scipy.stats import chi2

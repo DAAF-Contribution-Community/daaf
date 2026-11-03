@@ -1,6 +1,6 @@
 # Mixture Models
 
-GaussianMixture and BayesianGaussianMixture for model-based clustering, soft assignments, and principled model selection with BIC/AIC. For methodology guidance (when to prefer GMM over K-means, the classify-analyze problem), see `exploratory-unsupervised.md` in the `data-scientist` skill.
+GaussianMixture and BayesianGaussianMixture for model-based clustering, soft assignments, and principled model selection with BIC/AIC. For methodology guidance (when to prefer GMM over K-means, the classify-analyze problem), see `exploratory-unsupervised.md` in the `data-scientist` skill; its References section gives full citations for works cited here.
 
 ## GaussianMixture
 
@@ -38,7 +38,7 @@ weights = gmm.weights_           # Mixing proportions (sum to 1)
 | `full` | Unconstrained (any elliptical shape) | d(d+1)/2 | Default; most flexible |
 | `tied` | All components share same covariance | d(d+1)/2 total | Clusters differ in location only |
 | `diag` | Axis-aligned ellipses only | d | Moderate flexibility; fewer params |
-| `spherical` | Round clusters (equal variance per axis) | 1 | Equivalent to K-means with soft assignment |
+| `spherical` | Round clusters; each component has its own single variance | 1 | With equal variances across components, closely related to K-means |
 
 Where d = number of features. Start with `full` and let BIC guide simplification.
 
@@ -141,6 +141,6 @@ print(f"Ambiguous assignments (max prob < 0.70): {n_ambiguous}")
 | Assignment | Probabilistic (posterior) | Hard (nearest centroid) |
 | Cluster shape | Elliptical (any covariance) | Spherical only |
 | Model selection | BIC/AIC (formal) | Silhouette/elbow (heuristic) |
-| Outlier detection | Low max-probability = outlier | Forced into nearest cluster |
-| Downstream use | Probabilities reduce classify-analyze bias | Hard labels introduce bias |
+| Outlier detection | Low fitted density (`gmm.score_samples`) flags potential outliers; low max-probability flags ambiguous assignment, not outlyingness | Forced into nearest cluster |
+| Downstream use | Posterior probabilities quantify assignment uncertainty; used directly as weights they do not remove classify-analyze bias (Vermunt, 2010) | Hard labels; classification error is not quantified |
 | Computation | Slower (EM + covariance) | Faster |

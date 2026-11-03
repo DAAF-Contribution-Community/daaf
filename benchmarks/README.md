@@ -32,23 +32,40 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 39 registry entries across three explicit providers. The
+**Model matrix:** 44 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
-| `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
-| `openrouter` | 27 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
-| `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
+| `anthropic` | 10 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5/5.5, and Fable 5 |
+| `openrouter` | 30 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
+| `chatgpt-subscription` | 4 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol plus GPT-6 Astra; included-capacity billing and separate API-equivalent accounting |
 
-GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and
-ChatGPT-subscription entries. The OpenRouter keys are `gpt-56-luna`,
-`gpt-56-terra`, and `gpt-56-sol`, with `openai/gpt-5.6-*` routing IDs; the
-subscription keys append `-chatgpt` and use the corresponding bare `gpt-5.6-*`
-IDs. Each subscription entry sets a 370,000-token effective input ceiling for
-this ChatGPT/Codex lane. Sol's ceiling was measured on 2026-07-16; Luna and Terra
-remain conservatively inferred to share the lane cap until individually measured.
+GPT-5.6 Luna, Terra, and Sol — and, since 2026-09-05, GPT-6 Astra — each have
+deliberately distinct OpenRouter and ChatGPT-subscription entries. The OpenRouter
+keys are `gpt-56-luna`, `gpt-56-terra`, `gpt-56-sol`, and `gpt-6-astra`, with
+`openai/gpt-5.6-*` and `openai/gpt-6-astra` routing IDs; the subscription keys
+append `-chatgpt` and use the corresponding bare `gpt-5.6-*` / `gpt-6-astra`
+IDs. Each subscription entry sets a 919,000-token effective input ceiling for
+this ChatGPT/Codex lane, measured on 2026-09-05 for both `gpt-6-astra` (accept
+919,053, reject 922,552) and `gpt-5.6-sol` (accept 910,827, reject 921,973);
+that measurement supersedes the earlier 2026-07-16 Sol-only figure of ~370,000.
+Luna and Terra remain conservatively inferred to share the lane cap until
+individually measured. OpenRouter also lists a real `openai/gpt-6-astra-pro`
+slug, which is deliberately NOT in the roster. When it was left out (2026-09-05)
+DAAF's exact-match threshold rule kept every `-pro` variant on conservative
+context thresholds. Since 2026-09-29, by user policy decision rather than
+validation, DAAF's context monitoring reads a flagship `-pro` slug like its
+non-pro base. That change does not revisit the roster decision: see the
+2026-07-10 `-pro` removal note in `config/models.yaml` and its 2026-09-29
+retest annotation. The July prompt-length wall on the Anthropic-compatible
+endpoint no longer reproduces: three `-pro` slugs each accepted more than 930k
+reported tokens. The ~3–4x inflated token accounting persists, though. It
+still makes a GPT-6 `-pro` battery roughly 3x the cost of its base (equal
+per-token prices) and a `gpt-5.6-sol-pro` battery roughly 8x (its per-token
+price is 2x its base's); both multiples are derived, not invoice-verified.
+Evidence: the 2026-09-29 `-pro` retest (maintainer-only note, not shipped: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`).
 Each subscription entry maps both `ANTHROPIC_DEFAULT_OPUS_MODEL` and
 `ANTHROPIC_DEFAULT_SONNET_MODEL` to its own bare parent ID and deliberately omits
 `CLAUDE_CODE_SUBAGENT_MODEL`, preserving semantic tier selection while keeping
@@ -61,7 +78,10 @@ The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED from the
 OpenRouter matrix (2026-07-10): the -pro variants hit hard "Prompt is too long"
 errors at realistic DAAF context sizes through that endpoint (~4x inflated token
 accounting against a ~200k ceiling; evidence in the models.yaml REMOVED block),
-and GPT-5.5 Pro's premium API pricing made its battery not worth running. No
+and GPT-5.5 Pro's premium API pricing made its battery not worth running. A
+2026-09-29 retest found the wall gone but the inflation (and so the cost
+multiple) intact. The roster is unchanged, and cost is now the remaining
+rationale for the removal. No
 live ChatGPT-subscription Luna probe or behavioral run is claimed in this
 document; the commands below are an authorized-style staged procedure.
 
@@ -72,13 +92,12 @@ categories are catalogued in the Design Backlog (§ 12).
 ### Related suite: DAAFBench Analytics
 
 This suite measures **behavioral conformance to orchestrator protocol**. A sibling
-suite, **DAAFBench Analytics** (`analytics/`), measures an orthogonal construct:
-whether the analytical *work* is correct, whether the model notices when the data or
-code is deliberately wrong, and whether it discloses that to its caller — graded with
-and without the DAAF agent layer (a DAAF-vs-bare arm comparison). The two share harness
-machinery (executor, model pinning, fixture staging, viewer) but do not overlap in what
-they score. DAAFBench Analytics is at the specification stage; see
-[`analytics/SPEC.md`](analytics/SPEC.md) and [`analytics/README.md`](analytics/README.md).
+suite, **DAAFBench Analytics**, is in development and does not ship with DAAF yet. It
+measures an orthogonal construct: whether the analytical *work* is correct, whether
+the model notices when the data or code is deliberately wrong, and whether it
+discloses that to its caller — graded with and without the DAAF agent layer (a
+DAAF-vs-bare arm comparison). The two share harness machinery (executor, model
+pinning, fixture staging, viewer) but do not overlap in what they score.
 
 ## 2. The Four Phases
 
@@ -106,7 +125,7 @@ records exactly matches the requested wire ID; `failed` when any observed child
 ID differs; and `unverifiable` when no child transcript or no child model field
 is available. The comparison deliberately performs no alias normalization and
 retains raw IDs. This is Claude-CLI child-transcript evidence, not
-backend-confirmed identity. All three GPT-5.6 ChatGPT-subscription entries pin
+backend-confirmed identity. All four GPT ChatGPT-subscription entries (GPT-5.6 Luna/Terra/Sol and GPT-6 Astra) pin
 the operative Opus and Sonnet tier aliases to the parent ID and deliberately
 omit `CLAUDE_CODE_SUBAGENT_MODEL`; that configuration plus `verified` establishes
 only the observable CLI boundary and does not prove what alias resolution a
@@ -305,7 +324,7 @@ harness.
   stalled. A *first-activity* rule additionally counts a stalled read when **no**
   parent-or-subagent transcript exists at all past ~90s. The 330s threshold and the
   never-act-on-a-single-reading rule are empirically grounded in the K3 rerun
-  campaign (`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/2026-07-21_rerun-campaign_progress.md`):
+  campaign (maintainer-only progress log, not shipped: `research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/2026-07-21_rerun-campaign_progress.md`):
   **296s of legitimate dead air** was observed on a run that then passed
   everything, so the former 240s threshold false-positives; ~330s-plus with
   consecutive confirmations is the validated cutoff.
@@ -527,7 +546,7 @@ next, more expensive one.
      (`"DeepSeek V4 Flash 0731"` → `deepseek-v4-flash-0731`). Confirm the derived key
      does not collide with an existing entry, and that it reads well as a `--models`
      value (§ 4 flag table). To pin an explicit key instead of deriving one, set the
-     optional `key:` field (the three `chatgpt-subscription` entries do this to append
+     optional `key:` field (the four `chatgpt-subscription` entries do this to append
      `-chatgpt` while keeping a bare `id`).
    - `provider` — `anthropic`, `openrouter`, or `chatgpt-subscription`; controls the
      env-var wiring injected by `model_loader.py` (§ 4 Environment).
@@ -535,7 +554,10 @@ next, more expensive one.
    - `pricing` — per-million-token `input` / `output`, plus `cached_input` when the
      endpoint discounts cache reads (the 0731 Novita endpoint lists one, so it is
      declared). `chatgpt-subscription` entries carry `api_equivalent_pricing` instead
-     (§ 7 dual ledger), not `pricing`.
+     (§ 7 dual ledger), not `pricing`. The block is required: without it, that
+     model's API-equivalent accounting is reported as unavailable. Quote its
+     `accessed_at` date, because an unquoted YAML date parses as a date object,
+     which fails validation.
    - `env_overrides` — **child-model purity pinning** (models.yaml header, "CHILD-MODEL
      PURITY PINNING"). OpenRouter/Anthropic entries pin all three selectors
      (`ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
@@ -611,10 +633,14 @@ next, more expensive one.
    `scratch/verify_rep_counts_2026-08-12.py` (2026-08-12: 33 models x 51
    cases, 1 deviation found and topped up).
 
-8. **Regenerate the viewer bundle** with
-   `scripts/generate_results_viewer_v2.py` (§ 8) so the new model joins the leaderboard
-   and cost/performance surfaces. Filenames auto-increment and never overwrite prior
-   bundles.
+8. **Update the changelog, then regenerate the viewer bundle.** Add a dated
+   entry to `benchmarks/CHANGELOG.md` FIRST (format contract under **Viewer
+   design → Changelog**; a Models line naming the addition is usually
+   sufficient — narrative/scoring changes are implied by the takeaways
+   themselves), because the generator embeds the changelog into the bundle at
+   build time. Then run `scripts/generate_results_viewer_v2.py` (§ 8) so the
+   new model joins the leaderboard and cost/performance surfaces. Filenames
+   auto-increment and never overwrite prior bundles.
 
 8b. **Editorial review — narrative, Key Takeaways, and headline writing
    (mandatory).** The viewer's injected figures track the data automatically;
@@ -632,6 +658,14 @@ next, more expensive one.
    (Precedent: the 2026-08-12 Grok 4.6 onboarding moved the frontier from six
    models to five and touched the hero, T1, T2, and T5 — all ratified
    step-by-step in-session.)
+   **Tier and frontier membership are recomputed mechanically at every
+   regeneration** (`PRECOMPUTED.tiers`, `PRECOMPUTED.cost.frontiers`) — the
+   data is never stale, but the prose is. As part of this review, extract the
+   fresh Tier 1 list and efficiency-frontier set from the new bundle and diff
+   them against every prose list that names members (hero bottom line, T1,
+   T2, T5). Membership changes are the most common source of stale claims
+   (precedents: 2026-08-12 frontier six→five; 2026-08-21 frontier five→six
+   plus a three-model Tier 1 expansion).
 
 9. **(Optional) Retire a superseded entry.** There is no schema retirement flag —
    **comment out the entry's block** in `config/models.yaml` with a dated
@@ -717,6 +751,24 @@ dominates behavior: framework edits on disk are largely invisible until the
 golden is refreshed. Any benchmark measuring a framework change MUST refresh
 (or re-record) its goldens first, and result sets spanning a golden change
 are not directly comparable.
+
+**Pending refresh (2026-11-02).** Commit f88773a changed the text of
+`.claude/skills/daaf-orchestrator/SKILL.md` and
+`.claude/skills/data-scientist/SKILL.md`, and later edits changed the
+frontmatter descriptions of the `linearmodels`, `statsmodels` and
+`data-scientist` skills; the goldens embed the older skill bodies and, in their
+skill-listing attachments, the older descriptions. Run
+`scripts/refresh_golden_checkpoint.py` (it rebuilds the skill listings too)
+before the next benchmark run whose results will be compared with runs recorded
+before the refresh; until the refresh, runs show agents the text the goldens
+hold. Affected (13 files): all nine
+`post_confirmation/*.jsonl`, `ad_hoc/after_confirmation.jsonl`,
+`dispatch_compliance/ad_hoc_initialized.jsonl`,
+`skill_routing/ad_hoc_initialized.jsonl` and `bootstrap_template.jsonl`. The
+twelve captured goldens embed the orchestrator body; the two
+`ad_hoc_initialized.jsonl` files also embed the data-scientist body;
+`bootstrap_template.jsonl` (the input to `scripts/generate_goldens.py`) carries
+only the skill listing. Delete this note once the goldens are refreshed.
 
 ## 6. Scoring
 
@@ -896,12 +948,9 @@ now caught dynamically like GLM's) and a `PERMASLUG_BASE_OVERRIDES` map was
 added for the dated-slug gotcha, so the v1 script now covers DeepSeek V4 Flash
 0731 and Gemini 3.5 Flash directly. The v2 (2026-07-29, Kimi
 K3 / Gemini campaigns) and v3 (2026-08-02, DeepSeek V4 Flash 0731) campaign
-lineage lives as campaign-workspace scratch scripts
-(`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/scripts/scratch/19-22_billing-*-v2.py`
-and
-`research/2026-08-02_FrameworkDev_DAAFBench_DeepSeek0731/scripts/scratch/01-05_billing-*-v3.py`),
-each consolidating all prior exports (generation_id-deduplicated, provenance
-column), classifying rows kept/excluded on empirical per-slug
+lineage lives as scratch scripts in those campaigns' research workspaces
+(maintainer-only, not shipped), each consolidating all prior exports
+(generation_id-deduplicated, provenance column), classifying rows kept/excluded on empirical per-slug
 registration-date boundaries, and reconciling per model × campaign over
 kept + covered + non-timed-out runs with a `runs_uncovered == 0` guard.
 Snapshots land in `derived/` (`YYYY-MM-DD_openrouter_billing_consolidated /
@@ -927,23 +976,38 @@ observed; it must not be rendered as `$0`, "free," or a fixed per-message cost.
 The monthly subscription is not amortized across runs by default.
 
 A separate `api_equivalent` ledger answers a counterfactual question: what the
-observed token mix would cost at OpenAI's standard GPT-5.6 Luna API list prices.
-The schedule is labeled **accessed 2026-08-11** because the source publishes no
+observed token mix would cost at OpenAI's standard API list prices for the model
+that ran. Since 2026-09-29, `compute_accounting()` prices each ChatGPT-lane model
+from its own `api_equivalent_pricing` block, covering rates, long-context
+threshold, source URL and accessed date. Before that it used Luna's schedule for
+every model. A model with no usable block gets `calculation_status =
+"unavailable_api_equivalent_pricing"`, null dollar figures, and named
+`incompleteness_reasons`; nothing falls back to Luna's rates. Archived runs keep
+the figures computed when they ran, so archived Sol and Terra runs from before
+the fix show Luna-priced scenarios. The Luna schedule is labeled **accessed 2026-08-11** because the source publishes no
 page-level effective date. OpenAI's 5x cut to Luna's direct-API list prices was
 observed on this date (prior schedule: $1.00/$0.10/$1.25/$6.00 short,
-$2.00/$0.20/$2.50/$9.00 long, accessed 2026-07-15):
+$2.00/$0.20/$2.50/$9.00 long, accessed 2026-07-15). A 2026-09-29 re-check of
+the same page found the short-context row unchanged; the page no longer
+publishes a GPT-5.6 long-context row, so the long-context rates below are
+carried from 2026-08-11 and the accessed date is unchanged:
 
 | Request tier | Ordinary input | Cached input | Cache write | Output |
 |--------------|---------------:|-------------:|------------:|-------:|
 | At or below 272,000 request input tokens | $0.20/M | $0.02/M | $0.25/M | $1.20/M |
 | Above 272,000 request input tokens | $0.40/M | $0.04/M | $0.50/M | $1.80/M |
 
-Note (2026-08-11): the api-equivalent ledger above prices against OpenAI's
+Note (2026-09-29): the api-equivalent ledger above prices against OpenAI's
 **direct-API** list rates. The separate OpenRouter lane (`openai/gpt-5.6-*`
-entries in `models.yaml`) currently applies an additional **50% exclusive
-discount** to Terra and Luna on top of OpenAI's cut — OpenRouter Luna is
-$0.10/M input / $0.60/M output, Terra $1.00/M input / $6.00/M output — while Sol
-matches OpenAI direct on both lanes.
+entries in `models.yaml`, priced from OpenRouter's catalogue) no longer shows
+the 2026-08-11 OpenRouter-exclusive 50% Terra/Luna discount: OpenRouter Luna is
+$0.20/M input / $1.20/M output and Terra $2.00/M / $12.00/M, the same as OpenAI
+direct. Sol now differs between the lanes. OpenRouter lists $2.00/M / $10.00/M.
+OpenAI direct lists **promotional** pricing of $4.00/M / $20.00/M (long context
+$8.00/M / $30.00/M), which OpenAI says is "available at least through November
+21, 2026" (previously $5.00/M / $30.00/M). The `gpt-56-sol-chatgpt`
+`api_equivalent_pricing` block carries the promotional schedule, with a revert
+note for when the promotion ends.
 
 The `>272,000` threshold applies the long-context prices to the entire request.
 `output_tokens` already includes hidden reasoning tokens, so reasoning is never
@@ -969,7 +1033,7 @@ published credit schedule has no universal USD-per-credit conversion. Record
 throttling or observed allowance movement separately; never infer a constant
 cost per message.
 
-Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15).
+Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15). GPT-5.6 short-context API list rates and Sol's promotional schedule re-checked on that page on 2026-09-29.
 
 ## 8. Results & Viewer
 
@@ -1237,6 +1301,26 @@ labels (`corpus-live` / `billing-snapshot-*` / `api-equivalent`) name each
 model's **token-mix provenance** — the dollar normalization is always
 uncached list rates, never invoiced dollars.
 
+**Positively-identified attribution basis (2026-08-21).** The OpenRouter
+token mix is a **clean-set covered-run** basis: a billing row enters
+`billed_tokens` only when its timestamp falls inside the transcript window
+(±120s) of at least one **in-corpus, non-timed-out** run of the same model,
+and `n_covered_runs` counts the distinct such runs that received ≥1 row.
+Rows matching multiple same-model runs (concurrent waves) are retained in
+full — ambiguity within a clean candidate set cannot misattribute cost at
+the model level. Strict one-row-one-run identification is deliberately NOT
+used: measured 2026-08-21, it discards 55-100% of attributed rows as a
+non-random (non-concurrent-biased) slice and breaks entirely for two
+models. Quarantined and out-of-corpus runs never load, so their spend falls
+into the reconciler's **orphan** pool and is excluded from the estimate by
+construction; timed-out runs are excluded from attribution candidacy by an
+explicit guard in `reconcile_openrouter_costs.py` (structural since
+2026-08-21 — previously emergent via the 0-turn window strip; verified a
+numeric no-op on the 2026-08-21 corpus, all 25 models exactly equal).
+Orphan spend is disclosed in the reconciliation JSON; a large orphan pool
+for a model means real spend outside the display corpus (personal use,
+probes), not a gap in the corpus estimate.
+
 **Battery timeout-exclusion fix (2026-06-18, generator v3.1.2).** Prior
 to this fix, Anthropic token averages included timed-out runs (zeroed
 tokens) in the denominator, depressing per-run averages by each model's
@@ -1495,10 +1579,13 @@ within 300s.
    billing reconciliation (§ 7) bounded the tokenizer-driven error at
    ~2-6% for most models.
 6. **Golden checkpoints embed recording-time framework content.** Golden JSONLs
-   contain `attachment` records with CLAUDE.md and hook-injection content from
-   when the session was recorded. Material framework changes can leave a
-   resumed model facing conflicting instructions (old history vs. current
-   system prompt). The only mitigation is re-recording or refreshing (§ 5),
+   contain the skill bodies and reference files the recorded session loaded, and
+   `attachment` records from when it was recorded: the skill listing, hook
+   output (`hook_success`, `hook_additional_context`), command permissions,
+   deferred-tool notices and output style. They contain no CLAUDE.md text, so a
+   refresh never has CLAUDE.md content to update. Material framework changes
+   can leave a resumed model facing conflicting instructions (old history vs.
+   current system prompt). The only mitigation is re-recording or refreshing (§ 5),
    which invalidates prior comparisons.
 7. **Scoring is not isolated from execution.** The runners, scorers, and the
    model under test all share the DAAF container and filesystem. Low practical
@@ -1516,8 +1603,92 @@ within 300s.
    orderly shutdown interval; it does not prove an asynchronous/buffered write
    model or that SIGKILL caused any particular missing tail. The scoring-side
    dispatch-recovery fallback (§ 6) can use surviving subagent evidence.
+10. **Result sets span Claude Code CLI versions.** The four phase runners
+   record the CLI version in `manifest.json` as `claude_code_version` (via
+   `harness/artifacts.py` `manifest_provenance()`). As of 2026-09-24 every
+   manifest that carries the field reads `"2.1.202 (Claude Code)"` (348 sets;
+   inference, count not re-verified: 87 older sets lack it), while DAAF's pin
+   has since moved 2.1.202 → 2.1.261 → 2.1.280 → 2.1.281. The next run is
+   therefore three pin bumps removed from the whole existing corpus, across harness changes to dispatch, resume, and
+   stream handling. Do not pool or compare result sets across
+   `claude_code_version` values without annotating the version split; the
+   viewer does not yet surface the field. The DAAFBench Analytics pilot (not
+   shipped) does not record it either.
+11. **Runs where no model answered can be scored as model behaviour.** Only
+   `run_dispatch_compliance.py` applies a validity gate, and that gate rejects
+   a run only on *failed* child-model purity. A run whose transcript holds
+   nothing but `<synthetic>` API-error records (e.g. `model_not_found`, a
+   spend-limit stop) is `unverifiable`, which counts as valid. The other three
+   runners and the results viewer ignore `validity` altogether. Past cases
+   were removed by hand-quarantine. See § 12, "Before the next benchmark run".
 
 ## 12. Future Work
+
+### Before the next benchmark run (open to-do, added 2026-10-01)
+
+The existing corpus was recorded on Claude Code 2.1.202. Since then, DAAF has
+moved three CLI pins (to 2.1.281) and changed its hooks, dispatch settings, and
+smoke harness. Settle these items before adding results, and decide whether the
+next run starts a **fresh baseline** rather than extending the old corpus
+(Limitations 6, 8, 10).
+
+1. **Run-validity gate (Limitation 11).** Scoping on 2026-09-24 confirmed it.
+   Example: the stored quarantined run `dc-01_Qwen_3.8_2.4T_A95B_0` has a single
+   `<synthetic>` "API Error: 400" record and scored 0/10 with
+   `validity: valid`.
+   - **Proposed fix:** add a shared `run_health()` helper, a new
+     `harness/run_health.py` being the scoping recommendation over
+     `artifacts.py`. It reuses `_is_non_model_marker` and the deploy-smoke
+     harness's transcript API-error evaluator, which should be moved into the
+     helper and imported from both places. It classifies each run as
+     `answered`, `recovered_transient`, `ended_on_api_error`,
+     `no_model_answered`, or `unknown`.
+   - Mark `no_model_answered` runs `invalid` (reason `no_model_answered`) and
+     keep their records for audit. Wire validity into all four runners'
+     rollups.
+   - **Decisions needed first:**
+     - (a) Should the 71 currently visible runs that *ended* on an API error
+       after real work count as invalid? All of them, only infrastructure
+       errors (rate limit, server error, stream closed, spend limit), or none,
+       flagged only?
+     - (b) Should the viewer honour `validity`?
+     - (c) Should scalar CLI result fields be persisted?
+     - (d) Where should the helper live?
+2. **Persist the CLI result's scalar fields.** `executor.py`'s
+   `_parse_json_output` discards `is_error`, `subtype`, `api_error_status` and
+   `stop_reason`, so result-level errors can't be audited after the fact.
+   Persist the scalars only, never `raw_json`; the viewer tests assert that
+   `raw_json` is never embedded.
+3. **Viewer honours `validity`, after a recompute backfill.** Write a
+   dry-run-default backfill script modelled on `scripts/rescore_archives.py`
+   that recomputes purity and validity from the archived transcripts.
+   - Recompute *before* the viewer starts honouring validity.
+   - Two visible Kimi K3 runs (`20260720_164319/…/dc-12_Kimi_K3_0`,
+     `20260721_223921/…/dc-12_Kimi_K3_2`) carry stale `invalid` verdicts that
+     today's purity logic reverses.
+   - Fix the claim at § 4 (~line 613) that `load_runs` makes "validity and
+     display exclusions match the report exactly"; today it ignores validity.
+4. **Docs to update with item 1:**
+   - § 2 purity text (~lines 109-113): `unverifiable` also covers marker-only
+     transcripts.
+   - The quarantine and display-exclusion section in § 8 (~lines 1123-1149).
+   - The manual rate-limit replacement procedure in § 9 (~lines 1334-1356).
+   - Docstrings in `harness/artifacts.py` (`run_validity`,
+     `validity_coverage`), the "stays valid per B2" comment in
+     `run_dispatch_compliance.py`, and `load_runs`.
+   - A dated `benchmarks/CHANGELOG.md` entry.
+5. **Record the CLI version where it is missing,** and surface
+   `claude_code_version` in the viewer (Limitation 10).
+
+Tests to extend with item 1:
+- `tests/test_g1r_harness_fixes.py` (`PurityValidityGateTests`)
+- `tests/test_artifacts_and_preflight.py` (`ChildModelPurityTests`)
+- `tests/test_viewer_schema_loading.py`
+- a per-runner rollup test
+- `/daaf/tests/python/test_deploy_smoke.py`, which must stay green when the
+  evaluator moves
+
+### Ongoing
 
 - **Scorer improvements:**
   - Add clarifying-question patterns to the confirmation-gate regex (known
@@ -1691,7 +1862,7 @@ timed-out runs, matching OpenRouter's natural exclusion.
   in the scorer; the cases' `hard_/soft_requirements` lists drive viewer
   display only.
 - **Optional:** review of `data-scientist SKILL.md:353` "Tool-specific
-  syntax" branch label.
+  syntax" branch label. Resolved: the branch is gone (commit f88773a).
 
 ## 13. AI Disclosure
 

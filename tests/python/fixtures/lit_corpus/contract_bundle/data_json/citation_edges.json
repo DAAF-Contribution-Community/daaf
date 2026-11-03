@@ -1,0 +1,22 @@
+{
+ "rows": [
+  {
+   "attribution_required": true,
+   "cited_in_corpus": true,
+   "cited_key": "user_f1c70001",
+   "citing_in_corpus": true,
+   "citing_key": "user_f1c70004",
+   "contexts_json": "[\"The interview guide builds on the invented tutoring trial by Allen and colleagues.\"]",
+   "contexts_licence": "cc-by-nc",
+   "edge_id": "E001",
+   "first_seen_version": 1,
+   "found_by_json": "[{\"command\":\"cites\",\"row_sha256\":\"10f804519df19cb9403e497e28c5ace858afe01b151c4678fb0d9dbcb8847813\",\"sidecar_sha256\":\"0f7549e5eeb79e57972efab626b85091e77c813541dd451878a2e1be48069a60\"}]",
+   "intents_json": "[\"methodology\"]",
+   "is_influential": true,
+   "reader_claim_id": "user_f1c70004-c02",
+   "reader_relation": "builds_on",
+   "source_backend": "semantic_scholar"
+  }
+ ],
+ "source": "data/citation_edges_v1.parquet"
+}

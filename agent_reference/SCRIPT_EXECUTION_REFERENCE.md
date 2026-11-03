@@ -1,6 +1,6 @@
 # Script Execution Reference
 
-This document is the **single source of truth** for how scripts are written, executed, captured, versioned, and managed in DAAF. It covers both the file-first execution protocol and the standardized script format templates.
+This document is the **single source of truth** for how scripts are written, executed, captured, versioned, and managed in DAAF, apart from the code-style rules, which are in CLAUDE.md § Code Style. It covers both the file-first execution protocol and the standardized script format templates.
 
 **Language coverage:** This reference covers script format for both Python and R pipelines. The execution language is determined by the user's preference setting in CLAUDE.md. Language-specific sections are clearly marked. The execution wrapper (`run_with_capture.sh`) auto-detects the language from the file extension (`.py` → `python3`, `.R` → `Rscript`).
 
@@ -12,51 +12,10 @@ Every agent that writes or executes code (research-executor, code-reviewer, debu
 
 # Code Style: Sequential Inline Scripts
 
-All code produced by agents follows a **flat, sequential** style. Scripts read
-top-to-bottom like lab notebooks — no function definitions, no class hierarchies,
-no module abstractions. The same philosophy applies to both Python and R. (This is
-the canonical, complete statement of the sequential code-style rules that CLAUDE.md
-§ Code Style summarizes.)
-
-### Python Rules
-
-1. **No function definitions** — No `def main()`, no helper functions, no
-   `if __name__ == "__main__"` guards
-   - *Exceptions:* Marimo cell wrappers (`def _():`) and standalone CLI tools
-     requiring argparse
-2. **Inline validation** — Use `print()` and `assert` for validation, never a
-   separate `validation.py` module
-3. **Section separators** — Organize scripts with comment headers:
-   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
-   `# --- Validate ---`, `# --- Save ---`
-   Data Onboarding profiling scripts use: `# --- Config ---`, `# --- Load ---`,
-   `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
-4. **No type annotations** — Sequential scripts don't define function signatures
-5. **No test files** — Validation is inline (`assert` + `print`), not in
-   `tests/` directories
-
-### R Rules
-
-1. **No function definitions** — No reusable functions, no `source()` of external
-   modules
-   - *Exceptions:* Quarto cell structure and standalone CLI tools requiring
-     `commandArgs` argument handling (parallel to the Python argparse exception)
-2. **Inline validation** — Use `cat()` for output and `stopifnot()` for
-   assertions, never a separate `validation.R` module
-3. **Section separators** — Same convention as Python:
-   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
-   `# --- Validate ---`, `# --- Save ---`
-4. **Library calls at top** — All `library()` calls in the `# --- Config ---`
-   section
-5. **Pipe style** — Use native pipe `|>` (R 4.1+), not magrittr `%>%`
-6. **No test files** — Validation is inline (`stopifnot()` + `cat()`), not in
-   `tests/` directories
-
-**Why this style?** Research scripts are **write-once, execute-once, archive**
-artifacts — fundamentally different from application code. Functions add
-cognitive overhead without providing reuse value. Sequential code is immediately
-readable and self-documenting through its execution order. Combined with IAT
-documentation, a human auditor can follow every decision without running the code.
+The sequential code-style rules for Python and R (no function definitions, inline
+validation, section separators, and the language-specific rules) are stated in
+CLAUDE.md § Code Style, which every agent has loaded. They apply to every script
+this reference covers.
 
 ---
 
@@ -113,11 +72,13 @@ The wrapper auto-detects the language from the file extension: `.py` files run w
 
 The wrapper automatically:
 1. Executes the script and captures all stdout/stderr
-2. Records timestamp, duration, and exit code
-3. Appends the complete execution log to the script file as comments
-4. Returns the script's exit code
+2. Records timestamp, duration, exit code, and capture status
+3. Appends the complete execution log to the script file as comments and **verifies the record landed**
+4. Returns the script's exit code — or **exit 74** when the audit record is incomplete (see "Evidence Persistence Verification" below)
 
 After execution, the script file itself contains both the code AND proof of what happened when it ran.
+
+**Read the wrapper's exit code and final banner, not just the script's output.** `SUCCESS: Script passed.` is printed only when the script exited 0 *and* the execution log was appended and verified. An `EVIDENCE INCOMPLETE` banner (exit 74) means the computation may have run, but the run cannot be reported as a completed audited run.
 
 ### Step 4: If Failed, Create a Versioned Copy
 
@@ -171,12 +132,14 @@ All scripts reference this single canonical copy directly — there is no need t
 
 1. Validates the script path exists
 2. Checks whether the script already has an execution log (blocks re-runs if so)
-3. Scans the script body for runtime package-install calls and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan" below)
+3. Scans the script body for runtime package-install calls, environment-secret prints and researcher-decision commands, and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan", "Environment-Secret Print Scan" and "Researcher-Decision Command Scan" below)
 4. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
-5. Executes the script with stdout/stderr capture via `tee`
-6. Records timestamp, duration, and exit code
-7. Appends the complete execution log to the script file as comments (using `#` for both Python and R)
-8. Returns the script's exit code
+5. Creates a capture buffer **next to the script** (a dotfile `.<script>.capture.XXXXXX` in the script's directory — inside the project, never `/tmp`); exit 74 before execution if it cannot
+6. Executes the script with stdout/stderr capture via `tee`, reading **both** pipeline statuses (the script's exit code and `tee`'s)
+7. Records timestamp, duration, exit code, and capture status (`COMPLETE` or `INCOMPLETE (tee exit N)`)
+8. Appends the complete execution log to the script file as comments (using `#` for both Python and R), then **verifies** it: exactly one `# EXECUTION LOG` marker, the closing banner as the last line, and the exit-code line present
+9. Deletes the capture buffer only after that verification; retains it (and prints its path) otherwise
+10. Returns the script's exit code, or **exit 74** when capture or persistence failed (see "Evidence Persistence Verification" below)
 
 ### Usage
 
@@ -197,11 +160,57 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 
 The wrapper checks for the marker `# EXECUTION LOG` in the script file. If found, it **refuses to run** (exit 1) and prints guidance to create a versioned copy instead. This enforces the versioning rule: once a script has been executed, it is a historical record.
 
+### Evidence Persistence Verification
+
+The wrapper tracks three outcomes separately and never conflates them:
+
+| Outcome | What it means | Where it is recorded |
+|---------|---------------|----------------------|
+| **Computation** | The script's own exit code | `# Exit code: N` in the log; wrapper exit code on a verified run |
+| **Capture** | The `tee` into the capture buffer succeeded, so the archived stdout is complete | `# Capture: COMPLETE` or `# Capture: INCOMPLETE (tee exit N)` in the log. A `COMPLETE (N NUL byte(s) ... stripped ...)` qualifier means the capture succeeded but the archived copy cannot hold NUL bytes; the run still counts as verified, with the loss disclosed in the record |
+| **Persistence** | The log was appended and verified on disk (exactly one marker, closing banner last, exit-code line present) | `Execution log appended to: ...` is printed **only** after this check |
+
+A run is a completed audited run only when all three succeeded. Otherwise the wrapper prints an `EVIDENCE INCOMPLETE` banner to stderr stating each outcome and the retained buffer's path, and exits **74** (`EX_IOERR`; distinct from the reserved exit 3 — but a script may itself exit 74, so key the decision off the banner, not the exit code alone). The banner also says whether a log marker is present: if **no** marker was appended (append failed), the script is still editable and runnable **in place**; if a marker **is** present (e.g. capture was incomplete but the append succeeded), immutable versioning has engaged and the next attempt goes in a `_a`/`_b` revision.
+
+**Why this matters:** an inert successful computation combined with a failed capture or append used to return exit 0 and print `SUCCESS` and `Execution log appended`, leaving either a truncated archived output or no record at all. Computation success is necessary but not sufficient; the audit record is what downstream QA reviews.
+
+**Interruption** (SIGINT/SIGTERM): the wrapper retains the capture buffer as evidence of what had been produced, prints its path, and exits 130/143. Normally no log has been appended and the script stays runnable in place; if the signal landed after the append but before verification, the `INTERRUPTED` banner says an unverified log is present and directs you to a revision instead.
+
+**Capture buffer lifecycle:** deleted after every verified run (success *or* script failure — the appended log is then the durable record); retained only on exit 74 or interruption. A leftover `.<script>.capture.*` file next to a script is therefore a signal that a run did not complete its record; keep it as failure evidence until the cause is understood. It shows up as an untracked file in `git status` and is deliberately **not** gitignored — hiding failure evidence would defeat its purpose.
+
+**Marker integrity:** captured output lines are archived with a `# ` prefix. A captured line that would then read exactly as the marker (`EXECUTION LOG`) is archived with two spaces (`#  EXECUTION LOG`) so script output — e.g. a QA script that greps another script's log — can never forge a second marker. Empty output is archived as `# (no output)`; NUL bytes cannot be archived and are reported in the `Capture:` line if present.
+
+**Agent handling of exit 74:** do not report the step as done. Report the wrapper's banner (computation, capture, persistence lines) to the orchestrator; keep the retained buffer; then either re-run in place (no marker) or create a revision (marker present) once the cause is addressed. See `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes.
+
 ### Package-Install Content Scan
 
 Before executing, the wrapper scans the script **body** for runtime package-install calls in both languages — Python (`pip install`, `pipx`/`uv` subcommands, `easy_install`, `conda install`, including the `subprocess`/`os.system` string and list forms) and R (`install.packages()`, `R CMD INSTALL` is command-line-only, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs). This is the one chokepoint that sees the script body: the `bash-safety.sh` §8 hook blocks command-line installs but cannot see an install call written *inside* a script — the dominant path for R's `install.packages()`. Full-line comments are excluded so a commented-out example does not false-block.
 
 If a token is found, the wrapper **refuses to execute** and exits **3**. Crucially, **no execution log is appended** — immutable script versioning has not engaged, so the script stays editable **in place**: remove the install call and re-run the *same file* (no `_a`/`_b` version needed). The error message points to the durable fix — add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder, preferably the user additions block near the end). See CLAUDE.md § Boundaries & Safety > Runtime Package Installation and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks.
+
+### Environment-Secret Print Scan
+
+Everything a script prints is appended permanently to the script file as its execution log, and from there into backups and session archives. The container environment holds the user's real API keys, so the same pre-execution scan also refuses scripts that would print environment values. It targets the obvious, accidental dump (a debugging session "helpfully" printing environment variables), not a deliberate adversary. The categories, in both languages:
+
+- the whole environment printed or serialized (Python `os.environ`; R `Sys.getenv()` with no name);
+- `os.environ.items()`/`.values()` with an output sink on the same line, or as a `for` loop header;
+- a credential-named variable looked up inside a print or log call (names matched against the shared `SECRET-NAME-VOCAB v1` list, which `output-scanner.sh` and `audit-log.sh` also carry);
+- in R, a bare top-level credential lookup, which auto-prints its value;
+- a shell-out that dumps the environment.
+
+Matching is case-insensitive and errs toward refusing. Reading a credential into a variable, passing it in a request, checking presence (`"X_API_KEY" in os.environ`), copying the environment for a subprocess, and the env-scrubbing idiom that builds a child environment with the keys removed are all allowed. The secret scan's section comments in the script list these deliberate non-matches and the accepted residuals, such as a two-step leak through an intermediate variable, which would need data-flow analysis.
+
+A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. All three scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. The command-line counterpart is `bash-safety.sh` §9, which applies the same accidental-dump posture to interactive shell commands (whole-environment dumps to a terminal or file, credential-named `echo`/`printf`, `/proc/<pid>/environ` reads, interpreter one-liners), backed by the `settings.json` environment-disclosure deny rules; see `BOUNDARIES.md` § Defense-in-Depth Architecture. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (93 cases, covering all three scans).
+
+### Researcher-Decision Command Scan
+
+Four Literature Review commands record a researcher's own decision, with the researcher's words quoted verbatim: `lit_corpus.sh adjudications record-human` (a citation decision), `lit_corpus.sh adjudications untested-checker` (accepting, or withdrawing, a reference checker DAAF has not tested), `lit_verify.sh settle … --decision` (the researcher's comparison of readings with the PDF pages) and `lit_verify.sh vision-override` (the researcher's choice for a PDF reader DAAF has not tested). Only the orchestrator runs them, each as its own Bash call after the researcher has replied, and `settings.json` ask rules make that call prompt, so the researcher approves the command that shows their words. A script would call them from a subprocess that no permission rule sees, so the same pre-execution scan refuses a script that calls them, in both languages:
+
+- any non-comment line holding `record-human` or `untested-checker` (through the `.sh` wrapper, the `.py` module or an imported module's `main([...])`; as a command string, a list element or a variable's value). Both are `lit_corpus` subcommand names found in no other DAAF command, so the tool's name need not appear elsewhere in the script; a Python name such as `untested_checker` is not the token and runs;
+- a `settle` call with a decision flag: the script names `lit_verify` on some line, one line holds the word `settle` and one line holds `--decision` or any prefix of it down to `--d` (argparse accepts each). They may sit on different lines, so a command list split across lines is caught;
+- a `vision-override` call: the script names `lit_verify` on some line and one line holds the word `vision-override`. Every level (`check`, `accept`, `withdraw`) records a decision, so no flag is needed.
+
+`lit_verify.sh settle … --list` and `lit_verify.sh route … --reader-model` record no decision and run. Matching is case-sensitive. As with the install scan, full-line comments are excluded, but a string literal, docstring or trailing comment that only quotes the command is refused (fail-closed): keep such text in a data file the script reads. The scan does not catch a command name or flag built by concatenation, a `settle` or `vision-override` call in a script that never names `lit_verify`, nor a script that imports a module and calls its internal functions directly (`lit_corpus.cmd_adj_record_human(...)`, `lit_corpus.cmd_adj_untested(...)`, `lit_verify.run_settle(...)`, `lit_verify.run_vision_override(...)`), which pass the decision as a value rather than a command word or flag; the script header lists these residuals, and the ask rules and the orchestrator's instructions stand behind the scan. To test the recording commands, use their selftests (`lit_corpus.sh selftest <SCRATCH_DIR>`, `lit_verify.sh selftest <SCRATCH_DIR>`) or their unit tests. A hit has the same outcome as the other scans: exit **3**, **no** execution log appended, the script editable in place, and the refusal cites each line as `N:text`. Remove the call and leave the recording to the orchestrator (`.claude/skills/daaf-orchestrator/references/literature-review-mode.md` § The Citation Second Check and § Readings From Pictures of Pages: the Audit and the Person's Comparison).
 
 ---
 
@@ -243,11 +252,11 @@ After this progression:
 
 ### QA-Triggered Revisions
 
-If code-reviewer returns a BLOCKER after the script's primary checkpoint passed, the revision continues from the current suffix:
+A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately. When code-reviewer returns a revision BLOCKER after the script's primary checkpoint passed, the revision continues from the current suffix:
 
 ```
-01_join-data.py       # v1: CP3 PASSED, but QA finds wrong join type --> BLOCKER
-01_join-data_a.py     # v2: Fixed join type, CP3 PASSED, QA PASSED
+01_join-data.py       # v1: CP3 PASSED, but QA finds a LEFT join where the Plan says INNER --> BLOCKER
+01_join-data_a.py     # v2: Join changed to INNER per the Plan, CP3 PASSED, QA PASSED
 ```
 
 Maximum 2 revision attempts per QA BLOCKER. If still failing after 2 revisions, escalate to the user.
@@ -256,7 +265,17 @@ Maximum 2 revision attempts per QA BLOCKER. If still failing after 2 revisions, 
 
 ## Returning Output to the Orchestrator
 
-**Execution logs are captured in the script file. Agents returning output to the orchestrator should SUMMARIZE checkpoint results (PASSED/FAILED/WARNING + 1-line reason), not echo the raw log.**
+**Execution logs are captured in the script file. Agents returning output to the orchestrator should SUMMARIZE checkpoint results (PASSED/WARNING/FAILED + the checkpoint's count line + 1-line reason), not echo the raw log.**
+
+> **Log verdict ⇔ reported status.** A checkpoint prints one of exactly three verdict strings —
+> `CP{n} VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED` — immediately after its count line
+> (`Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`).
+> The status you report is the three-valued `PASSED | WARNING | FAILED`, mapped: `PASSED` ⇒ `PASSED`,
+> **`PASSED WITH WARNINGS` ⇒ `WARNING`**, `FAILED` ⇒ `FAILED`. QA scripts print
+> `QA{n} RESULT: PASSED | WARNING | BLOCKER` after their own count line. Per-check lines start with
+> exactly one of `[PASS]`, `[WARNING]`, `[FAIL]`, `[BLOCKER]`, `[NOT VERIFIED]`, `[SKIPPED]`, `[INFO]`,
+> and a `[PASS]` must carry the numbers it observed. A count line with `not verified > 0` means the CP
+> verdict is `FAILED` and a QA `RESULT` is at least `WARNING` — a check that could not run has gated nothing.
 
 The `run_with_capture.sh` wrapper appends the complete execution log to the script file as comments. This means the full audit trail is *already preserved on disk*. When an agent (research-executor, code-reviewer, debugger) finishes its work and returns a Task result to the orchestrator:
 
@@ -330,7 +349,8 @@ research/YYYY-MM-DD_[Title]/
 │   │   └── stage8_02_crb1.py   # QA4b (viz quality) for 02_enrollment-plot.py
 │   ├── debug/                  # Debugger diagnostic scripts
 │   │   └── 01_diag-key-mismatch.py
-│   └── scratch/                # Temporary/intermediate working files (created on first use; never /tmp)
+│   ├── probes/                 # Probes moved out of scratch because a note or review cites them (created on first use)
+│   └── scratch/                # Working files, kept but never relied on (created on first use; never /tmp; see Scratch Graduation Check)
 ```
 
 **Data Onboarding profiling scripts** follow a parallel directory convention under `scripts/`:
@@ -341,7 +361,29 @@ research/YYYY-MM-DD_[Title]/
 
 Profiling scripts use the same file-first execution pattern, IAT documentation standards, and `run_with_capture.sh` wrapper. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for the profiling script template and part-specific details.
 
-**Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary and is blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Temporary/intermediate working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); see CLAUDE.md § Project Conventions > Scratch Files. (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
+**Literature Review captured scripts** transform no data: they print keys, hashes and samples from the review's tables so that agents copy them from a log rather than from memory, and the pack script runs `lit_corpus adjudications pack` so its hashes land in an immutable log. They sit under `scripts/`:
+- `lr_search/` (the literature-searcher's index scripts)
+- `lr_synthesis/` (the literature-synthesizer's index scripts)
+- `lr_adjudication/` (the orchestrator's pack, identity-check and rows scripts for the citation second check)
+- `lr_verification/` (the orchestrator's claim-sample script before the final spot-check)
+
+Each folder numbers its scripts `{NN}` in order of creation; the scripts follow the same file-first pattern, flat style and IAT comments, and a failed one is revised with `create_script_revision.sh`. Naming patterns are in § Stage-Based Script Directories; the mode file is `.claude/skills/daaf-orchestrator/references/literature-review-mode.md` (§ Project Layout).
+
+**Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary. The `bash-safety.sh` hook and `settings.json` deny rules block the `/tmp` writes they can see, not all of them: a script that needs a temporary directory passes an explicit project path (`tempfile.mkdtemp(dir=...)` in Python, `tempfile(tmpdir = ...)` in R, `mktemp -d -p "$PROJECT_DIR/scripts/scratch"` in shell), because Python `tempfile`, R `tempdir()` and `mktemp` default to `/tmp` (CLAUDE.md § Provenance Boundary). Working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); they are kept but never relied on, and anything that something outside scratch will cite is moved to its named home first (CLAUDE.md § Project Conventions > Scratch Files). (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
+
+### Scratch Graduation Check
+
+The canonical procedure, run in every mode that creates a project or session workspace: before the mode's final deliverable or verification gate (Framework Development: before its Phase 4 review), or at wrap-up when there is none; a later run covers only citations added since. Running it before the final deliverable or gate means graduation never rewrites citations in an artifact that has already been verified. Each mode's report, synthesis, gate or wrap-up step points here. It exists because the damage from scratch drift is lost citations. DAAF does not commit project files by default (CLAUDE.md § User Preferences, "Git commit management" is `disabled`), and the shipped `.gitignore` does not ignore project folders under `research/`, so whether a project reaches git is the user's choice. A scratch file that a note cites and that is later cleaned up is gone unless a commit or a volume backup kept it.
+
+1. **Find the cited scratch paths.** Grep the citing files, not the scratch folder: the project's notes (`SESSION_NOTES.md`, `STATE.md`, `LEARNINGS.md`, preliminary notes, reports, plans) and any framework file this session changed, for `scripts/scratch/` and a root-level `scratch/` path (older workspaces have `{PROJECT_DIR}/scratch/`), and for `scope_staging/` and `claude-code-tmp/` (a scratchpad-staged path, orchestrator `SKILL.md` § Scope Check > Read First). Quote the grep command. Each path found is a cited scratch file, whichever session created it; a hit inside a dated move record (old → new) is history, not a citation. A staged path that is not history means a graduation was missed or a record cites the scratchpad: if the staged item still exists, graduate it per that section (its `mv`, then any `--reingest`) and cite the new path; if it is gone, cite the material by title or URL instead. A scratch file nothing cites stays where it is: scratch is never relied on, so it needs no action.
+2. **Move each cited file to its named home** with `mv` (one command per call), creating the folder first. Named homes are the project's purpose folders: `scripts/<stage>/` for a script whose output is reported, `scripts/probes/` for a cited probe in a research project, `data/` or `output/` for data and figures, `output/preliminary_notes/` (or `preliminary_notes/` in a Framework Development workspace) for notes, `web_fetches/` for fetch artifacts, `lit_search/` for `scholar_search.sh` artifacts, and `probes/` in a Framework Development workspace for a cited probe and its output. Move a script unchanged: it keeps its execution log, and renaming it to the stage pattern is optional and the only change allowed. Keep the subpath under the new folder when it carries meaning.
+3. **Update every live citation** to the new path: notes and `STATE.md`/`SESSION_NOTES.md` entries (a framework file follows step 4 instead). Do not rewrite historical records (execution logs appended to scripts, earlier review records, engineer returns, session logs); add one dated line to `SESSION_NOTES.md` or `STATE.md` listing each move as old path → new path, so a reader of an old record can follow it. In Full Pipeline before Stage 4, when neither file exists yet, the line goes in the pre-flight record, `output/preliminary_notes/{date}_preflight_scope-check.md` (STATE.md copies it at creation).
+4. **Framework files.** A framework file never cites scratch or the session's project or workspace folder: move a file it needs to a tracked home in the repository, or state what the file shows in a sentence. For files that ship with DAAF this is `agent_reference/DOCUMENTATION_STANDARDS.md` § S4 Self-Contained.
+5. **Tell the user** what was graduated (old → new), or that nothing was cited. Quote an `ls` of each new location.
+
+A recursive shell `grep -r` over `/daaf` passes `--exclude-dir=claude-code-tmp`: Claude Code's temp root, the top-level `/daaf/claude-code-tmp/`, keeps the verbatim output of earlier Bash commands under `tasks/*.output`, so it returns stale duplicate hits (observed 2026-10-23 in the temp root's old `/tmp` location). The built-in Grep tool respects `.gitignore`, which lists `/claude-code-tmp/`, so it should not be affected (inference, not tested).
+
+The check never deletes scratch and never moves a file that another session still uses. If a cited file's owner is unclear (a workspace another session is working in), report it to the user instead of moving it.
 
 ---
 
@@ -377,6 +419,8 @@ follows in the Naming Convention section below.
 
 > **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
 
+> **Note:** Every Markdown pattern above starts with a date or a non-matching word, so a subagent's Write tool accepts it. A new pattern must not start with `report`, `summary`, `findings` or `analysis` (CLAUDE.md § Project Conventions > Subagent File Output).
+
 ---
 
 ## Naming Convention
@@ -406,8 +450,13 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 | RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
+| LR-1 to LR-4 (Literature Review search index, literature-searcher) | `scripts/lr_search/` | `{NN}_index_r{R}_{step}.py` | `01_index_r1_screen.py` |
+| LR-6, LR-7, LR-7Q (Literature Review synthesis index, literature-synthesizer) | `scripts/lr_synthesis/` | `{NN}_index_r{R}_v{N}.py` | `01_index_r1_v1.py` |
+| Literature Review citation second check (orchestrator) | `scripts/lr_adjudication/` | `{NN}_pack_batch_{batch_id}.py`, `{NN}_identity_check.py`, `{NN}_rows_{label}.py` | `01_pack_batch_b01.py` |
+| LR-8 (Literature Review claim sample, orchestrator) | `scripts/lr_verification/` | `{NN}_claim_sample_v{N}.py` | `01_claim_sample_v1.py` |
 | Smoke Tests | `scripts/smoke_tests/` | `smoke_{skill-name}.R` | `smoke_tidyverse.R` |
-| Scratch (any) | `scripts/scratch/` | free-form (transient intermediates, no naming pattern) | `stripped_08_fetch.py` |
+| Probes, cited (Stage 3 source research, QA reviews, any) | `scripts/probes/` | name kept from `scripts/scratch/` (moved unchanged with its log; a rename to `{seq:02d}_probe-{slug}.py` is optional) | `01_probe-ccd-schema.py` |
+| Scratch (any) | `scripts/scratch/` | free-form (working files, never relied on or cited; see § Scratch Graduation Check) | `stripped_08_fetch.py` |
 
 **Examples (Python):**
 - Step 1.1 `fetch-ccd` → `01_fetch-ccd.py`
@@ -442,6 +491,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 **Stage 8 QA Split:** Stage 8 uses separate QA prefixes for analysis (QA4a) and visualization (QA4b):
 - QA4a for `01_regression-poverty.py`/`.R` (Stage 8.1 analysis) → `stage8_01_cra1.py`/`.R`
 - QA4b for `02_enrollment-plot.py`/`.R` (Stage 8.2 viz) → `stage8_02_crb1.py`/`.R`
+- An 8.1 analysis script that also draws figures gets both: QA4a → `stage8_01_cra1.py`/`.R`, and QA4b for its figures → `stage8_01_crb1.py`/`.R`
 
 **QA scripts are created by code-reviewer** and saved in `scripts/cr/`.
 
@@ -482,6 +532,15 @@ PROJECT_DIR = Path("{PROJECT_DIR}")
 INPUT_PATH = PROJECT_DIR / "{input_path}"
 OUTPUT_PATH = PROJECT_DIR / "{output_path}"
 
+# Checkpoint configuration. REQUIRED_COLS is the column contract the Plan promised;
+# MAX_ROW_LOSS_PCT is the Plan's tolerance. A check whose input is missing, empty, or
+# None is NOT VERIFIED -- never a silent pass -- unless it is declared not applicable
+# here with a written reason, which records it as SKIPPED. Keys are the snake_case
+# check names used in the Validate section below.
+REQUIRED_COLS = ["required_col"]
+MAX_ROW_LOSS_PCT = 0.0
+not_applicable = {}  # e.g. {"required_columns": "exploratory step, no column contract yet"}
+
 # --- Load ---
 # Load input data and verify shape before proceeding.
 print("=" * 60)
@@ -509,26 +568,84 @@ result = (
 )
 
 # --- Validate ---
-# Checkpoint validation against Plan expectations.
-print(f"\nPost-state: {result.shape[0]:,} rows x {result.shape[1]} cols")
-print(f"Row change: {result.shape[0] - pre_rows:+,} ({(result.shape[0] - pre_rows) / pre_rows * 100:+.1f}%)")
+# Checkpoint validation against Plan expectations. The verdict is DERIVED from counted
+# outcomes, never printed unconditionally. Each check emits exactly one line beginning
+# with [PASS] / [WARNING] / [FAIL] / [NOT VERIFIED] / [SKIPPED], and every [PASS] line
+# carries the numbers it observed. Never put a CP{n} identifier on a per-check line.
+# Canonical per-checkpoint checks: agent_reference/VALIDATION_CHECKPOINTS.md.
+print("\n" + "=" * 60)
+print("CHECKPOINT {n} VALIDATION")
+print("=" * 60)
 
-assert result.shape[0] > 0, "STOP: Empty result"
-assert all(c in result.columns for c in ["required_col"]), "STOP: Missing required columns"
+cp{n} = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+
+# Check "non_empty": the transformation produced rows.
+if result.shape[0] == 0:
+    print("  [FAIL] non_empty: 0 rows written -- no evidence for any downstream check")
+    cp{n}["failed"] += 1
+else:
+    print(f"  [PASS] non_empty: {result.shape[0]:,} rows x {result.shape[1]} cols")
+    cp{n}["passed"] += 1
+
+# Check "required_columns": every column the Plan promised is present.
+# ASSUMES: an empty REQUIRED_COLS proves nothing about the frame -- it is NOT VERIFIED.
+if "required_columns" in not_applicable:
+    print(f"  [SKIPPED] required_columns: {not_applicable['required_columns']}")
+    cp{n}["skipped"] += 1
+elif len(REQUIRED_COLS) == 0:
+    print("  [NOT VERIFIED] required_columns: REQUIRED_COLS is empty -- no column contract to test")
+    cp{n}["not_verified"] += 1
+else:
+    missing = [c for c in REQUIRED_COLS if c not in result.columns]
+    if len(missing) == 0:
+        print(f"  [PASS] required_columns: {len(REQUIRED_COLS)}/{len(REQUIRED_COLS)} present {REQUIRED_COLS}")
+        cp{n}["passed"] += 1
+    else:
+        print(f"  [FAIL] required_columns: {len(missing)} of {len(REQUIRED_COLS)} absent {missing}")
+        cp{n}["failed"] += 1
+
+# Check "row_loss": observed attrition against the Plan's tolerance.
+# ASSUMES: an empty input makes the loss rate undefined -- not a 0.0% pass.
+if pre_rows == 0:
+    print("  [FAIL] row_loss: input had 0 rows -- attrition untestable")
+    cp{n}["failed"] += 1
+elif MAX_ROW_LOSS_PCT is None:
+    print("  [NOT VERIFIED] row_loss: MAX_ROW_LOSS_PCT is None -- no declared tolerance to test against")
+    cp{n}["not_verified"] += 1
+else:
+    loss_pct = (pre_rows - result.shape[0]) / pre_rows * 100
+    if loss_pct <= MAX_ROW_LOSS_PCT:
+        print(f"  [PASS] row_loss: {loss_pct:+.1f}% ({pre_rows:,} -> {result.shape[0]:,}), "
+              f"tolerance {MAX_ROW_LOSS_PCT:.1f}%")
+        cp{n}["passed"] += 1
+    else:
+        print(f"  [FAIL] row_loss: {loss_pct:+.1f}% ({pre_rows:,} -> {result.shape[0]:,}) "
+              f"exceeds tolerance {MAX_ROW_LOSS_PCT:.1f}%")
+        cp{n}["failed"] += 1
+
+print("\n" + "=" * 60)
+print(f"Checks: {cp{n}['passed']} passed, {cp{n}['warning']} warnings, {cp{n}['failed']} failed, "
+      f"{cp{n}['not_verified']} not verified, {cp{n}['skipped']} skipped")
+if cp{n}["failed"] > 0 or cp{n}["not_verified"] > 0 or (cp{n}["passed"] + cp{n}["warning"] + cp{n}["failed"]) == 0:
+    print("CP{n} VALIDATION: FAILED")
+    print("=" * 60)
+    raise ValueError("CP{n} FAILED - see details above")
+elif cp{n}["warning"] > 0:
+    print("CP{n} VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP{n} VALIDATION: PASSED")
+print("=" * 60)
 
 # --- Save ---
-# Persist results in parquet format.
+# Persist results in parquet format. Reached only when the checkpoint did not FAIL.
 result.write_parquet(OUTPUT_PATH)
 print(f"\nSaved: {OUTPUT_PATH}")
-print(f"\nCP{n} VALIDATION: PASSED")
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -541,10 +658,14 @@ print(f"\nCP{n} VALIDATION: PASSED")
 - **Timestamp:** When the script was run
 - **Duration:** How long execution took
 - **Exit code:** 0 = success, non-zero = failure
+- **Capture:** `COMPLETE` when the archived stdout is the full output; `INCOMPLETE (tee exit N)` when the capture step failed and the STDOUT section below it may be truncated (the wrapper also exits 74 in that case — see "Evidence Persistence Verification")
 - **Full stdout:** All printed output including validation results
 - **Any stderr:** Warnings or errors
 
-**Example of appended execution log:**
+**Example of appended execution log.** The checkpoint block below is the output of
+the CP1 validation in "Stage 5: Fetch Script Example (Python)", run with one check
+declared in the script's `not_applicable` config so that it reports as a counted
+`[SKIPPED]` instead of silently not running:
 
 ```python
 # =============================================================================
@@ -552,9 +673,10 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # =============================================================================
 #
 # Executed: 2026-01-31 14:32:05
-# Command: python scripts/stage5_fetch/01_fetch-ccd.py
-# Duration: 45.23 seconds
+# Command: python3 scripts/stage5_fetch/01_fetch-ccd.py
+# Duration: 45s
 # Exit code: 0
+# Capture: COMPLETE
 #
 # --- STDOUT ---
 # ============================================================
@@ -573,22 +695,32 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # ============================================================
 # CHECKPOINT 1 VALIDATION
 # ============================================================
-#   [PASS] All 5 years present: [2018, 2019, 2020, 2021, 2022]
-#   [PASS] Row counts reasonable: 4,356 - 4,601
-#   [PASS] Critical columns present: ['ncessch', 'year', 'school_name', 'fips']
-#   [PASS] No nulls in ID columns: ncessch=0, year=0
+#   [PASS] Year coverage: all 5 expected years present [2018, 2019, 2020, 2021, 2022]
+#   [PASS] Row counts per year: 4,356 - 4,601 across 5 years (expected 1,000 - 200,000)
+#   [PASS] Critical columns: all 4 present ['ncessch', 'year', 'school_name', 'fips']
+#   [PASS] ID nulls: 0 nulls across 2 identifier columns (ncessch, year) over 22,379 rows
+#   [SKIPPED] flagged years: CCD directory files carry no COVID-affected collection flag
 #
 # ============================================================
+# Checks: 4 passed, 0 warnings, 0 failed, 0 not verified, 1 skipped
 # CP1 VALIDATION: PASSED
 # ============================================================
 #
 # --- STDERR ---
-# (none)
+# (captured in STDOUT above via 2>&1)
 #
 # =============================================================================
 ```
 
-**If the script failed**, the execution log shows what went wrong:
+Read the checkpoint block from the bottom up: every `[PASS]` line carries the
+numbers it actually observed, the count line reconciles those lines against the
+verdict, and the verdict itself is derived from the counters rather than printed
+unconditionally. A checkpoint that inspected nothing, or that could not run a
+check (`[NOT VERIFIED]`), cannot reach `PASSED`.
+
+**If the script failed**, the execution log shows what went wrong. Because
+`run_with_capture.sh` merges the two streams, the traceback raised by the FAILED
+verdict lands in the captured STDOUT alongside the checkpoint output:
 
 ```python
 # =============================================================================
@@ -596,9 +728,10 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # =============================================================================
 #
 # Executed: 2026-01-31 14:45:12
-# Command: python scripts/stage7_transform/01_join-ccd-meps.py
-# Duration: 2.34 seconds
+# Command: python3 scripts/stage7_transform/01_join-ccd-meps.py
+# Duration: 2s
 # Exit code: 1
+# Capture: COMPLETE
 #
 # --- STDOUT ---
 # ============================================================
@@ -614,14 +747,35 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # Join complete: 0 rows x 56 cols
 # Row change from CCD: -100.0%
 #
-# --- STDERR ---
+# Saved: data/processed/2026-01-24_analysis.parquet
+#
+# ============================================================
+# CHECKPOINT 3 VALIDATION
+# ============================================================
+#   [FAIL] Join produced 0 rows from 22,379 CCD x 18,234 MEPS rows
+#   [FAIL] Row change: -100.0% (22,379 -> 0, threshold -90%)
+#   [PASS] 1:1 cardinality: 0 output rows <= min(input) 18,234
+#   [PASS] Null count: 0 <= 1,522 input nulls + 10% tolerance
+#
+# ============================================================
+# Checks: 2 passed, 0 warnings, 2 failed, 0 not verified, 0 skipped
+# CP3 VALIDATION: FAILED
+# ============================================================
 # Traceback (most recent call last):
-#   File "scripts/stage7_transform/01_join-ccd-meps.py", line 52, in <module>
-#     assert has_rows, "STOP: Join produced 0 rows"
-# AssertionError: STOP: Join produced 0 rows
+#   File "scripts/stage7_transform/01_join-ccd-meps.py", line 118, in <module>
+#     raise ValueError("CP3 FAILED - see details above")
+# ValueError: CP3 FAILED - see details above
+#
+# --- STDERR ---
+# (captured in STDOUT above via 2>&1)
 #
 # =============================================================================
 ```
+
+Note that two checks still passed and printed their numbers: an empty join frame
+trivially satisfies the 1:1 row-count bound and the null-count tolerance. The
+count line is what makes the run legible (`2 passed ... 2 failed`), and because
+`failed > 0` the verdict is `FAILED` and the script raises.
 
 After seeing this failure, create `01_join-ccd-meps_a.py` with fixes, run it, and it will get its own execution log.
 
@@ -657,7 +811,7 @@ with open(MIRRORS_YAML) as f:
     MIRRORS = yaml.safe_load(f)["mirrors"]
 
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 DATASET_PATH = "ccd/schools_ccd_directory"  # Education domain example
 
 # [Include fetch_from_mirrors(path, ...) function from fetch-patterns.md]
@@ -743,7 +897,7 @@ def fetch_from_mirrors(
 
     Args:
         path: Canonical dataset path string from datasets-reference.md.
-            All mirrors use the same path — only root_url and format differ.
+            All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
             Example: "ccd/schools_ccd_directory"
         filters: Dict of column->value(s) filters to apply locally.
         years: List of years to filter to.
@@ -755,8 +909,11 @@ def fetch_from_mirrors(
         name = mirror["name"]
         strategy = mirror["read_strategy"]
 
-        # Build URL from mirror's url_template + canonical path
-        url = mirror["url_template"].format(root_url=mirror["root_url"], path=path, format=mirror["format"])
+        # Build URL from mirror's url_template + canonical path. The HF template has a
+        # {revision} segment (the pinned vintage.hf_revision); str.format ignores it
+        # for templates without one (the Urban CSV fallback).
+        revision = str((mirror.get("vintage") or {}).get("hf_revision", "main"))
+        url = mirror["url_template"].format(root_url=mirror["root_url"], revision=revision, path=path, format=mirror["format"])
 
         print(f"  Trying {name}: {url}")
 
@@ -833,44 +990,92 @@ print("\n" + "=" * 60)
 print("CHECKPOINT 1 VALIDATION")
 print("=" * 60)
 
-# CP1.1: All years present
-years_found = df["year"].unique().to_list()
-all_years = all(y in years_found for y in YEARS)
-print(f"  [{'PASS' if all_years else 'FAIL'}] All {len(YEARS)} years present: {sorted(years_found)}")
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+# REASONING: a hard-coded "CP1 VALIDATION: PASSED" banner cannot fail, and a
+#   checkpoint that cannot fail is not a checkpoint. The counters also let the
+#   verdict distinguish "checked and fine" from "never checked".
+# ASSUMES: every check below increments exactly one counter on every path.
+cp1 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+
+# CP1.1: All expected years present
+if len(YEARS) == 0:
+    print("  [NOT VERIFIED] Year coverage: YEARS is empty — no expected years to test against")
+    cp1["not_verified"] += 1
+else:
+    years_found = sorted(df["year"].unique().to_list())
+    missing_years = [y for y in YEARS if y not in years_found]
+    if len(missing_years) == 0:
+        print(f"  [PASS] Year coverage: all {len(YEARS)} expected years present {years_found}")
+        cp1["passed"] += 1
+    else:
+        print(f"  [FAIL] Year coverage: {len(missing_years)} of {len(YEARS)} expected years missing "
+              f"{missing_years}; found {years_found}")
+        cp1["failed"] += 1
 
 # CP1.2: Row counts reasonable per year
-year_counts = df.group_by("year").len()
-min_count = year_counts["len"].min()
-max_count = year_counts["len"].max()
-count_reasonable = min_count > 1000 and max_count < 200000
-print(f"  [{'PASS' if count_reasonable else 'WARN'}] Row counts reasonable: {min_count:,} - {max_count:,}")
+# ASSUMES: an empty frame is a fetch failure, not a 0-row pass.
+if df.height == 0:
+    print("  [FAIL] Row counts: fetch returned 0 rows — per-year counts untestable")
+    cp1["failed"] += 1
+else:
+    year_counts = df.group_by("year").len()
+    min_count = year_counts["len"].min()
+    max_count = year_counts["len"].max()
+    if min_count > 1000 and max_count < 200000:
+        print(f"  [PASS] Row counts per year: {min_count:,} - {max_count:,} "
+              f"across {year_counts.height} years (expected 1,000 - 200,000)")
+        cp1["passed"] += 1
+    else:
+        print(f"  [WARNING] Row counts per year: {min_count:,} - {max_count:,} "
+              f"across {year_counts.height} years, outside expected 1,000 - 200,000")
+        cp1["warning"] += 1
 
 # CP1.3: Critical columns present
 critical_cols = ["ncessch", "year", "school_name", "fips"]
-cols_present = all(c in df.columns for c in critical_cols)
-print(f"  [{'PASS' if cols_present else 'FAIL'}] Critical columns present: {critical_cols}")
+missing_cols = [c for c in critical_cols if c not in df.columns]
+if len(missing_cols) == 0:
+    print(f"  [PASS] Critical columns: all {len(critical_cols)} present {critical_cols}")
+    cp1["passed"] += 1
+else:
+    print(f"  [FAIL] Critical columns: {len(missing_cols)} of {len(critical_cols)} missing {missing_cols}")
+    cp1["failed"] += 1
 
 # CP1.4: No nulls in identifier columns
-ncessch_nulls = df["ncessch"].null_count()
-year_nulls = df["year"].null_count()
-no_id_nulls = ncessch_nulls == 0 and year_nulls == 0
-print(f"  [{'PASS' if no_id_nulls else 'FAIL'}] No nulls in ID columns: ncessch={ncessch_nulls}, year={year_nulls}")
-
-assert all_years, "STOP: Missing years"
-assert cols_present, "STOP: Missing critical columns"
-assert no_id_nulls, "STOP: Nulls in ID columns"
+id_cols = ["ncessch", "year"]
+absent_ids = [c for c in id_cols if c not in df.columns]
+if len(absent_ids) > 0:
+    print(f"  [FAIL] ID nulls: identifier column(s) absent from the frame {absent_ids} — null check untestable")
+    cp1["failed"] += 1
+else:
+    id_nulls = {c: df[c].null_count() for c in id_cols}
+    if sum(id_nulls.values()) == 0:
+        print(f"  [PASS] ID nulls: 0 nulls across {len(id_cols)} identifier columns "
+              f"({', '.join(id_cols)}) over {df.height:,} rows")
+        cp1["passed"] += 1
+    else:
+        print(f"  [FAIL] ID nulls: {id_nulls} over {df.height:,} rows")
+        cp1["failed"] += 1
 
 print("\n" + "=" * 60)
-print("CP1 VALIDATION: PASSED")
+print(f"Checks: {cp1['passed']} passed, {cp1['warning']} warnings, {cp1['failed']} failed, "
+      f"{cp1['not_verified']} not verified, {cp1['skipped']} skipped")
+# REASONING: not_verified counts as FAILED — a gate with missing evidence has not gated.
+#   Zero checks run is also FAILED: a checkpoint that inspected nothing passed nothing.
+if cp1["failed"] > 0 or cp1["not_verified"] > 0 or (cp1["passed"] + cp1["warning"] + cp1["failed"]) == 0:
+    print("CP1 VALIDATION: FAILED")
+    print("=" * 60)
+    raise ValueError("CP1 FAILED - see details above")
+elif cp1["warning"] > 0:
+    print("CP1 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP1 VALIDATION: PASSED")
 print("=" * 60)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -881,7 +1086,7 @@ print("=" * 60)
 ```python
 #!/usr/bin/env python3
 """
-Stage 6.1: Clean CCD data — filter coded missing values, calculate suppression rate.
+Stage 6.1: Clean CCD data — set coded missing values to null (rows kept), calculate suppression rate.
 
 Task: clean-ccd
 Wave: 2, Step: 1, Stage: 6
@@ -978,43 +1183,93 @@ print("\n" + "=" * 60)
 print("CHECKPOINT 2 VALIDATION")
 print("=" * 60)
 
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+cp2 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+present_numeric = [c for c in NUMERIC_COLS if c in df.columns]
+
 # CP2.1: No coded values remain
-coded_remaining = 0
-for col in NUMERIC_COLS:
-    if col in df.columns:
+# ASSUMES: an empty coded-value vocabulary proves nothing about the data — it is
+#   NOT VERIFIED, not a pass. Same for having no numeric columns to scan.
+# REASONING: remaining codes are a WARNING, the level the CP2 template sets
+#   (VALIDATION_CHECKPOINTS.md § CP2); QA2 reviews them as a BLOCKER in
+#   analysis columns (QA_CHECKPOINTS.md § QA2).
+if len(CODED_MISSING) == 0:
+    print("  [NOT VERIFIED] Coded values: CODED_MISSING is empty — no vocabulary to test against")
+    cp2["not_verified"] += 1
+elif len(present_numeric) == 0:
+    print(f"  [NOT VERIFIED] Coded values: none of the {len(NUMERIC_COLS)} configured numeric "
+          f"columns are present in the frame — nothing to scan")
+    cp2["not_verified"] += 1
+else:
+    coded_remaining = 0
+    for col in present_numeric:
         for code in CODED_MISSING.keys():
             coded_remaining += df.filter(pl.col(col) == code).height
+    if coded_remaining == 0:
+        print(f"  [PASS] Coded values: 0 of {sorted(CODED_MISSING.keys())} remain across "
+              f"{len(present_numeric)} numeric columns ({df.height:,} rows)")
+        cp2["passed"] += 1
+    else:
+        print(f"  [WARNING] Coded values: {coded_remaining:,} cells still hold "
+              f"{sorted(CODED_MISSING.keys())} across {len(present_numeric)} numeric columns")
+        cp2["warning"] += 1
 
-no_coded = coded_remaining == 0
-print(f"  [{'PASS' if no_coded else 'FAIL'}] No coded values remaining: {coded_remaining}")
-
-# CP2.2: Suppression rate < 50%
-# REASONING: The 50% threshold is from BOUNDARIES.md STOP conditions. Above 50%
-# suppression, the remaining data is too sparse to support reliable analysis.
-total_cells = len(df) * len(NUMERIC_COLS)
-null_cells = sum(df[col].null_count() for col in NUMERIC_COLS if col in df.columns)
-suppression_rate = null_cells / total_cells if total_cells > 0 else 0
-suppression_ok = suppression_rate < 0.50
-print(f"  [{'PASS' if suppression_ok else 'FAIL'}] Suppression rate < 50%: {suppression_rate:.1%}")
+# CP2.2: Suppression rate per column, from the raw values (before nulling)
+# REASONING: the rate is the share of a column's raw values equal to the
+#   suppression code, denominator = raw rows (VALIDATION_CHECKPOINTS.md § CP2,
+#   "Metric definition"). Nulls counted after cleaning would also count -1, -2
+#   and native nulls. Above the threshold (50% for education, the BOUNDARIES.md
+#   STOP condition) the column is too sparse for reliable analysis; above 20%
+#   it is notable (the CP2 WARNING band).
+# ASSUMES: coded_counts (Pre-state) holds the raw count of each code per column.
+#   No raw rows or no numeric columns means the rate is undefined, not 0.0%.
+SUPPRESSION_CODE = -3        # From Plan domain config
+SUPPRESSION_THRESHOLD = 0.5  # From Plan domain config
+if pre_rows == 0 or len(present_numeric) == 0:
+    print("  [NOT VERIFIED] Suppression rate: no raw rows or no numeric columns — rate undefined")
+    cp2["not_verified"] += 1
+else:
+    for col in present_numeric:
+        n_supp = coded_counts.get((col, SUPPRESSION_CODE), 0)
+        supp_rate = n_supp / pre_rows
+        detail = f"{col}: {supp_rate:.1%} ({n_supp:,}/{pre_rows:,} raw values = {SUPPRESSION_CODE})"
+        if supp_rate > SUPPRESSION_THRESHOLD:
+            print(f"  [FAIL] Suppression rate {detail}, threshold {SUPPRESSION_THRESHOLD:.0%}")
+            cp2["failed"] += 1
+        elif supp_rate > 0.20:
+            print(f"  [WARNING] Suppression rate {detail} is notable")
+            cp2["warning"] += 1
+        else:
+            print(f"  [PASS] Suppression rate {detail}, threshold {SUPPRESSION_THRESHOLD:.0%}")
+            cp2["passed"] += 1
 
 # CP2.3: Row count preserved (cleaning shouldn't drop rows)
-rows_preserved = post_rows == pre_rows
-print(f"  [{'PASS' if rows_preserved else 'WARN'}] Rows preserved: {pre_rows:,} -> {post_rows:,}")
-
-assert no_coded, "STOP: Coded values still present"
-assert suppression_ok, "STOP: Suppression rate >= 50%"
+if post_rows == pre_rows:
+    print(f"  [PASS] Rows preserved: {pre_rows:,} -> {post_rows:,} (0 dropped)")
+    cp2["passed"] += 1
+else:
+    print(f"  [WARNING] Rows not preserved: {pre_rows:,} -> {post_rows:,} "
+          f"({post_rows - pre_rows:+,} rows; cleaning was expected to null values, not drop rows)")
+    cp2["warning"] += 1
 
 print("\n" + "=" * 60)
-print("CP2 VALIDATION: PASSED")
+print(f"Checks: {cp2['passed']} passed, {cp2['warning']} warnings, {cp2['failed']} failed, "
+      f"{cp2['not_verified']} not verified, {cp2['skipped']} skipped")
+if cp2["failed"] > 0 or cp2["not_verified"] > 0 or (cp2["passed"] + cp2["warning"] + cp2["failed"]) == 0:
+    print("CP2 VALIDATION: FAILED")
+    print("=" * 60)
+    raise ValueError("CP2 FAILED - see details above")
+elif cp2["warning"] > 0:
+    print("CP2 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP2 VALIDATION: PASSED")
 print("=" * 60)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1052,6 +1307,7 @@ OUTPUT_PATH = PROJECT_DIR / "data" / "processed" / f"{DATE_PREFIX}_analysis.parq
 # key for linking school-level datasets. It is unique per school and consistent
 # across CCD and MEPS because both are NCES products.
 JOIN_KEY = "ncessch"
+JOIN_TYPE = "inner"
 EXPECTED_CARDINALITY = "1:1"
 
 # --- Load ---
@@ -1097,7 +1353,7 @@ print(f"MEPS keys unique: {meps_key_unique}")
 #   - Both datasets have been cleaned (Stage 6) — no coded missing values remain
 #   - Key overlap was verified in pre-state check above (~85% expected)
 #   - CCD has one row per school per year; MEPS has one row per school per year
-df = df_ccd.join(df_meps, on=JOIN_KEY, how="inner")
+df = df_ccd.join(df_meps, on=JOIN_KEY, how=JOIN_TYPE)
 print(f"\nJoin complete: {df.shape[0]:,} rows x {df.shape[1]} cols")
 
 row_change_pct = ((df.shape[0] - pre_ccd_rows) / pre_ccd_rows * 100)  # Negative = rows lost in join
@@ -1116,42 +1372,96 @@ print("\n" + "=" * 60)
 print("CHECKPOINT 3 VALIDATION")
 print("=" * 60)
 
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+cp3 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+
 # CP3.1: Join produced rows
-has_rows = df.shape[0] > 0
-print(f"  [{'PASS' if has_rows else 'FAIL'}] Join produced rows: {df.shape[0]:,}")
+if df.height > 0:
+    print(f"  [PASS] Join produced rows: {df.height:,} rows x {df.width} cols")
+    cp3["passed"] += 1
+else:
+    print(f"  [FAIL] Join produced 0 rows from {pre_ccd_rows:,} CCD x {pre_meps_rows:,} MEPS rows")
+    cp3["failed"] += 1
 
 # CP3.2: No unexpected row loss (>90% loss suspicious)
-acceptable_loss = row_change_pct > -90
-print(f"  [{'PASS' if acceptable_loss else 'FAIL'}] Acceptable row change: {row_change_pct:+.1f}%")
+# ASSUMES: an empty left input makes loss untestable — 0 rows in is not 0% loss.
+if pre_ccd_rows == 0:
+    print("  [FAIL] Row change: CCD input had 0 rows — loss untestable")
+    cp3["failed"] += 1
+elif row_change_pct > -90:
+    print(f"  [PASS] Row change: {row_change_pct:+.1f}% "
+          f"({pre_ccd_rows:,} -> {df.height:,}, threshold -90%)")
+    cp3["passed"] += 1
+else:
+    print(f"  [FAIL] Row change: {row_change_pct:+.1f}% "
+          f"({pre_ccd_rows:,} -> {df.height:,}, threshold -90%)")
+    cp3["failed"] += 1
 
-# CP3.3: Cardinality check (for 1:1, output <= min of inputs)
+# CP3.3: Cardinality check — every documented value gets an explicit branch.
+# REASONING: an `if` with no `else` turns an unrecognized or unevaluable cardinality
+#   into silence, and a silent check reads as a pass. Unknown config is a FAIL
+#   (the value was supplied and is wrong); unevaluable-but-legal is NOT VERIFIED.
 if EXPECTED_CARDINALITY == "1:1":
     expected_max = min(pre_ccd_rows, pre_meps_rows)
-    cardinality_ok = df.shape[0] <= expected_max
-    print(f"  [{'PASS' if cardinality_ok else 'FAIL'}] 1:1 cardinality: {df.shape[0]:,} <= {expected_max:,}")
+    if df.height <= expected_max:
+        print(f"  [PASS] 1:1 cardinality: {df.height:,} output rows <= min(input) {expected_max:,}")
+        cp3["passed"] += 1
+    else:
+        print(f"  [FAIL] 1:1 cardinality violated: {df.height:,} output rows > min(input) {expected_max:,} (fan-out)")
+        cp3["failed"] += 1
+elif EXPECTED_CARDINALITY == "many:1":
+    if df.height <= pre_ccd_rows:
+        print(f"  [PASS] many:1 cardinality: {df.height:,} output rows <= {pre_ccd_rows:,} left rows")
+        cp3["passed"] += 1
+    else:
+        print(f"  [FAIL] many:1 cardinality violated: {df.height:,} output rows > {pre_ccd_rows:,} left rows (right key not unique)")
+        cp3["failed"] += 1
+elif EXPECTED_CARDINALITY == "1:many":
+    if df.height <= pre_meps_rows:
+        print(f"  [PASS] 1:many cardinality: {df.height:,} output rows <= {pre_meps_rows:,} right rows")
+        cp3["passed"] += 1
+    else:
+        print(f"  [FAIL] 1:many cardinality violated: {df.height:,} output rows > {pre_meps_rows:,} right rows (left key not unique)")
+        cp3["failed"] += 1
+elif EXPECTED_CARDINALITY == "many:many":
+    print(f"  [NOT VERIFIED] many:many cardinality: no row-count bound applies to "
+          f"(many:many, {JOIN_TYPE}) — verify key uniqueness explicitly instead")
+    cp3["not_verified"] += 1
+else:
+    print(f"  [FAIL] unrecognized expected_cardinality '{EXPECTED_CARDINALITY}' "
+          f"(legal: 1:1, 1:many, many:1, many:many)")
+    cp3["failed"] += 1
 
 # CP3.4: No unexpected nulls from join
 new_nulls = df.null_count().sum_horizontal()[0]
 ccd_nulls = df_ccd.null_count().sum_horizontal()[0]
 meps_nulls = df_meps.null_count().sum_horizontal()[0]
 expected_nulls = ccd_nulls + meps_nulls
-nulls_ok = new_nulls <= expected_nulls * 1.1  # Allow 10% tolerance
-print(f"  [{'PASS' if nulls_ok else 'WARN'}] Null count reasonable: {new_nulls:,} (expected ~{expected_nulls:,})")
-
-assert has_rows, "STOP: Join produced 0 rows"
-assert acceptable_loss, "STOP: Row loss > 90%"
+if new_nulls <= expected_nulls * 1.1:  # Allow 10% tolerance
+    print(f"  [PASS] Null count: {new_nulls:,} <= {expected_nulls:,} input nulls + 10% tolerance")
+    cp3["passed"] += 1
+else:
+    print(f"  [WARNING] Null count: {new_nulls:,} exceeds {expected_nulls:,} input nulls + 10% tolerance")
+    cp3["warning"] += 1
 
 print("\n" + "=" * 60)
-print("CP3 VALIDATION: PASSED")
+print(f"Checks: {cp3['passed']} passed, {cp3['warning']} warnings, {cp3['failed']} failed, "
+      f"{cp3['not_verified']} not verified, {cp3['skipped']} skipped")
+if cp3["failed"] > 0 or cp3["not_verified"] > 0 or (cp3["passed"] + cp3["warning"] + cp3["failed"]) == 0:
+    print("CP3 VALIDATION: FAILED")
+    print("=" * 60)
+    raise ValueError("CP3 FAILED - see details above")
+elif cp3["warning"] > 0:
+    print("CP3 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP3 VALIDATION: PASSED")
 print("=" * 60)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1160,6 +1470,8 @@ print("=" * 60)
 ### Stage 8: Analysis Script Example (Python)
 
 Stage 8 encompasses both statistical analysis (8.1) and visualization (8.2). This example covers 8.1 (analysis). For 8.2 (visualization), follow the same template structure but output figures to `output/figures/` and use the `plotnine` or `plotly` skills for plot construction. See `agent_reference/QA_CHECKPOINTS.md` for the QA4a (analysis) and QA4b (visualization) checkpoint definitions.
+
+**CP4 in Stage 8.** CP4 is Post-Analysis & Visualization Validation, embedded in these scripts: **CP4.1** analysis outputs valid (results exist, estimates finite, converged, n adequate against the Plan's minimum, expected sign only where the Plan pre-registers it), **CP4.2** critical nulls, **CP4.3** figures (exist, non-empty, visually inspected via Read), **CP4.4** correct data source (`data/processed/`, not `data/raw/`). An 8.1 analysis script declares CP4.3 in `not_applicable` and an 8.2 visualization script runs it for real — either way the check is printed and counted. Report-section completeness, Plan consistency, Research Outcomes, and Hypotheses are **not** CP4; they are the **Pre-Output Verification (Stage 12)** checklist in `agent_reference/VALIDATION_CHECKPOINTS.md`.
 
 ```python
 #!/usr/bin/env python3
@@ -1190,6 +1502,19 @@ OUTPUT_PATH = PROJECT_DIR / "output" / "analysis" / f"{DATE_PREFIX}_regression_r
 OUTCOME_VAR = "enrollment"
 PREDICTOR_VAR = "poverty_rate"
 CONTROL_VARS = ["teachers_fte", "urban_centric_locale"]
+
+# CP4 configuration (from Plan Section 5).
+MIN_OBS = 1000        # Plan's minimum analytic sample size
+EXPECTED_SIGN = -1    # Plan hypothesis H1 pre-registers a negative association.
+                      # Use None when the Plan pre-registers no direction — an
+                      # un-preregistered sign check is post-hoc, not a validation.
+# INTENT: declare CP4 sub-checks that genuinely do not apply, with a mandatory reason.
+# REASONING: an undeclared inapplicable check would print nothing and read as a pass;
+#   declared, it prints [SKIPPED] with its reason and is counted.
+not_applicable = {
+    "figures": "Stage 8.1 analysis script produces no figures; CP4.3 runs in the 8.2 visualization script",
+    "convergence": "closed-form normal-equations OLS reports no convergence flag; fit is checked via R-squared",
+}
 
 # --- Load ---
 # Load the joined analysis dataset and verify shape before proceeding.
@@ -1282,43 +1607,149 @@ results_df.write_parquet(OUTPUT_PATH)
 print(f"\nSaved: {OUTPUT_PATH}")
 
 # --- CP4 Validation ---
-# Checkpoint validation: verify regression produced valid results,
-# coefficients are finite, and model diagnostics are reasonable.
+# Post-Analysis & Visualization Validation (Stage 8). Sub-checks are fixed:
+#   CP4.1 analysis outputs valid, CP4.2 critical nulls, CP4.3 figures,
+#   CP4.4 correct data source. See agent_reference/VALIDATION_CHECKPOINTS.md.
 print("\n" + "=" * 60)
 print("CHECKPOINT 4 VALIDATION")
 print("=" * 60)
 
-# CP4.1: All coefficients finite
-all_finite = np.all(np.isfinite(beta)) and np.all(np.isfinite(se))
-print(f"  [{'PASS' if all_finite else 'FAIL'}] All coefficients finite")
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+cp4 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
 
-# CP4.2: R-squared in valid range
-r2_valid = 0 <= r_squared <= 1
-print(f"  [{'PASS' if r2_valid else 'FAIL'}] R-squared in [0, 1]: {r_squared:.4f}")
+# --- CP4.1: Analysis outputs valid ---
+# Results object exists and is non-empty
+if results_df.height == 0:
+    print("  [FAIL] 4.1 results object: regression results frame is empty")
+    cp4["failed"] += 1
+else:
+    print(f"  [PASS] 4.1 results object: {results_df.height} coefficient rows written to {OUTPUT_PATH.name}")
+    cp4["passed"] += 1
 
-# CP4.3: Sufficient observations for number of predictors (n > 10*k)
-obs_adequate = n > 10 * k
-print(f"  [{'PASS' if obs_adequate else 'WARN'}] n/k ratio: {n}/{k} = {n/k:.0f} (>10 required)")
+# Estimates finite
+n_nonfinite = int(np.sum(~np.isfinite(beta))) + int(np.sum(~np.isfinite(se)))
+if n_nonfinite == 0:
+    print(f"  [PASS] 4.1 estimates finite: {len(beta)} coefficients and {len(se)} standard errors all finite")
+    cp4["passed"] += 1
+else:
+    print(f"  [FAIL] 4.1 estimates finite: {n_nonfinite} of {len(beta) + len(se)} values are inf or nan")
+    cp4["failed"] += 1
 
-# CP4.4: Primary predictor has expected sign (from Plan hypothesis)
+# Convergence flag, where the estimator reports one.
+# REASONING: an estimator with no convergence flag is DECLARED in not_applicable and
+#   printed as a counted [SKIPPED] — substituting a different statistic and counting it
+#   as the convergence check would report a pass for a check that never ran. The R
+#   example at § Stage 8 (R) routes the same closed-form case the same way.
+# ASSUMES: converged is a real bool / numpy.bool_ when the estimator supplies one;
+#   anything else (None, a float, a string) is [NOT VERIFIED], not a pass.
+converged = None  # closed-form normal-equations OLS exposes no convergence attribute
+if not_applicable.get("convergence"):
+    print(f"  [SKIPPED] 4.1 convergence: {not_applicable['convergence']}")
+    cp4["skipped"] += 1
+elif not isinstance(converged, (bool, np.bool_)):
+    print(f"  [NOT VERIFIED] 4.1 convergence: flag is {converged!r} ({type(converged).__name__}), "
+          f"not a boolean — declare not_applicable if this estimator reports none")
+    cp4["not_verified"] += 1
+elif bool(converged):
+    print("  [PASS] 4.1 convergence: estimator convergence flag is True")
+    cp4["passed"] += 1
+else:
+    print("  [FAIL] 4.1 convergence: estimator convergence flag is False")
+    cp4["failed"] += 1
+
+# Fit diagnostic — R-squared in a valid range. This is a genuine numeric check on a
+# real computed statistic, so it is its own check with its own outcome line; it is not
+# a stand-in for the convergence check above.
+if np.isfinite(r_squared) and 0 <= r_squared <= 1:
+    print(f"  [PASS] 4.1 fit diagnostic: R-squared {r_squared:.4f} within [0, 1]")
+    cp4["passed"] += 1
+else:
+    print(f"  [FAIL] 4.1 fit diagnostic: R-squared {r_squared} outside [0, 1] or non-finite")
+    cp4["failed"] += 1
+
+# Sample size adequate against the Plan's minimum
+if n >= MIN_OBS:
+    print(f"  [PASS] 4.1 sample size: n={n:,} >= Plan minimum {MIN_OBS:,} (k={k}, n/k={n/k:.0f})")
+    cp4["passed"] += 1
+else:
+    print(f"  [FAIL] 4.1 sample size: n={n:,} below Plan minimum {MIN_OBS:,} (k={k})")
+    cp4["failed"] += 1
+
+# Expected sign — only when the Plan pre-registers one.
+# REASONING: checking a direction the Plan never committed to turns a post-hoc
+#   observation into a validation. Absent a pre-registration, say so and count it.
 predictor_idx = col_names.index(PREDICTOR_VAR)
-sign_expected = beta[predictor_idx] < 0  # Plan hypothesizes negative association
-print(f"  [{'PASS' if sign_expected else 'NOTE'}] Primary predictor sign: {beta[predictor_idx]:.4f} (expected negative)")
+observed_beta = beta[predictor_idx]
+if EXPECTED_SIGN is None:
+    print(f"  [SKIPPED] 4.1 expected sign: Plan pre-registers no direction for "
+          f"'{PREDICTOR_VAR}' (observed {observed_beta:.4f})")
+    cp4["skipped"] += 1
+elif EXPECTED_SIGN not in (-1, 0, 1):
+    print(f"  [FAIL] 4.1 expected sign: unrecognized EXPECTED_SIGN '{EXPECTED_SIGN}' (legal: -1, 0, 1, None)")
+    cp4["failed"] += 1
+elif np.sign(observed_beta) == EXPECTED_SIGN:
+    print(f"  [PASS] 4.1 expected sign: '{PREDICTOR_VAR}' coefficient {observed_beta:.4f} "
+          f"matches pre-registered sign {EXPECTED_SIGN:+d}")
+    cp4["passed"] += 1
+else:
+    print(f"  [WARNING] 4.1 expected sign: '{PREDICTOR_VAR}' coefficient {observed_beta:.4f} "
+          f"contradicts pre-registered sign {EXPECTED_SIGN:+d} — report it, do not suppress it")
+    cp4["warning"] += 1
 
-assert all_finite, "STOP: Non-finite coefficients"
-assert r2_valid, "STOP: R-squared out of range"
+# --- CP4.2: Critical nulls in the analysis frame ---
+critical_cols = [OUTCOME_VAR, PREDICTOR_VAR]
+absent = [c for c in critical_cols if c not in df_complete.columns]
+if len(absent) > 0:
+    print(f"  [FAIL] 4.2 critical nulls: column(s) absent from the analysis frame {absent}")
+    cp4["failed"] += 1
+else:
+    null_counts = {c: df_complete[c].null_count() for c in critical_cols}
+    if sum(null_counts.values()) == 0:
+        print(f"  [PASS] 4.2 critical nulls: 0 nulls in {critical_cols} across "
+              f"{df_complete.height:,} analysis rows")
+        cp4["passed"] += 1
+    else:
+        print(f"  [FAIL] 4.2 critical nulls: {null_counts} across {df_complete.height:,} analysis rows")
+        cp4["failed"] += 1
+
+# --- CP4.3: Figures ---
+if not_applicable.get("figures"):
+    print(f"  [SKIPPED] 4.3 figures: {not_applicable['figures']}")
+    cp4["skipped"] += 1
+else:
+    # In an 8.2 visualization script: iterate the figures the task promised and
+    # confirm each exists and is non-empty, then inspect each one via the Read tool.
+    print("  [NOT VERIFIED] 4.3 figures: no expected-figure list configured for this script")
+    cp4["not_verified"] += 1
+
+# --- CP4.4: Correct data source ---
+# ASSUMES: analysis reads the cleaned, processed frame — reading data/raw/ here
+#   would silently bypass every Stage 6 cleaning decision.
+if "data/processed/" in INPUT_PATH.as_posix():
+    print(f"  [PASS] 4.4 data source: input is {INPUT_PATH.relative_to(PROJECT_DIR)} (under data/processed/)")
+    cp4["passed"] += 1
+else:
+    print(f"  [FAIL] 4.4 data source: input is {INPUT_PATH.relative_to(PROJECT_DIR)}, not under data/processed/")
+    cp4["failed"] += 1
 
 print("\n" + "=" * 60)
-print("CP4 VALIDATION: PASSED")
+print(f"Checks: {cp4['passed']} passed, {cp4['warning']} warnings, {cp4['failed']} failed, "
+      f"{cp4['not_verified']} not verified, {cp4['skipped']} skipped")
+if cp4["failed"] > 0 or cp4["not_verified"] > 0 or (cp4["passed"] + cp4["warning"] + cp4["failed"]) == 0:
+    print("CP4 VALIDATION: FAILED")
+    print("=" * 60)
+    raise ValueError("CP4 FAILED - see details above")
+elif cp4["warning"] > 0:
+    print("CP4 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP4 VALIDATION: PASSED")
 print("=" * 60)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1459,12 +1890,10 @@ df = df_ccd.join(df_meps, on="ncessch", how="inner")
     print("Verification: Re-run join with normalized keys and check row count > 0")
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1594,12 +2023,10 @@ if not all_passed:
     raise SystemExit(1)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1663,6 +2090,15 @@ PROJECT_DIR <- file.path(BASE_DIR, "research/{project_folder}")
 INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/{input_file}.parquet")
 OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/{output_file}.parquet")
 
+# Checkpoint configuration. REQUIRED_COLS is the column contract the Plan promised;
+# MAX_ROW_LOSS_PCT is the Plan's tolerance. A check whose input is missing, empty, or
+# NULL is NOT VERIFIED -- never a silent pass -- unless it is declared not applicable
+# here with a written reason, which records it as SKIPPED. Keys are the snake_case
+# check names used in the Validate section below. Index with [[ ]], never $.
+REQUIRED_COLS <- c("new_col")
+MAX_ROW_LOSS_PCT <- 0
+not_applicable <- list()  # e.g. list(required_columns = "exploratory step, no column contract yet")
+
 # --- Load ---
 cat("==============================================================\n")
 cat("Stage {N}.{step}: {Description}\n")
@@ -1690,33 +2126,94 @@ result <- df |>
 cat("After transform:", nrow(result), "rows\n")
 
 # --- Validate ---
-# Checkpoint validation against Plan expectations.
-cat("\nPost-state:", nrow(result), "rows x", ncol(result), "cols\n")
-row_change <- nrow(result) - pre_rows
-row_change_pct <- row_change / pre_rows * 100
-cat("Row change:", sprintf("%+d (%+.1f%%)\n", row_change, row_change_pct))
+# Checkpoint validation against Plan expectations. The verdict is DERIVED from counted
+# outcomes, never printed unconditionally. Each check emits exactly one line beginning
+# with [PASS] / [WARNING] / [FAIL] / [NOT VERIFIED] / [SKIPPED], and every [PASS] line
+# carries the numbers it observed. Never put a CP{n} identifier on a per-check line.
+# Canonical per-checkpoint checks: agent_reference/VALIDATION_CHECKPOINTS.md.
+cat("\n==============================================================\n")
+cat("CHECKPOINT {n} VALIDATION\n")
+cat("==============================================================\n")
 
-stopifnot("STOP: Empty result" = nrow(result) > 0)
-stopifnot("STOP: Missing required columns" = "new_col" %in% names(result))
-stopifnot("STOP: NAs in key column" = sum(is.na(result$id)) == 0)
+cp{n} <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 
-cat("\nValidation passed\n")
-cat("  Rows:", nrow(result), "\n")
-cat("  Cols:", ncol(result), "\n")
-cat("  NA count:", sum(is.na(result$new_col)), "\n")
+# Check "non_empty": the transformation produced rows.
+if (nrow(result) == 0) {
+  cat("  [FAIL] non_empty: 0 rows written -- no evidence for any downstream check\n")
+  cp{n}[["failed"]] <- cp{n}[["failed"]] + 1L
+} else {
+  cat(sprintf("  [PASS] non_empty: %d rows x %d cols\n", nrow(result), ncol(result)))
+  cp{n}[["passed"]] <- cp{n}[["passed"]] + 1L
+}
+
+# Check "required_columns": every column the Plan promised is present.
+# ASSUMES: an empty REQUIRED_COLS proves nothing about the frame -- it is NOT VERIFIED.
+if (!is.null(not_applicable[["required_columns"]])) {
+  cat(sprintf("  [SKIPPED] required_columns: %s\n", not_applicable[["required_columns"]]))
+  cp{n}[["skipped"]] <- cp{n}[["skipped"]] + 1L
+} else if (length(REQUIRED_COLS) == 0) {
+  cat("  [NOT VERIFIED] required_columns: REQUIRED_COLS is empty -- no column contract to test\n")
+  cp{n}[["not_verified"]] <- cp{n}[["not_verified"]] + 1L
+} else {
+  missing_cols <- setdiff(REQUIRED_COLS, names(result))
+  if (length(missing_cols) == 0) {
+    cat(sprintf("  [PASS] required_columns: %d/%d present (%s)\n",
+                length(REQUIRED_COLS), length(REQUIRED_COLS), paste(REQUIRED_COLS, collapse = ", ")))
+    cp{n}[["passed"]] <- cp{n}[["passed"]] + 1L
+  } else {
+    cat(sprintf("  [FAIL] required_columns: %d of %d absent (%s)\n",
+                length(missing_cols), length(REQUIRED_COLS), paste(missing_cols, collapse = ", ")))
+    cp{n}[["failed"]] <- cp{n}[["failed"]] + 1L
+  }
+}
+
+# Check "row_loss": observed attrition against the Plan's tolerance.
+# ASSUMES: an empty input makes the loss rate undefined -- not a 0.0% pass.
+if (pre_rows == 0) {
+  cat("  [FAIL] row_loss: input had 0 rows -- attrition untestable\n")
+  cp{n}[["failed"]] <- cp{n}[["failed"]] + 1L
+} else if (is.null(MAX_ROW_LOSS_PCT) || is.na(MAX_ROW_LOSS_PCT)) {
+  cat("  [NOT VERIFIED] row_loss: MAX_ROW_LOSS_PCT is not declared -- no tolerance to test against\n")
+  cp{n}[["not_verified"]] <- cp{n}[["not_verified"]] + 1L
+} else {
+  loss_pct <- (pre_rows - nrow(result)) / pre_rows * 100
+  if (loss_pct <= MAX_ROW_LOSS_PCT) {
+    cat(sprintf("  [PASS] row_loss: %+.1f%% (%d -> %d), tolerance %.1f%%\n",
+                loss_pct, pre_rows, nrow(result), MAX_ROW_LOSS_PCT))
+    cp{n}[["passed"]] <- cp{n}[["passed"]] + 1L
+  } else {
+    cat(sprintf("  [FAIL] row_loss: %+.1f%% (%d -> %d) exceeds tolerance %.1f%%\n",
+                loss_pct, pre_rows, nrow(result), MAX_ROW_LOSS_PCT))
+    cp{n}[["failed"]] <- cp{n}[["failed"]] + 1L
+  }
+}
+
+cat("\n==============================================================\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp{n}[["passed"]], cp{n}[["warning"]], cp{n}[["failed"]],
+            cp{n}[["not_verified"]], cp{n}[["skipped"]]))
+cp{n}_ran <- cp{n}[["passed"]] + cp{n}[["warning"]] + cp{n}[["failed"]]
+if (cp{n}[["failed"]] > 0 || cp{n}[["not_verified"]] > 0 || cp{n}_ran == 0) {
+  cat("CP{n} VALIDATION: FAILED\n")
+  cat("==============================================================\n")
+  stop("CP{n} FAILED - see details above")
+} else if (cp{n}[["warning"]] > 0) {
+  cat("CP{n} VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP{n} VALIDATION: PASSED\n")
+}
+cat("==============================================================\n")
 
 # --- Save ---
+# Reached only when the checkpoint did not FAIL.
 arrow::write_parquet(result, OUTPUT_PATH)
 cat("\nSaved:", OUTPUT_PATH, "\n")
-cat("\nCP{n} VALIDATION: PASSED\n")
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1761,7 +2258,7 @@ OUTPUT_PATH <- file.path(DATA_RAW, "2026-01-24_ccd_directory.parquet")
 # Education domain example — substitute your domain's query skill path
 MIRRORS_YAML <- file.path(BASE_DIR, ".claude/skills/education-data-query/references/mirrors.yaml")
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 DATASET_PATH <- "ccd/schools_ccd_directory"
 TARGET_YEAR <- 2020
 
@@ -1781,9 +2278,13 @@ mirrors <- yaml::read_yaml(MIRRORS_YAML)$mirrors
 df <- NULL
 last_error <- NULL
 for (mirror in mirrors) {
-  # Build URL from the mirror's template + canonical dataset path
+  # Build URL from the mirror's template + canonical dataset path. The HF
+  # template has a {revision} segment (the pinned vintage$hf_revision); glue
+  # only substitutes referenced names, so the Urban CSV fallback ignores it.
+  revision <- if (is.null(mirror$vintage$hf_revision)) "main" else as.character(mirror$vintage$hf_revision)
   url <- glue::glue(mirror$url_template,
                     root_url = mirror$root_url,
+                    revision = revision,
                     path = DATASET_PATH,
                     format = mirror$format)
   cat(sprintf("  Trying %s: %s\n", mirror$name, url))
@@ -1823,42 +2324,80 @@ cat("\n==============================================================\n")
 cat("CHECKPOINT 1 VALIDATION\n")
 cat("==============================================================\n")
 
-stopifnot("STOP: No data fetched" = nrow(df) > 0)
-stopifnot("STOP: Missing school_id" = "ncessch" %in% names(df))
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+# REASONING: a hard-coded "CP1 VALIDATION: PASSED" banner cannot fail, and a
+#   checkpoint that cannot fail is not a checkpoint.
+cp1 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 
 # CP1.1: Row count reasonable
-cat("  [PASS] Data fetched:", nrow(df), "rows\n")
+if (nrow(df) == 0) {
+  cat("  [FAIL] 1.1 rows fetched: 0 rows returned for year", TARGET_YEAR, "\n")
+  cp1["failed"] <- cp1["failed"] + 1L
+} else {
+  cat(sprintf("  [PASS] 1.1 rows fetched: %s rows x %d cols for year %s\n",
+              format(nrow(df), big.mark = ","), ncol(df), TARGET_YEAR))
+  cp1["passed"] <- cp1["passed"] + 1L
+}
 
 # CP1.2: Critical columns present
 critical_cols <- c("ncessch", "school_name", "fips")
-cols_present <- all(critical_cols %in% names(df))
-cat("  [", ifelse(cols_present, "PASS", "FAIL"), "] Critical columns present:",
-    paste(critical_cols, collapse = ", "), "\n")
+missing_cols <- setdiff(critical_cols, names(df))
+if (length(missing_cols) == 0) {
+  cat(sprintf("  [PASS] 1.2 critical columns: all %d present (%s)\n",
+              length(critical_cols), paste(critical_cols, collapse = ", ")))
+  cp1["passed"] <- cp1["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 1.2 critical columns: %d of %d missing (%s)\n",
+              length(missing_cols), length(critical_cols),
+              paste(missing_cols, collapse = ", ")))
+  cp1["failed"] <- cp1["failed"] + 1L
+}
 
 # CP1.3: No nulls in ID column
-ncessch_nulls <- sum(is.na(df$ncessch))
-cat("  [", ifelse(ncessch_nulls == 0, "PASS", "FAIL"),
-    "] No nulls in ncessch:", ncessch_nulls, "\n")
+# ASSUMES: index with [[ ]], not $ — partial matching binds the wrong column silently.
+if (!"ncessch" %in% names(df)) {
+  cat("  [FAIL] 1.3 ID nulls: column 'ncessch' absent — null check untestable\n")
+  cp1["failed"] <- cp1["failed"] + 1L
+} else {
+  ncessch_nulls <- sum(is.na(df[["ncessch"]]))
+  if (ncessch_nulls == 0) {
+    cat(sprintf("  [PASS] 1.3 ID nulls: 0 NAs in 'ncessch' over %s rows\n",
+                format(nrow(df), big.mark = ",")))
+    cp1["passed"] <- cp1["passed"] + 1L
+  } else {
+    cat(sprintf("  [FAIL] 1.3 ID nulls: %d NAs in 'ncessch' over %s rows\n",
+                ncessch_nulls, format(nrow(df), big.mark = ",")))
+    cp1["failed"] <- cp1["failed"] + 1L
+  }
+}
 
-stopifnot("STOP: Missing critical columns" = cols_present)
-stopifnot("STOP: Nulls in ID column" = ncessch_nulls == 0)
+cat("\n==============================================================\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp1[["passed"]], cp1[["warning"]], cp1[["failed"]],
+            cp1[["not_verified"]], cp1[["skipped"]]))
+# REASONING: not_verified counts as FAILED — a gate with missing evidence has not gated.
+if (cp1[["failed"]] > 0 || cp1[["not_verified"]] > 0 ||
+    (cp1[["passed"]] + cp1[["warning"]] + cp1[["failed"]]) == 0) {
+  cat("CP1 VALIDATION: FAILED\n")
+  cat("==============================================================\n")
+  stop("CP1 FAILED - see details above")
+} else if (cp1[["warning"]] > 0) {
+  cat("CP1 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP1 VALIDATION: PASSED\n")
+}
+cat("==============================================================\n")
 
 # --- Save ---
 dir.create(DATA_RAW, recursive = TRUE, showWarnings = FALSE)
 arrow::write_parquet(df, OUTPUT_PATH)
 cat("\nSaved:", OUTPUT_PATH, "\n")
 
-cat("\n==============================================================\n")
-cat("CP1 VALIDATION: PASSED\n")
-cat("==============================================================\n")
-
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -1896,6 +2435,8 @@ INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/2026-01-24_ccd_directory.parquet"
 OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_ccd_clean.parquet")
 
 CODED_MISSING <- c(-1, -2, -3)
+SUPPRESSION_CODE <- -3        # From Plan domain config
+SUPPRESSION_THRESHOLD <- 0.5  # From Plan domain config
 
 # --- Load ---
 cat("==============================================================\n")
@@ -1908,6 +2449,11 @@ cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
 # --- Pre-state ---
 pre_rows <- nrow(df)
 cat("Pre-state:", pre_rows, "rows\n")
+
+# INTENT: count each numeric column's raw suppression codes BEFORE nulling,
+#   for the CP2.2 suppression rate (cleaning turns them into NA).
+numeric_raw <- names(df)[sapply(df, is.numeric)]
+supp_raw <- sapply(numeric_raw, \(col) sum(df[[col]] == SUPPRESSION_CODE, na.rm = TRUE))
 
 # --- Transform ---
 # INTENT: Replace Portal missing codes with NA
@@ -1928,45 +2474,107 @@ cat("\n==============================================================\n")
 cat("CHECKPOINT 2 VALIDATION\n")
 cat("==============================================================\n")
 
-# CP2.1: No coded values remain in numeric columns
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+cp2 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 numeric_cols <- names(clean)[sapply(clean, is.numeric)]
-coded_remaining <- 0
-for (col in numeric_cols) {
-  coded_remaining <- coded_remaining + sum(clean[[col]] %in% CODED_MISSING, na.rm = TRUE)
-}
-cat("  [", ifelse(coded_remaining == 0, "PASS", "FAIL"),
-    "] No coded values remaining:", coded_remaining, "\n")
 
-# CP2.2: Suppression rate < 50%
-total_cells <- nrow(clean) * length(numeric_cols)
-null_cells <- sum(sapply(numeric_cols, \(col) sum(is.na(clean[[col]]))))
-suppression_rate <- null_cells / total_cells
-cat("  [", ifelse(suppression_rate < 0.50, "PASS", "FAIL"),
-    "] Suppression rate < 50%:", sprintf("%.1f%%", suppression_rate * 100), "\n")
+# CP2.1: No coded values remain in numeric columns
+# ASSUMES: an empty vocabulary or no numeric columns proves nothing — that is
+#   NOT VERIFIED, not a pass. R also errors on sum() over an empty %in% vocabulary,
+#   so guard length() > 0 before the scan.
+# REASONING: remaining codes are a WARNING, the level the CP2 template sets
+#   (VALIDATION_CHECKPOINTS.md § CP2); QA2 reviews them as a BLOCKER in
+#   analysis columns (QA_CHECKPOINTS.md § QA2).
+if (length(CODED_MISSING) == 0) {
+  cat("  [NOT VERIFIED] 2.1 coded values: CODED_MISSING is empty — no vocabulary to test against\n")
+  cp2["not_verified"] <- cp2["not_verified"] + 1L
+} else if (length(numeric_cols) == 0) {
+  cat("  [NOT VERIFIED] 2.1 coded values: no numeric columns in the cleaned frame — nothing to scan\n")
+  cp2["not_verified"] <- cp2["not_verified"] + 1L
+} else {
+  coded_remaining <- 0L
+  for (col in numeric_cols) {
+    coded_remaining <- coded_remaining + sum(clean[[col]] %in% CODED_MISSING, na.rm = TRUE)
+  }
+  if (coded_remaining == 0) {
+    cat(sprintf("  [PASS] 2.1 coded values: 0 of (%s) remain across %d numeric columns (%s rows)\n",
+                paste(CODED_MISSING, collapse = ", "), length(numeric_cols),
+                format(nrow(clean), big.mark = ",")))
+    cp2["passed"] <- cp2["passed"] + 1L
+  } else {
+    cat(sprintf("  [WARNING] 2.1 coded values: %d cells still hold (%s) across %d numeric columns\n",
+                coded_remaining, paste(CODED_MISSING, collapse = ", "), length(numeric_cols)))
+    cp2["warning"] <- cp2["warning"] + 1L
+  }
+}
+
+# CP2.2: Suppression rate per column, from the raw values (before nulling)
+# REASONING: the rate is the share of a column's raw values equal to the
+#   suppression code, denominator = raw rows (VALIDATION_CHECKPOINTS.md § CP2,
+#   "Metric definition"). NAs counted after cleaning would also count -1, -2
+#   and native NAs. FAIL above the threshold, WARNING above 20% (the CP2 bands).
+# ASSUMES: no raw rows or no numeric columns means the rate is undefined, not 0.0%.
+if (pre_rows == 0 || length(numeric_raw) == 0) {
+  cat("  [NOT VERIFIED] 2.2 suppression rate: no raw rows or no numeric columns — rate undefined\n")
+  cp2["not_verified"] <- cp2["not_verified"] + 1L
+} else {
+  for (col in numeric_raw) {
+    supp_rate <- supp_raw[[col]] / pre_rows
+    detail <- sprintf("%s: %.1f%% (%s/%s raw values = %s)", col, supp_rate * 100,
+                      format(supp_raw[[col]], big.mark = ","),
+                      format(pre_rows, big.mark = ","), as.character(SUPPRESSION_CODE))
+    if (supp_rate > SUPPRESSION_THRESHOLD) {
+      cat(sprintf("  [FAIL] 2.2 suppression rate %s, threshold %.0f%%\n",
+                  detail, SUPPRESSION_THRESHOLD * 100))
+      cp2["failed"] <- cp2["failed"] + 1L
+    } else if (supp_rate > 0.20) {
+      cat(sprintf("  [WARNING] 2.2 suppression rate %s is notable\n", detail))
+      cp2["warning"] <- cp2["warning"] + 1L
+    } else {
+      cat(sprintf("  [PASS] 2.2 suppression rate %s, threshold %.0f%%\n",
+                  detail, SUPPRESSION_THRESHOLD * 100))
+      cp2["passed"] <- cp2["passed"] + 1L
+    }
+  }
+}
 
 # CP2.3: Row count reasonable (cleaning should reduce but not eliminate)
-cat("  [", ifelse(nrow(clean) > 0, "PASS", "FAIL"),
-    "] Rows remaining:", nrow(clean), "\n")
+if (nrow(clean) > 0) {
+  cat(sprintf("  [PASS] 2.3 rows remaining: %s of %s pre-clean rows (%.1f%% retained)\n",
+              format(nrow(clean), big.mark = ","), format(pre_rows, big.mark = ","),
+              nrow(clean) / pre_rows * 100))
+  cp2["passed"] <- cp2["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 2.3 rows remaining: 0 of %s pre-clean rows — cleaning eliminated the dataset\n",
+              format(pre_rows, big.mark = ",")))
+  cp2["failed"] <- cp2["failed"] + 1L
+}
 
-stopifnot("STOP: Coded values still present" = coded_remaining == 0)
-stopifnot("STOP: Suppression rate >= 50%" = suppression_rate < 0.50)
-stopifnot("STOP: No rows after clean" = nrow(clean) > 0)
+cat("\n==============================================================\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp2[["passed"]], cp2[["warning"]], cp2[["failed"]],
+            cp2[["not_verified"]], cp2[["skipped"]]))
+if (cp2[["failed"]] > 0 || cp2[["not_verified"]] > 0 ||
+    (cp2[["passed"]] + cp2[["warning"]] + cp2[["failed"]]) == 0) {
+  cat("CP2 VALIDATION: FAILED\n")
+  cat("==============================================================\n")
+  stop("CP2 FAILED - see details above")
+} else if (cp2[["warning"]] > 0) {
+  cat("CP2 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP2 VALIDATION: PASSED\n")
+}
+cat("==============================================================\n")
 
 # --- Save ---
 arrow::write_parquet(clean, OUTPUT_PATH)
 cat("\nSaved:", OUTPUT_PATH, "\n")
 
-cat("\n==============================================================\n")
-cat("CP2 VALIDATION: PASSED\n")
-cat("==============================================================\n")
-
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -2042,39 +2650,84 @@ cat("\n==============================================================\n")
 cat("CHECKPOINT 3 VALIDATION\n")
 cat("==============================================================\n")
 
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+cp3 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
+
 # CP3.1: Row count preserved (left join should not add or lose rows)
-rows_preserved <- nrow(joined) == pre_rows
-cat("  [", ifelse(rows_preserved, "PASS", "FAIL"),
-    "] Row count preserved:", pre_rows, "->", nrow(joined), "\n")
+# ASSUMES: an empty left input makes preservation untestable — 0 == 0 is not a pass.
+if (pre_rows == 0) {
+  cat("  [FAIL] 3.1 row count: schools frame had 0 rows — preservation untestable\n")
+  cp3["failed"] <- cp3["failed"] + 1L
+} else if (nrow(joined) == pre_rows) {
+  cat(sprintf("  [PASS] 3.1 row count preserved: %s -> %s rows (left join, 0 change)\n",
+              format(pre_rows, big.mark = ","), format(nrow(joined), big.mark = ",")))
+  cp3["passed"] <- cp3["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 3.1 row count changed: %s -> %s rows (%+d) — a left join must preserve left rows\n",
+              format(pre_rows, big.mark = ","), format(nrow(joined), big.mark = ","),
+              nrow(joined) - pre_rows))
+  cp3["failed"] <- cp3["failed"] + 1L
+}
 
 # CP3.2: Match rate acceptable (>80% expected)
-match_ok <- match_rate > 0.8
-cat("  [", ifelse(match_ok, "PASS", "FAIL"),
-    "] Match rate > 80%:", sprintf("%.1f%%", match_rate * 100), "\n")
+# ASSUMES: is.na() over a zero-length column yields NaN, not 0 — guard before comparing.
+if (!"poverty_rate" %in% names(joined)) {
+  cat("  [FAIL] 3.2 match rate: 'poverty_rate' absent from the joined frame — match rate untestable\n")
+  cp3["failed"] <- cp3["failed"] + 1L
+} else if (nrow(joined) == 0 || is.na(match_rate)) {
+  cat("  [NOT VERIFIED] 3.2 match rate: joined frame is empty — match rate undefined\n")
+  cp3["not_verified"] <- cp3["not_verified"] + 1L
+} else if (match_rate > 0.8) {
+  cat(sprintf("  [PASS] 3.2 match rate: %.1f%% (%s of %s rows carry poverty_rate, threshold 80%%)\n",
+              match_rate * 100, format(sum(!is.na(joined[["poverty_rate"]])), big.mark = ","),
+              format(nrow(joined), big.mark = ",")))
+  cp3["passed"] <- cp3["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 3.2 match rate: %.1f%% (%s of %s rows carry poverty_rate, threshold 80%%)\n",
+              match_rate * 100, format(sum(!is.na(joined[["poverty_rate"]])), big.mark = ","),
+              format(nrow(joined), big.mark = ",")))
+  cp3["failed"] <- cp3["failed"] + 1L
+}
 
-# CP3.3: No unexpected row duplication
-no_duplication <- nrow(joined) <= pre_rows
-cat("  [", ifelse(no_duplication, "PASS", "FAIL"),
-    "] No row duplication\n")
+# CP3.3: No unexpected row duplication (fan-out from a non-unique right key)
+poverty_key_unique <- length(poverty_keys) == nrow(poverty)
+if (nrow(joined) <= pre_rows) {
+  cat(sprintf("  [PASS] 3.3 no duplication: %s joined <= %s left rows (right key unique: %s)\n",
+              format(nrow(joined), big.mark = ","), format(pre_rows, big.mark = ","),
+              poverty_key_unique))
+  cp3["passed"] <- cp3["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 3.3 fan-out: %s joined > %s left rows (right key unique: %s)\n",
+              format(nrow(joined), big.mark = ","), format(pre_rows, big.mark = ","),
+              poverty_key_unique))
+  cp3["failed"] <- cp3["failed"] + 1L
+}
 
-stopifnot("STOP: Row count changed unexpectedly" = rows_preserved)
-stopifnot("STOP: Match rate too low" = match_ok)
+cat("\n==============================================================\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp3[["passed"]], cp3[["warning"]], cp3[["failed"]],
+            cp3[["not_verified"]], cp3[["skipped"]]))
+if (cp3[["failed"]] > 0 || cp3[["not_verified"]] > 0 ||
+    (cp3[["passed"]] + cp3[["warning"]] + cp3[["failed"]]) == 0) {
+  cat("CP3 VALIDATION: FAILED\n")
+  cat("==============================================================\n")
+  stop("CP3 FAILED - see details above")
+} else if (cp3[["warning"]] > 0) {
+  cat("CP3 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP3 VALIDATION: PASSED\n")
+}
+cat("==============================================================\n")
 
 # --- Save ---
 arrow::write_parquet(joined, OUTPUT_PATH)
 cat("\nSaved:", OUTPUT_PATH, "\n")
 
-cat("\n==============================================================\n")
-cat("CP3 VALIDATION: PASSED\n")
-cat("==============================================================\n")
-
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -2083,6 +2736,8 @@ cat("==============================================================\n")
 ### Stage 8: Analysis Script Example (R)
 
 Stage 8 encompasses both statistical analysis (8.1) and visualization (8.2). This example covers 8.1 (analysis) using `fixest` for fixed-effects regression. For 8.2 (visualization), follow the same template structure but output figures to `output/figures/` and use the `ggplot2` skill for plot construction.
+
+**CP4 sub-checks are identical to the Python example** — **CP4.1** analysis outputs valid, **CP4.2** critical nulls, **CP4.3** figures, **CP4.4** correct data source. Report sections, Plan consistency, Research Outcomes, and Hypotheses are **Pre-Output Verification (Stage 12)**, not CP4.
 
 ```r
 # ==============================================================================
@@ -2114,6 +2769,18 @@ PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
 INPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_analysis_data.parquet")
 OUTPUT_DIR <- file.path(PROJECT_DIR, "output/analysis")
 OUTPUT_PATH <- file.path(OUTPUT_DIR, "2026-01-24_regression_results.parquet")
+
+# CP4 configuration (from Plan Section 5).
+MIN_OBS <- 1000L      # Plan's minimum analytic sample size
+EXPECTED_SIGN <- -1L  # Plan hypothesis H1 pre-registers a negative association.
+                      # Use NULL when the Plan pre-registers no direction — an
+                      # un-preregistered sign check is post-hoc, not a validation.
+# INTENT: declare CP4 sub-checks that genuinely do not apply, with a mandatory reason.
+# ASSUMES: index with [[ ]], never $ — partial matching binds the wrong key silently.
+not_applicable <- list(
+  figures = "Stage 8.1 analysis script produces no figures; CP4.3 runs in the 8.2 visualization script",
+  convergence = "feols solves OLS in closed form and reports no convergence flag; fit is checked via within R-squared"
+)
 
 # --- Load ---
 cat("==============================================================\n")
@@ -2153,49 +2820,174 @@ cat("Clustered SE:", se(model)["poverty_rate"], "\n")
 cat("N observations:", model$nobs, "\n")
 cat("R-squared (within):", fitstat(model, "r2")[[1]], "\n")
 
-# --- Validate ---
-cat("\n==============================================================\n")
-cat("CHECKPOINT 4 VALIDATION\n")
-cat("==============================================================\n")
-
-# CP4.1: Model converged
-model_ok <- !is.null(coef(model))
-cat("  [", ifelse(model_ok, "PASS", "FAIL"), "] Model converged\n")
-
-# CP4.2: Coefficient is finite
-coef_finite <- is.finite(coef(model)["poverty_rate"])
-cat("  [", ifelse(coef_finite, "PASS", "FAIL"), "] Coefficient finite:",
-    coef(model)["poverty_rate"], "\n")
-
-# CP4.3: Expected sign (negative — higher poverty = lower proficiency)
-sign_ok <- coef(model)["poverty_rate"] < 0
-cat("  [", ifelse(sign_ok, "PASS", "NOTE"), "] Expected sign (negative):",
-    coef(model)["poverty_rate"], "\n")
-
-# CP4.4: Sufficient observations
-obs_ok <- model$nobs > 100
-cat("  [", ifelse(obs_ok, "PASS", "FAIL"), "] Sufficient obs:", model$nobs, "\n")
-
-stopifnot("STOP: Model did not converge" = model_ok)
-stopifnot("STOP: Non-finite coefficient" = coef_finite)
-
 # --- Save ---
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 results <- broom::tidy(model, conf.int = TRUE)
 arrow::write_parquet(results, OUTPUT_PATH)
 cat("\nSaved results:", OUTPUT_PATH, "\n")
 
+# --- Validate ---
+# Post-Analysis & Visualization Validation (Stage 8). Sub-checks are fixed and
+# match the Python example exactly: 4.1 analysis outputs valid, 4.2 critical
+# nulls, 4.3 figures, 4.4 correct data source.
 cat("\n==============================================================\n")
-cat("CP4 VALIDATION: PASSED\n")
+cat("CHECKPOINT 4 VALIDATION\n")
+cat("==============================================================\n")
+
+# INTENT: count every check outcome so the verdict line is DERIVED, not asserted.
+# REASONING: the previous version could print [FAIL] Sufficient obs and then an
+#   unconditional "CP4 VALIDATION: PASSED", because that check fed no stopifnot.
+cp4 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
+poverty_coef <- unname(coef(model)["poverty_rate"])
+
+# --- CP4.1: Analysis outputs valid ---
+# Results object exists and is non-empty
+if (is.null(results) || nrow(results) == 0) {
+  cat("  [FAIL] 4.1 results object: tidied results frame is empty\n")
+  cp4["failed"] <- cp4["failed"] + 1L
+} else {
+  cat(sprintf("  [PASS] 4.1 results object: %d coefficient rows written to %s\n",
+              nrow(results), basename(OUTPUT_PATH)))
+  cp4["passed"] <- cp4["passed"] + 1L
+}
+
+# Estimates finite
+if (is.na(poverty_coef) || !is.finite(poverty_coef)) {
+  cat(sprintf("  [FAIL] 4.1 estimates finite: 'poverty_rate' coefficient is %s\n", poverty_coef))
+  cp4["failed"] <- cp4["failed"] + 1L
+} else {
+  n_finite <- sum(is.finite(coef(model)))
+  cat(sprintf("  [PASS] 4.1 estimates finite: all %d coefficients finite ('poverty_rate' = %.6f)\n",
+              n_finite, poverty_coef))
+  cp4["passed"] <- cp4["passed"] + 1L
+}
+
+# Convergence flag, where the estimator reports one
+# ASSUMES: guard NA/NULL before any if () — a missing flag must not silently pass.
+#   An estimator that genuinely has no convergence flag is declared in
+#   not_applicable, so the check is [SKIPPED] with a reason rather than silent.
+converged <- model[["convStatus"]]
+if (!is.null(not_applicable[["convergence"]]) && nzchar(not_applicable[["convergence"]])) {
+  cat(sprintf("  [SKIPPED] 4.1 convergence: %s\n", not_applicable[["convergence"]]))
+  cp4["skipped"] <- cp4["skipped"] + 1L
+} else if (is.null(converged) || is.na(converged)) {
+  cat("  [NOT VERIFIED] 4.1 convergence: estimator reports no usable convergence flag\n")
+  cp4["not_verified"] <- cp4["not_verified"] + 1L
+} else if (isTRUE(converged)) {
+  cat("  [PASS] 4.1 convergence: model$convStatus is TRUE\n")
+  cp4["passed"] <- cp4["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 4.1 convergence: model$convStatus is %s\n", format(converged)))
+  cp4["failed"] <- cp4["failed"] + 1L
+}
+
+# Fit diagnostic — within R-squared in a valid range (parity with the Python example)
+r2_within <- fitstat(model, "r2")[[1]]
+if (is.na(r2_within) || !is.finite(r2_within) || r2_within < 0 || r2_within > 1) {
+  cat(sprintf("  [FAIL] 4.1 fit diagnostic: R-squared %s outside [0, 1] or non-finite\n",
+              format(r2_within)))
+  cp4["failed"] <- cp4["failed"] + 1L
+} else {
+  cat(sprintf("  [PASS] 4.1 fit diagnostic: R-squared %.4f within [0, 1]\n", r2_within))
+  cp4["passed"] <- cp4["passed"] + 1L
+}
+
+# Sample size adequate against the Plan's minimum
+if (model[["nobs"]] >= MIN_OBS) {
+  cat(sprintf("  [PASS] 4.1 sample size: n=%s >= Plan minimum %s\n",
+              format(model[["nobs"]], big.mark = ","), format(MIN_OBS, big.mark = ",")))
+  cp4["passed"] <- cp4["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 4.1 sample size: n=%s below Plan minimum %s\n",
+              format(model[["nobs"]], big.mark = ","), format(MIN_OBS, big.mark = ",")))
+  cp4["failed"] <- cp4["failed"] + 1L
+}
+
+# Expected sign — only when the Plan pre-registers one.
+if (is.null(EXPECTED_SIGN)) {
+  cat(sprintf("  [SKIPPED] 4.1 expected sign: Plan pre-registers no direction for 'poverty_rate' (observed %.6f)\n",
+              poverty_coef))
+  cp4["skipped"] <- cp4["skipped"] + 1L
+} else if (!EXPECTED_SIGN %in% c(-1L, 0L, 1L)) {
+  cat(sprintf("  [FAIL] 4.1 expected sign: unrecognized EXPECTED_SIGN '%s' (legal: -1, 0, 1, NULL)\n",
+              format(EXPECTED_SIGN)))
+  cp4["failed"] <- cp4["failed"] + 1L
+} else if (is.na(poverty_coef)) {
+  cat("  [NOT VERIFIED] 4.1 expected sign: coefficient is NA — sign undefined\n")
+  cp4["not_verified"] <- cp4["not_verified"] + 1L
+} else if (sign(poverty_coef) == EXPECTED_SIGN) {
+  cat(sprintf("  [PASS] 4.1 expected sign: coefficient %.6f matches pre-registered sign %+d\n",
+              poverty_coef, EXPECTED_SIGN))
+  cp4["passed"] <- cp4["passed"] + 1L
+} else {
+  cat(sprintf("  [WARNING] 4.1 expected sign: coefficient %.6f contradicts pre-registered sign %+d — report it, do not suppress it\n",
+              poverty_coef, EXPECTED_SIGN))
+  cp4["warning"] <- cp4["warning"] + 1L
+}
+
+# --- CP4.2: Critical nulls in the analysis frame ---
+critical_cols <- c("math_proficiency", "poverty_rate")
+absent <- setdiff(critical_cols, names(df_complete))
+if (length(absent) > 0) {
+  cat(sprintf("  [FAIL] 4.2 critical nulls: column(s) absent from the analysis frame (%s)\n",
+              paste(absent, collapse = ", ")))
+  cp4["failed"] <- cp4["failed"] + 1L
+} else {
+  null_total <- sum(sapply(critical_cols, \(col) sum(is.na(df_complete[[col]]))))
+  if (null_total == 0) {
+    cat(sprintf("  [PASS] 4.2 critical nulls: 0 NAs in (%s) across %s analysis rows\n",
+                paste(critical_cols, collapse = ", "),
+                format(nrow(df_complete), big.mark = ",")))
+    cp4["passed"] <- cp4["passed"] + 1L
+  } else {
+    cat(sprintf("  [FAIL] 4.2 critical nulls: %d NAs in (%s) across %s analysis rows\n",
+                null_total, paste(critical_cols, collapse = ", "),
+                format(nrow(df_complete), big.mark = ",")))
+    cp4["failed"] <- cp4["failed"] + 1L
+  }
+}
+
+# --- CP4.3: Figures ---
+if (!is.null(not_applicable[["figures"]]) && nzchar(not_applicable[["figures"]])) {
+  cat(sprintf("  [SKIPPED] 4.3 figures: %s\n", not_applicable[["figures"]]))
+  cp4["skipped"] <- cp4["skipped"] + 1L
+} else {
+  # In an 8.2 visualization script: iterate the figures the task promised and
+  # confirm each exists and is non-empty, then inspect each one via the Read tool.
+  cat("  [NOT VERIFIED] 4.3 figures: no expected-figure list configured for this script\n")
+  cp4["not_verified"] <- cp4["not_verified"] + 1L
+}
+
+# --- CP4.4: Correct data source ---
+if (grepl("data/processed/", INPUT_PATH, fixed = TRUE)) {
+  cat(sprintf("  [PASS] 4.4 data source: input is %s (under data/processed/)\n", basename(INPUT_PATH)))
+  cp4["passed"] <- cp4["passed"] + 1L
+} else {
+  cat(sprintf("  [FAIL] 4.4 data source: input is %s, not under data/processed/\n", INPUT_PATH))
+  cp4["failed"] <- cp4["failed"] + 1L
+}
+
+cat("\n==============================================================\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp4[["passed"]], cp4[["warning"]], cp4[["failed"]],
+            cp4[["not_verified"]], cp4[["skipped"]]))
+if (cp4[["failed"]] > 0 || cp4[["not_verified"]] > 0 ||
+    (cp4[["passed"]] + cp4[["warning"]] + cp4[["failed"]]) == 0) {
+  cat("CP4 VALIDATION: FAILED\n")
+  cat("==============================================================\n")
+  stop("CP4 FAILED - see details above")
+} else if (cp4[["warning"]] > 0) {
+  cat("CP4 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP4 VALIDATION: PASSED\n")
+}
 cat("==============================================================\n")
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -2308,12 +3100,10 @@ joined <- schools |>
 }
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 
@@ -2434,12 +3224,10 @@ cat("==============================================================\n")
 if (!all_passed) quit(status = 1)
 
 # =============================================================================
-# EXECUTION LOG
-# Executed: [auto-appended after running]
-# Duration: [auto-appended]
-# Exit code: [auto-appended]
-# --- STDOUT ---
-# [auto-appended]
+# [Execution log: run_with_capture.sh appends it here after the run
+#  (Executed, Command, Duration, Exit code, Capture, STDOUT, STDERR).
+#  Do not write this block yourself: a script that already contains the
+#  log marker is refused by the wrapper's re-run guard.]
 # =============================================================================
 ```
 

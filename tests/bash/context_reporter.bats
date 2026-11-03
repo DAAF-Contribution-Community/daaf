@@ -3,11 +3,19 @@
 # Tests for context-reporter.sh -- context utilization injection hook
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers in
-# calculate(). Fable/Mythos use ELEVATED 30%/300k, HIGH 40%/400k, and
-# CRITICAL 50%/500k. Exact GPT 5.6 Sol ids use ELEVATED 40%/300k, HIGH
-# 60%/400k, and CRITICAL 75%/500k. Every other model -- including
-# opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k, HIGH
-# 60%/200k, and CRITICAL 75%/250k.
+# calculate(). The Claude extended-horizon profile (Fable/Mythos, plus Opus
+# 5.5 by 2026-09-23 user policy decision) uses ELEVATED 40%/400k, HIGH
+# 50%/500k, and CRITICAL 60%/600k -- raised from 30%/300k, 40%/400k, 50%/500k
+# by user policy decision on 2026-10-23, not by DAAF quality validation
+# (research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise, maintainer-only
+# workspace). The exact extended-horizon GPT ids -- GPT 5.6 Sol and
+# GPT-6 Astra, plus (2026-09-29 user policy decision) GPT-6 Sol and the flagship
+# -pro form of all three, and (2026-10-12 user policy decision) GPT-6.1 Sol and
+# its -pro form -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL
+# 90%/500k. Every other model -- including opus-4-8[1m] and non-exact Sol/Astra
+# variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and CRITICAL 75%/250k.
+# Provider-dotted Claude ids (anthropic/claude-opus-5.5) are classified through
+# normalize_model_id (2026-09-29 block at the end of this file).
 #
 # Also covers the main/subagent measurement split (a subagent is measured with
 # ITS OWN model's family, not the session's) and fail-open behavior.
@@ -75,7 +83,7 @@ setup() {
 
 teardown() {
     # rm -rf the whole per-test scratch dir removes every cache file AND the
-    # (empty) directory the Convention 6 EISDIR test plants at a gate path, so no
+    # (empty) directory the EISDIR redirection test plants at a gate path, so no
     # cross-test residue survives and nothing is left under the repo for the
     # workspace-invariants check.
     rm -rf "$SCRATCH_DIR"
@@ -156,63 +164,130 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
-# Fable family (1M window) -- permissive thresholds 30/40/50% & 300/400/500k
+# Claude extended-horizon profile (1M window) -- 40/50/60% & 400/500/600k
+# -------------------------------------------------------------------------
+# Raised from 30/40/50% & 300/400/500k by user policy decision on 2026-10-23,
+# not by DAAF quality validation. On the 1M window the percentage and absolute
+# legs coincide (40% = 400k, 50% = 500k, 60% = 600k); the 400k and 2M
+# denominator matrices below isolate each leg.
 # =========================================================================
 
-@test "fable: 299k on 1M window is NOMINAL (just under 300k and 30%)" {
+@test "fable: 399k on 1M window is NOMINAL (just under 400k and 40%)" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 299000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 399000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[NOMINAL]"
 }
 
-@test "fable: 300k on 1M window is ELEVATED (absolute 300k leg fires at 30%)" {
+@test "fable: 300k on 1M window is NOMINAL (the pre-2026-10-23 ELEVATED point)" {
+    # Locks the raise itself: under the old 30%/300k gate this read ELEVATED.
     _seed_window 1000000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+}
+
+@test "fable: 400k on 1M window is ELEVATED (400k absolute and 40% legs coincide)" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
 }
 
-@test "fable: 400k on 1M window is HIGH" {
+@test "fable: 500k on 1M window is HIGH" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[HIGH]"
 }
 
-@test "fable: 500k on 1M window is CRITICAL" {
+@test "fable: 600k on 1M window is CRITICAL" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 600000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[CRITICAL]"
 }
 
-@test "mythos: 300k on 1M window is ELEVATED (mythos shares fable family)" {
+@test "mythos: 400k on 1M window is ELEVATED (mythos shares fable family)" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-mythos-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-mythos-5" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
 }
 
-@test "fable[1m]: 300k on 1M window is ELEVATED (bracketed fable variant keeps extended-horizon tier)" {
+@test "fable[1m]: 400k on 1M window is ELEVATED (bracketed fable variant keeps extended-horizon tier)" {
     # The exact string claude-fable-5[1m] must resolve to the fable family, not
-    # conservative. At 300k/1M that is 30% -> extended-horizon ELEVATED; a
-    # conservative family would treat 300k (>=250k absolute leg) as CRITICAL, so
+    # conservative. At 400k/1M that is 40% -> extended-horizon ELEVATED; a
+    # conservative family would treat 400k (>=250k absolute leg) as CRITICAL, so
     # ELEVATED confirms the bracketed variant is matched as fable.
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5[1m]" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5[1m]" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
+}
+
+# Boundary matrices for the Claude extended-horizon profile (2026-10-23 raise).
+# Every member spelling is run through just-below/at pairs for each gate on
+# three denominators: the 1M full window (both legs coincide), a 400k window
+# (percentage legs fire far below the 400k/500k/600k absolutes), and a 2M
+# window (absolute legs fire at 20/25/30%, below the percentage legs).
+_claude_extended_matrix() {
+    # Args: $1 seeded window, $2 window label in k, then "tokens severity pct" rows.
+    local window="$1" window_k="$2" model boundary tokens expected_severity expected_pct
+    shift 2
+    for model in claude-fable-5 claude-mythos-5 claude-fable-5-1 claude-opus-5-5 \
+                 'claude-opus-5-5[1m]' anthropic/claude-opus-5-5 'anthropic/claude-opus-5-5[1m]'; do
+        for boundary in "$@"; do
+            read -r tokens expected_severity expected_pct <<< "$boundary"
+            _clean_ctx_caches
+            _seed_window "$window"
+            _write_main_transcript "${TEST_DIR}/t.jsonl" "$model" "$tokens"
+            run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+            assert_success
+            assert_output --partial "[${expected_severity}]: $((tokens / 1000))k / ${window_k}k tokens (${expected_pct}%)"
+        done
+    done
+}
+
+@test "Claude extended-horizon full-window boundaries: 40/50/60% = 400k/500k/600k on 1M" {
+    _claude_extended_matrix 1000000 1000 \
+        "399999 NOMINAL 39" \
+        "400000 ELEVATED 40" \
+        "499999 ELEVATED 49" \
+        "500000 HIGH 50" \
+        "599999 HIGH 59" \
+        "600000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon percentage legs: 40/50/60% on a 400k denominator" {
+    _claude_extended_matrix 400000 400 \
+        "159999 NOMINAL 39" \
+        "160000 ELEVATED 40" \
+        "199999 ELEVATED 49" \
+        "200000 HIGH 50" \
+        "239999 HIGH 59" \
+        "240000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon absolute legs: 400k/500k/600k on a 2M denominator" {
+    _claude_extended_matrix 2000000 2000 \
+        "399999 NOMINAL 19" \
+        "400000 ELEVATED 20" \
+        "499999 ELEVATED 24" \
+        "500000 HIGH 25" \
+        "599999 HIGH 29" \
+        "600000 CRITICAL 30"
 }
 
 # =========================================================================
-# GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
+# GPT 5.6 Sol exact tier: independent percentages + retained absolutes
 # =========================================================================
 
 @test "GPT 5.6 Sol: 299k on 1050k window is NOMINAL" {
@@ -251,16 +326,20 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "500k / 1050k"
 }
 
-@test "exact Sol ChatGPT boundaries use 40/60/75% on the final 370k denominator" {
+@test "exact Sol ChatGPT boundaries are the 300k/400k/500k absolute gates on the final 919k denominator" {
     local boundary tokens expected_severity expected_pct
+    # On the 919k lane denominator the Sol/Astra percentage legs land at 551.4k
+    # (60%), 689.25k (75%) and 827.1k (90%) -- all ABOVE the retained absolute
+    # legs, so the absolute gates are the ones that fire. Percentage-gate
+    # coverage lives in the non-ChatGPT 400k-denominator test below.
     _seed_window 1050000
     for boundary in \
-        "147999 NOMINAL 39" \
-        "148000 ELEVATED 40" \
-        "221999 ELEVATED 59" \
-        "222000 HIGH 60" \
-        "277499 HIGH 74" \
-        "277500 CRITICAL 75"; do
+        "299999 NOMINAL 32" \
+        "300000 ELEVATED 32" \
+        "399999 ELEVATED 43" \
+        "400000 HIGH 43" \
+        "499999 HIGH 54" \
+        "500000 CRITICAL 54"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
         rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" "$tokens"
@@ -268,7 +347,29 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
         assert_success
         assert_output --partial "[${expected_severity}]"
-        assert_output --partial "/ 370k tokens (${expected_pct}%)"
+        assert_output --partial "/ 919k tokens (${expected_pct}%)"
+    done
+}
+
+@test "exact Sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct
+    # A 400k denominator isolates all three percentage gates below the retained
+    # 300k/400k/500k absolute gates, so no absolute leg can mask a transition.
+    _seed_window 400000
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-5.6-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 400k tokens (${expected_pct}%)"
     done
 }
 
@@ -295,6 +396,10 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 
 @test "GPT 5.6 non-Sol and near-miss variants stay conservative" {
     local model
+    # 2026-09-29 policy flip: gpt-5.6-sol-pro used to be a near miss here; the
+    # user policy decision of 2026-09-29 (flagship -pro reads as its base) now
+    # admits it ON PURPOSE, so the genuine right-boundary near miss is
+    # gpt-5.6-sol-pro-x. The -pro positive cases live in the 2026-09-29 block.
     for model in \
         gpt-5.6-terra \
         gpt-5.6-luna \
@@ -302,7 +407,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         foo-gpt-5.6-sol \
         notgpt-5.6-sol \
         'vendor/notgpt-5.6-sol[1m]' \
-        gpt-5.6-sol-pro \
+        gpt-5.6-sol-pro-x \
         gpt-5.6-sol-mini \
         gpt-5.6-sol-chat \
         gpt-5.6-sol-20260715 \
@@ -325,6 +430,94 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
     _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+    assert_output --partial "(28%)"
+}
+
+# =========================================================================
+# GPT-6 Astra exact tier: Sol-parity extended horizon (1,050,000 window)
+# =========================================================================
+# Astra registers with the same quality tier as Sol (60/75/90% + 300k/400k/500k)
+# and the same 1,050,000 physical window. The 919k ChatGPT-lane cap applies to
+# Astra via GPT_FLAGSHIP_RE and is MEASURED for both lane flagships (2026-09-05).
+
+@test "GPT-6 Astra: 299k on 1050k window is NOMINAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 299000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "299k / 1050k"
+}
+
+@test "GPT-6 Astra: 300k on 1050k window is ELEVATED" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+}
+
+@test "provider-prefixed GPT-6 Astra[1m]: 400k on 1050k window is HIGH" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openrouter/openai/gpt-6-astra[1m]" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 1050k"
+}
+
+@test "provider-prefixed GPT-6 Astra: 500k on 1050k window is CRITICAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-6-astra" 500000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "500k / 1050k"
+}
+
+@test "GPT-6 Astra non-flagship and near-miss variants stay conservative" {
+    local model
+    # 2026-09-29 policy flip: gpt-6-astra-pro is now admitted ON PURPOSE (user
+    # policy decision: flagship -pro reads as its base), so the right-boundary
+    # near miss is gpt-6-astra-pro-x. gpt-6-luna stays here: since 2026-09-29 it
+    # maps to the 1.05M window, but its quality tier is conservative (like
+    # gpt-5.6-luna), so 300k still reads CRITICAL.
+    for model in \
+        gpt-6-astra-pro-x \
+        gpt-6-astra-mini \
+        gpt-6-astra-chat \
+        xgpt-6-astra \
+        foo-gpt-6-astra \
+        notgpt-6-astra \
+        'vendor/notgpt-6-astra[1m]' \
+        'gpt-6-astra[1m]-x' \
+        gpt-6-astrab \
+        gpt-6 \
+        gpt-6-luna \
+        'gpt-6-astra[1m'; do
+        _clean_ctx_caches
+        _seed_window 1050000
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "$model" 300000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[CRITICAL]"
+        assert_output --partial "300k / 1050k"
+    done
+}
+
+@test "mixed: GPT-6 Astra subagent under sonnet session gets 1050k and extended tier" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-6-astra' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-6-astra" 300000
 
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
@@ -385,13 +578,13 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     # 220k lands in [200k, 250k): conservative HIGH leg, below the CRITICAL leg.
-    # Under the fable family this same count would be NOMINAL (< 300k), which is
+    # Under the fable family this same count would be NOMINAL (< 400k), which is
     # exactly the distinction under test.
     assert_output --partial "[HIGH]"
 }
 
 # Off-by-one boundary pair for the CONSERVATIVE family's absolute legs on a 1M
-# window (symmetric with the fable 299k/300k pair above). 149k sits one k below
+# window (symmetric with the fable 399k/400k pair above). 149k sits one k below
 # the 150k ELEVATED leg; 200k sits exactly on the HIGH leg. Both use the 1M
 # window so the percentage legs stay far below their thresholds (149k=14%,
 # 200k=20%), isolating the ABSOLUTE-leg boundary as the sole decision driver.
@@ -465,11 +658,104 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    # 250k against the fable subagent's 1M window = 25%, under the 300k/30%
+    # 250k against the fable subagent's 1M window = 25%, under the 400k/40%
     # permissive ELEVATED leg -> NOMINAL. Under the conservative family the same
     # 250k would be CRITICAL, so this proves the fable family is applied.
     assert_output --partial "[NOMINAL]"
     assert_output --partial "250k / 1000k"
+}
+
+# =========================================================================
+# Opus 5: 1M physical window (registered 2026-09-05) but CONSERVATIVE
+# quality thresholds. Observed on Claude Code 2.1.261 via /model + /context:
+# bare `claude-opus-5` reports "42.8k/1m tokens" and `claude-opus-5[1m]`
+# reports "48.2k/1m" -- so the BARE id must map to 1,000,000, not fall to the
+# 200k arm. The quality-profile glob is deliberately NOT extended to
+# *opus-5*: its only Opus entry is the anchored claude-opus-5-5 slug (added
+# 2026-09-23), so Opus 5 keeps 40/60/75% + 150/200/250k.
+#
+# NOTE (historical): these four cases were written ahead of a user-applied
+# hook patch; that patch is deployed, and they pass against the live hook.
+# =========================================================================
+
+@test "mixed: bare claude-opus-5 subagent maps to 1000k and is ELEVATED at 150k" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000  # session window; subagent correction must override to 1M
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5" 150000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 150k / 1000k = 15%; the conservative 150k absolute leg fires -> ELEVATED.
+    # Without the *opus-5* arm this reads "150k / 200k" (75%) -> CRITICAL.
+    assert_output --partial "150k / 1000k"
+    assert_output --partial "[ELEVATED]"
+}
+
+@test "mixed: claude-opus-5[1m] subagent maps to 1000k and is ELEVATED at 150k" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5[1m]" 150000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "150k / 1000k"
+    assert_output --partial "[ELEVATED]"
+}
+
+@test "mixed: claude-opus-5 subagent is HIGH at 220k -- conservative profile, NOT Fable/Mythos" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5" 220000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 220k / 1000k = 22%; conservative HIGH leg [200k, 250k). Under the
+    # Fable/Mythos profile this same 220k would be NOMINAL (< 400k) -- Opus 5
+    # must NOT select that profile despite sharing the 1M physical window.
+    assert_output --partial "220k / 1000k"
+    assert_output --partial "[HIGH]"
+}
+
+@test "mixed: claude-opus-5[1m] subagent is HIGH at 220k -- [1m] does not buy Fable gates" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5[1m]" 220000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "220k / 1000k"
+    assert_output --partial "[HIGH]"
+}
+
+@test "mixed: claude-fable-5-1 subagent maps to 1000k and keeps the Fable profile" {
+    # Locks the substring behaviour of the *fable-5* globs against the real
+    # 2.1.261 model id `claude-fable-5-1` as TESTED FACT rather than inference.
+    # This case passes with or without the Opus 5 patch.
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-fable-5-1' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-fable-5-1" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 250k / 1000k = 25% -> below the Fable 400k/40% ELEVATED leg -> NOMINAL.
+    # Under the conservative profile the same 250k would be CRITICAL.
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[NOMINAL]"
 }
 
 # =========================================================================
@@ -552,24 +838,26 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 919k
 # -------------------------------------------------------------------------
-# The final min(resolved, 370000) constraint must cover the main cache path,
+# The final min(resolved, 919000) constraint must cover the main cache path,
 # same-model and different-model subagents, and unsafe explicit overrides. Exact
 # lane signals are required. API/OpenRouter behavior and non-GPT models remain
 # unchanged. Physical-window accounting stays separate from Sol's quality tier.
 # =========================================================================
 
-@test "chatgpt lane: exact Sol main session at 290k is CRITICAL against final 370k cap" {
+@test "chatgpt lane: exact Sol main session at 400k is HIGH against final 919k cap" {
+    # 400k trips the retained 400k absolute HIGH gate; on the 919k denominator
+    # that is only 43%, well below the 75% percentage leg.
     _seed_window 1050000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "[CRITICAL]"
-    assert_output --partial "290k / 370k"
-    assert_output --partial "(78%)"
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 919k"
+    assert_output --partial "(43%)"
 }
 
 @test "API route: exact Sol main session at 290k remains NOMINAL on 1.05M" {
@@ -584,8 +872,8 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "(27%)"
 }
 
-@test "statusline writer-to-reporter path caches 370k and reports Sol 290k CRITICAL" {
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+@test "statusline writer-to-reporter path caches 919k and reports Sol 400k HIGH" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
@@ -593,7 +881,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_success
     run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
     assert_success
-    assert_output "370000"
+    assert_output "919000"
 
     # Ensure no warm rate gate can suppress the reporter half of this path.
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
@@ -601,11 +889,11 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "[CRITICAL]"
-    assert_output --partial "290k / 370k"
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 919k"
 }
 
-@test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 370k (81%)" {
+@test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 919k (32%)" {
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -616,9 +904,10 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "300k / 370k"
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 919k"
     refute_output --partial "300k / 1050k"
-    assert_output --partial "(81%)"
+    assert_output --partial "(32%)"
 }
 
 @test "chatgpt lane: same-model exact Sol subagent caps a stale 1.05M session cache" {
@@ -627,30 +916,30 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     _seed_window 1050000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
-    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "gpt-5.6-sol[1m]" 290000
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "[CRITICAL]"
-    assert_output --partial "290k / 370k"
-    assert_output --partial "(78%)"
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 919k"
+    assert_output --partial "(43%)"
 }
 
-@test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 370k" {
+@test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 919k" {
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
-    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 290000
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "[CRITICAL]"
-    assert_output --partial "290k / 370k"
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 919k"
 }
 
 @test "lane vars unset: gpt-5.6-sol subagent keeps the 1.05M API-lane window (28%)" {
@@ -664,7 +953,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "300k / 1050k"
-    refute_output --partial "300k / 370k"
+    refute_output --partial "300k / 919k"
     assert_output --partial "(28%)"
 }
 
@@ -680,7 +969,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "300k / 1050k"
-    refute_output --partial "300k / 370k"
+    refute_output --partial "300k / 919k"
 }
 
 @test "malformed lane signal values do not activate the reporter cap" {
@@ -695,7 +984,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 @test "chatgpt lane preserves a lower positive explicit context window" {
-    # A 250k override remains below the 370k final ceiling: 200k -> 80%.
+    # A 250k override remains below the 919k final ceiling: 200k -> 80%.
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -708,7 +997,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "200k / 250k"
-    refute_output --partial "200k / 370k"
+    refute_output --partial "200k / 919k"
     assert_output --partial "(80%)"
 }
 
@@ -754,8 +1043,8 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
-    assert_output --partial "(30%)"
+    assert_output --partial "111k / 919k"
+    assert_output --partial "(12%)"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
@@ -765,7 +1054,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
@@ -776,7 +1065,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_success
     assert_output --partial "[NOMINAL]"
     assert_output --partial "90k / 1000k"
-    refute_output --partial "/ 370k"
+    refute_output --partial "/ 919k"
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 }
@@ -809,7 +1098,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
@@ -819,7 +1108,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
@@ -829,7 +1118,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "100k / 1000k"
-    refute_output --partial "/ 370k"
+    refute_output --partial "/ 919k"
     run cat "$model_cache"
     assert_output "claude-fable-5"
 }
@@ -858,7 +1147,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
-    assert_output --partial "90k / 370k"
+    assert_output --partial "90k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 }
@@ -867,15 +1156,15 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 # Canonical positive-decimal override contract
 # =========================================================================
 
-@test "canonical reporter override 370000 and a lower value are accepted" {
+@test "canonical reporter override 919000 and a lower value are accepted" {
     _seed_window 1050000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
-        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
 
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
@@ -890,12 +1179,12 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     _seed_window 1050000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
     for value in \
-        0370000 \
+        0919000 \
         080000 \
         0 \
-        +370000 \
-        ' 370000' \
-        '370000 ' \
+        +919000 \
+        ' 919000' \
+        '919000 ' \
         9223372036854775808 \
         99999999999999999999999999999999999999; do
         rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
@@ -903,7 +1192,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
         refute_output --partial "value too great"
         refute_output --partial "syntax error"
     done
@@ -926,7 +1215,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
     done
 }
 
@@ -969,7 +1258,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
         assert_output --partial "90k / 200k"
-        refute_output --partial "/ 370k"
+        refute_output --partial "/ 919k"
         refute_output --partial "/ 1050k"
     done
 }
@@ -1028,13 +1317,12 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 # ############################################################################
 # HARDENING CASES (2026-07-20 StatuslineHardening)
 # ----------------------------------------------------------------------------
-# The cases below exercise the CORRECTED logic in context-reporter.proposed.sh
-# (findings 2,3,4,7,8,10,11). They are parameterized on CONTEXT_REPORTER_SH:
-# run them against the proposed copy pre-apply, e.g.
-#   CONTEXT_REPORTER_SH=/daaf/research/2026-07-20_FrameworkDev_StatuslineHardening/context-reporter.proposed.sh \
+# The cases below exercise the CORRECTED logic from the 2026-07-20 hardening
+# pass (findings 2,3,4,7,8,10,11), now in the installed hook, and pass against
+# the default (installed) path. They are parameterized on CONTEXT_REPORTER_SH,
+# so a draft can be checked before it is installed, e.g.
+#   CONTEXT_REPORTER_SH=/path/to/draft.sh \
 #     bats /daaf/tests/bash/context_reporter.bats
-# Once the user copies the proposed file over the installed hook from the host,
-# they pass with the default (installed) path too.
 # ############################################################################
 
 # --- Additional fixture helpers for the hardening cases ---
@@ -1057,7 +1345,8 @@ _payload_subagent_aid() {
 
 # Emit a DIRECT-subagent payload: transcript_path IS the subagent's own
 # transcript (basename agent-<agent>.jsonl), the future-Claude-Code shape that
-# Convention 10 guards. No parent transcript is available to scan.
+# the parent-model isolation guards cover. No parent transcript is available
+# to scan.
 _payload_direct_subagent() {
     # $1 = path to the subagent's own transcript (basename = agent-<agent>.jsonl)
     printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s","agent_id":"%s"}' \
@@ -1087,12 +1376,12 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 2 — identifier allowlist before path construction (finding 2)
+# Identifier allowlist before path construction
 # =========================================================================
 
 @test "adversarial session_id is rejected before any path build (exit 0, no injection)" {
     local sid
-    # A valid fable transcript that WOULD inject (CRITICAL at 500k/1M) if the id
+    # A valid fable transcript that WOULD inject (HIGH at 500k/1M) if the id
     # were accepted; empty output therefore proves the id gate suppressed it.
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
     _seed_window 1000000
@@ -1139,7 +1428,7 @@ _write_main_transcript_raw_tokens() {
 @test "the default session_id and the bats fixture ids still pass the allowlist" {
     # is_safe_id must not regress the legitimate default: no session_id key ->
     # jq default 'default' -> must inject normally.
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     printf '%s' 1000000 > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-default"
     run bash "$CONTEXT_REPORTER_SH" < <(printf '{"hook_event_name":"PreToolUse","transcript_path":"%s"}' "${TEST_DIR}/t.jsonl")
     assert_success
@@ -1149,20 +1438,20 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 4 — full-transcript usage recovery (finding 3)
+# Full-transcript usage recovery
 # =========================================================================
 
 @test "full-scan recovery: >50 trailing zero-token placeholders do not hide real usage" {
     local transcript="${TEST_DIR}/trailing-zeros.jsonl"
     _seed_window 1000000
-    _write_main_transcript "$transcript" "claude-fable-5" 300000
+    _write_main_transcript "$transcript" "claude-fable-5" 400000
     # 60 trailing zero-token placeholders push the positive record out of the
-    # old tail-50 window; a full scan must still recover 300k.
+    # old tail-50 window; a full scan must still recover 400k.
     _append_zero_usage "$transcript" "claude-fable-5" 60 false
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "full-scan recovery works on the subagent branch too" {
@@ -1178,12 +1467,12 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 3 — closed-set flagship classifier grammar (finding 4)
+# Closed-set flagship classifier grammar
 # =========================================================================
 # The physical-window classifier must grant the 1,050,000 flagship window ONLY
 # to exact closed-set matches. Malformed codenames that the OLD broad glob
 # accepted must now fall through to the conservative 200k default (they are
-# neither mini/chat nor an exact flagship), and must not trip the 370k cap.
+# neither mini/chat nor an exact flagship), and must not trip the 919k cap.
 
 @test "malformed flagship-ish ids map conservatively, not to the 1.05M flagship window" {
     local model
@@ -1204,11 +1493,11 @@ _write_main_transcript_raw_tokens() {
         assert_success
         assert_output --partial "90k / 200k"
         refute_output --partial "/ 1050k"
-        refute_output --partial "/ 370k"
+        refute_output --partial "/ 919k"
     done
 }
 
-@test "exact closed-set flagships still receive the flagship window / 370k lane cap" {
+@test "exact closed-set flagships still receive the flagship window / 919k lane cap" {
     local model
     parent="${TEST_DIR}/main.jsonl"
     transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
@@ -1222,12 +1511,12 @@ _write_main_transcript_raw_tokens() {
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
     done
 }
 
 # =========================================================================
-# Convention 5 — bounded numerator before x100 (finding 10)
+# Bounded numerator before x100
 # =========================================================================
 # The exact boundary floor(INT64_MAX/100) = 92233720368547758. jq coerces usage
 # sums through IEEE-754 doubles, so the input_tokens literals below are chosen as
@@ -1261,12 +1550,11 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 10 — parent-model isolation on a direct subagent transcript
-# (finding 7)
+# Parent-model isolation on a direct subagent transcript
 # =========================================================================
 
 @test "direct subagent transcript: session model comes from the parent cache, subagent mapped by its OWN window" {
-    # Target scenario from Convention 10: parent ctx cache 1,000,000; legacy
+    # Target scenario: parent ctx cache 1,000,000; legacy
     # parent model Fable; a DIRECT Sonnet subagent transcript; usage 100,000; no
     # subagent-model cache. Must report 100k / 200k (50%) ELEVATED (Sonnet's own
     # conservative window) -- NOT 100k / 1000k (10%), which is the pre-fix bug
@@ -1300,33 +1588,33 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 11 — future/corrupt gate timestamp (finding 8)
+# Future/corrupt gate timestamp
 # =========================================================================
 
 @test "future gate timestamp is treated as corrupt (reset to 0) and does not suppress the report" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     # A far-future gate value would make (NOW - LAST_INJECT) negative -> always
     # under the 60s interval -> reports suppressed indefinitely, pre-fix.
     printf '%s' "$(( $(date +%s) + 100000 ))" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "corrupt (non-numeric) gate timestamp is treated as 0 and does not suppress the report" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     printf '%s' 'not-a-timestamp' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "a legitimate recent-past gate timestamp still suppresses within the interval" {
-    # Regression guard: the Convention 11 reset must not defeat normal rate
+    # Regression guard: the corrupt-timestamp reset must not defeat normal rate
     # limiting. A valid value a few seconds in the past stays under 60s.
     _seed_window 1000000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
@@ -1337,24 +1625,1053 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 6 — suppress redirection-open diagnostics (finding 11)
+# Suppress redirection-open diagnostics
 # =========================================================================
 
 @test "gate write open() failure (gate path is a directory) leaks no diagnostic and still injects" {
     # Force an open() failure by making the gate path (under the test cache seam)
-    # an (empty) DIRECTORY: EISDIR on the '>' redirect. Convention 6 wraps the
+    # an (empty) DIRECTORY: EISDIR on the '>' redirect. The hook wraps the
     # write so the "Is a directory" diagnostic cannot reach the display stream;
     # the injection still emits and the hook exits 0. teardown's rm -rf of the
     # scratch dir removes the planted directory.
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     mkdir -p "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
     refute_output --partial "Is a directory"
     refute_output --partial "No such file"
     refute_output --partial "Permission denied"
+}
+
+# =========================================================================
+# Denominator resolution without a session window cache (2026-09-05)
+# -------------------------------------------------------------------------
+# The window cache is written by the statusline; the reporter can fire before
+# it exists (first prompt of a session, or a headless dispatch that never
+# renders one). Formerly the reporter then inherited the most recent cache
+# from ANY session, else 200k — so a GPT-6 Astra or Opus 5 session with no
+# cache read 100%/CRITICAL and subagents falsely throttled. Now: this
+# session's cache when present, else the static map for the MEASURED model,
+# never another session's cache. The lane cap and override still apply after.
+# =========================================================================
+
+@test "uncached main session: gpt-6-astra on the ChatGPT lane maps to 919k, not 200k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "400k / 919k"
+    assert_output --partial "[HIGH]"
+    refute_output --partial "/ 200k"
+}
+
+@test "uncached main session: claude-opus-5 maps to 1000k, not 200k" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 1000k tokens (10%)"
+    assert_output --partial "[NOMINAL]"
+}
+
+@test "uncached main session: an UNRELATED session's window cache is never inherited" {
+    # Another session's cache says 200000; this gpt-6-astra session must still
+    # map by its own model (1050k on the API lane), not inherit 200k.
+    printf '200000\n' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-some-other-session"
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "400k / 1050k"
+    refute_output --partial "/ 200k"
+}
+
+@test "uncached SAME-model subagent: gpt-6-astra child of a gpt-6-astra session maps by model, not 200k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    parent="${TEST_DIR}/main.jsonl"
+    _write_main_transcript "$parent" "gpt-6-astra" 50000
+    subdir="${TEST_DIR}/${FAKE_SESSION}/subagents"
+    _write_subagent_transcript "${subdir}/agent-${FAKE_AGENT}.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "400k / 919k"
+    assert_output --partial "[HIGH]"
+    refute_output --partial "/ 200k"
+}
+
+@test "session window cache, when present, stays authoritative over the static map" {
+    # Cache says 200000 for a model the static map would put at 1M: the cache
+    # (Claude Code's own provisioned window) wins for the main session.
+    _seed_window 200000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 200k"
+}
+
+# =========================================================================
+# Opus 5.5 (claude-opus-5-5, added Claude Code 2.1.280): 1M physical window
+# AND -- uniquely among Opus models -- the EXTENDED-HORIZON quality profile
+# (then 30/40/50% + 300/400/500k; 40/50/60% + 400/500/600k since the
+# 2026-10-23 user policy decision), by USER POLICY DECISION of 2026-09-23 (not by
+# validation)
+# (maintainer-only record, not shipped:
+# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
+# § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
+# as a provider path's final segment), NEVER *opus-5* and never a loose
+# *opus-5-5* substring: bare
+# Opus 5 must keep the conservative gates, which the last two cases lock, and
+# near misses are locked by the boundary-anchoring block appended below.
+#
+# NOTE (historical): the two PROFILE cases below were written ahead of a
+# user-applied hook patch; that patch is deployed, and they pass against the
+# live hook. The two WINDOW cases and the two
+# bare-Opus-5 lock cases pass with or without the patch (the physical-window
+# *opus-5* arm already substring-matches claude-opus-5-5).
+# =========================================================================
+
+@test "mixed: bare claude-opus-5-5 subagent maps to a 1000k window" {
+    # WINDOW ONLY -- 100k is NOMINAL under both profiles, so this case isolates
+    # the physical-window lookup and passes with or without the profile patch.
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5-5" 100000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 1000k"
+    refute_output --partial "/ 200k"
+}
+
+@test "mixed: claude-opus-5-5[1m] subagent maps to a 1000k window" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5-5[1m]" 100000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 1000k"
+    refute_output --partial "/ 200k"
+}
+
+@test "mixed: bare claude-opus-5-5 subagent is NOMINAL at 250k -- extended-horizon profile" {
+    # PROFILE -- exercises the live hook's anchored extended-horizon arm
+    # (context-reporter_opus55.patch is deployed).
+    # 250k / 1000k = 25%: below the extended-horizon 400k/40% ELEVATED leg.
+    # Under the conservative profile the same 250k would be CRITICAL (>= 250k).
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5-5" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[NOMINAL]"
+}
+
+@test "mixed: claude-opus-5-5[1m] subagent is NOMINAL at 250k -- extended-horizon profile" {
+    # PROFILE -- exercises the live hook's anchored extended-horizon arm
+    # (context-reporter_opus55.patch is deployed).
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5-5[1m]" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[NOMINAL]"
+}
+
+@test "mixed: bare claude-opus-5 STILL conservative at 250k -- *opus-5-5* must not widen to *opus-5*" {
+    # LOCK. If the profile glob were ever written *opus-5* instead of
+    # *opus-5-5*, bare Opus 5 would silently inherit the extended-horizon gates
+    # and this 250k reading would flip from CRITICAL to NOMINAL.
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[CRITICAL]"
+    refute_output --partial "[NOMINAL]"
+}
+
+@test "mixed: claude-opus-5[1m] STILL conservative at 250k -- lock against glob widening" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5[1m]" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[CRITICAL]"
+    refute_output --partial "[NOMINAL]"
+}
+
+# =========================================================================
+# Opus 5.5 profile arm: BOUNDARY-ANCHORING locks (added 2026-09-23, fix cycle 1).
+# The profile arm grants a privilege (relaxed gates, 40/50/60% + 400/500/600k
+# since 2026-10-23),
+# so it names claude-opus-5-5 exactly -- bare, or as the FINAL segment of a
+# provider path -- rather than substring-matching *opus-5-5*. These four cases
+# are the regression lock for that choice: two right-/left-boundary near misses
+# that must stay CONSERVATIVE, and two provider-path forms that must be
+# recognized. If the arm is ever reverted to a loose *opus-5-5* glob, the first
+# two flip from CRITICAL to NOMINAL and fail. Lockstep twin of the same block in
+# tests/bash/subagent_bar.bats.
+#
+# PATCH DEPENDENCE (historical): context-reporter_opus55.patch is deployed and
+# all four cases pass against the live hook. The two near-miss CONSERVATIVE
+# cases would also pass against the pre-patch hook (a near miss is
+# conservative either way); the two provider-path NOMINAL cases are PROFILE
+# cases and need the anchored arm, like the two bare/[1m] profile cases above.
+# =========================================================================
+
+@test "mixed: claude-opus-5-5-mini conservative at 250k -- right-boundary near miss" {
+    # 250k >= the conservative 250k CRITICAL absolute leg. Under a loose
+    # *opus-5-5* glob this hypothetical mini variant would read NOMINAL.
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5-5-mini' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5-5-mini" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    refute_output --partial "[NOMINAL]"
+}
+
+@test "mixed: xclaude-opus-5-5 conservative at 250k -- left-boundary near miss" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'xclaude-opus-5-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "xclaude-opus-5-5" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    refute_output --partial "[NOMINAL]"
+}
+
+@test "mixed: anthropic/claude-opus-5-5 is NOMINAL at 250k -- provider path recognized" {
+    # PROFILE -- exercises the live hook's anchored extended-horizon arm
+    # (context-reporter_opus55.patch is deployed).
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'anthropic/claude-opus-5-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "anthropic/claude-opus-5-5" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+}
+
+@test "mixed: anthropic/claude-opus-5-5[1m] is NOMINAL at 250k -- provider path plus [1m]" {
+    # PROFILE -- exercises the live hook's anchored extended-horizon arm
+    # (context-reporter_opus55.patch is deployed).
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'anthropic/claude-opus-5-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "anthropic/claude-opus-5-5[1m]" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+}
+
+# =========================================================================
+# 2026-09-29: provider-dotted Claude ids (normalize_model_id) and the GPT
+# registry extension (gpt-6-sol, gpt-6-luna, flagship -pro).
+# -------------------------------------------------------------------------
+# (A) BUG FIX. OpenRouter reports Claude models with a DOTTED version
+# (anthropic/claude-opus-5.5, claude-opus-4.8, claude-opus-5.5[1m]); every
+# Claude pattern expects the hyphenated form. normalize_model_id rewrites ONLY
+# an id ending in claude-<family>-<major>.<minor>[optional [1m]] and the hook
+# applies it to SESSION_MODEL/AGENT_MODEL right after resolution (the shared
+# model caches keep the RAW name). Reproduced against the pre-fix hook: dotted
+# Opus 5.5 at 250k read [CRITICAL] (expected NOMINAL); dotted Opus 4.8 at 150k
+# read [CRITICAL] 150k / 200k (expected ELEVATED 150k / 1000k).
+# (B) USER POLICY DECISION 2026-09-29, not validation: flagship -pro reads as
+# its non-pro base; gpt-6-sol reads as gpt-5.6-sol (1.05M window + extended
+# tier); gpt-6-luna reads as gpt-5.6-luna (1.05M window, conservative tier);
+# gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
+# Provenance (maintainer-only record, not shipped:
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames).
+#
+# PATCH DEPENDENCE (historical): .claude/hooks/context-reporter.sh is
+# deny-protected, so the change shipped as a user-applied patch.
+# It is applied and committed (98e0ba0), so every case in this block runs
+# against the live hook; no patched copy is needed.
+# =========================================================================
+
+SUBAGENT_BAR_FOR_LOCKSTEP="${REPO_ROOT}/.claude/scripts/subagent-bar.sh"
+CONTEXT_BAR_FOR_LOCKSTEP="${REPO_ROOT}/.claude/scripts/context-bar.sh"
+
+# Fresh different-model subagent fixture. The subagent model comes from its
+# transcript (no pre-seeded subagent cache), so resolve_model_cache runs.
+# Args: $1 subagent model, $2 tokens, $3 session model cache (default sonnet),
+# $4 seeded session window (default 200000).
+_dotted_subagent_fixture() {
+    _clean_ctx_caches
+    rm -rf "${TEST_DIR}/${FAKE_SESSION}"
+    printf '%s' "${3:-claude-sonnet-4-6}" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _seed_window "${4:-200000}"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "${TEST_DIR}/main.jsonl"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "$1" "$2"
+}
+
+_extract_normalize() {
+    sed -n '/^# §§ NORMALIZE_MODEL_ID$/,/^# §§ END NORMALIZE_MODEL_ID$/p' "$1"
+}
+
+@test "lockstep: normalize_model_id block is byte-identical in the reporter and subagent-bar.sh" {
+    local reporter_fn bar_fn
+    reporter_fn=$(_extract_normalize "$CONTEXT_REPORTER_SH")
+    bar_fn=$(_extract_normalize "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$reporter_fn" ]
+    [ -n "$bar_fn" ]
+    [ "$reporter_fn" = "$bar_fn" ]
+    run grep -c '^# §§ NORMALIZE_MODEL_ID$' "$CONTEXT_REPORTER_SH"
+    assert_output "1"
+    # Exactly one definition line per file, so a second normalize_model_id
+    # outside the markers cannot shadow the checked copy (review fix 2026-09-29).
+    run grep -c '^normalize_model_id() {$' "$CONTEXT_REPORTER_SH"
+    assert_output "1"
+    run grep -c '^normalize_model_id() {$' "$SUBAGENT_BAR_FOR_LOCKSTEP"
+    assert_output "1"
+}
+
+@test "lockstep: GPT flagship and extended-tier EREs match across reporter, subagent-bar, and context-bar" {
+    local rep_flag bar_flag ctx_flag rep_ext bar_ext
+    rep_flag=$(sed -n "s/^GPT_FLAGSHIP_RE='\(.*\)'\$/\1/p" "$CONTEXT_REPORTER_SH")
+    bar_flag=$(sed -n "s/^gpt_flagship_re='\(.*\)'\$/\1/p" "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    ctx_flag=$(sed -n "s/^gpt_flagship_re='\(.*\)'\$/\1/p" "$CONTEXT_BAR_FOR_LOCKSTEP")
+    rep_ext=$(sed -n "s/^GPT_EXTENDED_RE='\(.*\)'\$/\1/p" "$CONTEXT_REPORTER_SH")
+    bar_ext=$(sed -n "s/^gpt_extended_re='\(.*\)'\$/\1/p" "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep_flag" ]
+    [ "$rep_flag" = "$bar_flag" ]
+    [ "$rep_flag" = "$ctx_flag" ]
+    [ -n "$rep_ext" ]
+    [ "$rep_ext" = "$bar_ext" ]
+    # 2026-10-12 user policy decision: gpt-6.1-sol joins both grammars as one
+    # exact alternative (no gpt-6.1-* wildcard).
+    [ "$rep_flag" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
+    [ "$rep_ext" = '^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
+}
+
+# Numeric lockstep (added 2026-10-23 with the Claude extended-horizon raise to
+# 40/50/60% OR 400/500/600k, a user policy decision). The tests above lock the
+# profile PATTERNS; this one locks the NUMBERS. Every line that assigns any of
+# elev_pct/high_pct/crit_pct/elev_k/high_k/crit_k (wherever on the line the
+# assignment sits, so moving one onto its own line cannot slip past) is
+# extracted; today that is two lines per profile arm, three arms, six lines.
+# They must be byte-identical, in order and indentation, in the reporter's
+# calculate() and subagent-bar.sh's row loop, so the two scripts can never
+# apply different threshold numbers. This test locks the numbers only: window
+# resolution has its own cross-script agreement test (below), and the
+# severity comparison cascade is not compared.
+_extract_threshold_assignments() {
+    grep -E '(^|[^[:alnum:]_])(elev|high|crit)_(pct|k)=' "$1"
+}
+
+@test "lockstep: threshold assignment lines are byte-identical in the reporter and subagent-bar.sh" {
+    local rep bar
+    rep=$(_extract_threshold_assignments "$CONTEXT_REPORTER_SH")
+    bar=$(_extract_threshold_assignments "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep" ]
+    # Exactly six lines: a split or added assignment line changes the count
+    # (and the approved-value pins below assume the six-line layout).
+    [ "$(printf '%s\n' "$rep" | wc -l)" -eq 6 ] || { echo "reporter has $(printf '%s\n' "$rep" | wc -l) assignment lines (want 6)"; return 1; }
+    [ "$(printf '%s\n' "$bar" | wc -l)" -eq 6 ] || { echo "subagent-bar has $(printf '%s\n' "$bar" | wc -l) assignment lines (want 6)"; return 1; }
+    [ "$rep" = "$bar" ] || { echo "reporter:"; echo "$rep"; echo "subagent-bar:"; echo "$bar"; return 1; }
+    # Pin the approved values per arm: Claude extended-horizon (2026-10-23),
+    # GPT Sol/Astra extended-horizon, conservative default.
+    [ "$(printf '%s\n' "$rep" | sed -n '1p' | sed 's/^[[:space:]]*//')" = 'elev_pct=40; high_pct=50; crit_pct=60' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '2p' | sed 's/^[[:space:]]*//')" = 'elev_k=400;  high_k=500;  crit_k=600 ;;' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '3p' | sed 's/^[[:space:]]*//')" = 'elev_pct=60; high_pct=75; crit_pct=90' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '4p' | sed 's/^[[:space:]]*//')" = 'elev_k=300;  high_k=400;  crit_k=500' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '5p' | sed 's/^[[:space:]]*//')" = 'elev_pct=40; high_pct=60; crit_pct=75' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '6p' | sed 's/^[[:space:]]*//')" = 'elev_k=150;  high_k=200;  crit_k=250' ]
+}
+
+@test "normalize_model_id (reporter copy): rewrites only terminal dotted claude-<family>-<major>.<minor>" {
+    local fn case_row input expected
+    fn=$(_extract_normalize "$CONTEXT_REPORTER_SH")
+    [ -n "$fn" ]
+    eval "$fn"
+    for case_row in \
+        'anthropic/claude-opus-5.5|anthropic/claude-opus-5-5' \
+        'claude-opus-5.5[1m]|claude-opus-5-5[1m]' \
+        'anthropic/claude-opus-4.8|anthropic/claude-opus-4-8' \
+        'anthropic/claude-fable-5.1|anthropic/claude-fable-5-1' \
+        'anthropic/claude-opus-5.5-mini|anthropic/claude-opus-5.5-mini' \
+        'xclaude-opus-5.5|xclaude-opus-5.5' \
+        'claude-opus-5-5|claude-opus-5-5' \
+        'openai/gpt-6-sol-pro[1m]|openai/gpt-6-sol-pro[1m]' \
+        '|'; do
+        input="${case_row%%|*}"
+        expected="${case_row#*|}"
+        run normalize_model_id "$input"
+        assert_success
+        assert_output "$expected"
+    done
+}
+
+@test "mixed: dotted anthropic/claude-opus-5.5 subagent is NOMINAL at 250k and ELEVATED at 400k (1M window)" {
+    _dotted_subagent_fixture "anthropic/claude-opus-5.5" 250000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
+
+    _dotted_subagent_fixture "anthropic/claude-opus-5.5" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 400k / 1000k tokens (40%)"
+}
+
+@test "mixed: dotted claude-opus-5.5[1m] subagent is NOMINAL at 250k" {
+    _dotted_subagent_fixture "claude-opus-5.5[1m]" 250000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
+}
+
+@test "mixed: dotted near miss anthropic/claude-opus-5.5-mini stays CRITICAL at 250k (not normalized)" {
+    _dotted_subagent_fixture "anthropic/claude-opus-5.5-mini" 250000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    refute_output --partial "[NOMINAL]"
+}
+
+@test "mixed: dotted anthropic/claude-opus-4.8 subagent maps to 1000k and is ELEVATED at 150k -- not 200k" {
+    _dotted_subagent_fixture "anthropic/claude-opus-4.8" 150000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 150k / 1000k tokens (15%)"
+    refute_output --partial "/ 200k"
+}
+
+@test "mixed: dotted anthropic/claude-fable-5.1 subagent keeps the Fable profile (NOMINAL at 250k)" {
+    _dotted_subagent_fixture "anthropic/claude-fable-5.1" 250000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
+}
+
+@test "mixed: dotted anthropic/claude-fable-5.1 subagent is NOMINAL at 300k and ELEVATED at 400k (1M window)" {
+    # Discriminates the 2026-10-23 raise for the dotted Fable 5.1 spelling: under
+    # the old 30/40/50% OR 300/400/500k gates 300k read ELEVATED and 400k HIGH.
+    _dotted_subagent_fixture "anthropic/claude-fable-5.1" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+
+    _dotted_subagent_fixture "anthropic/claude-fable-5.1" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 400k / 1000k tokens (40%)"
+}
+
+@test "uncached main session: dotted anthropic/claude-opus-5.5 maps to 1000k and is NOMINAL at 250k" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "anthropic/claude-opus-5.5" 250000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
+}
+
+@test "dotted model ids are cached RAW; dotted session + dotted subagent share the session window" {
+    # Both models come from transcripts. Session window 800000 is deliberately
+    # distinct from the 1M static map: a same-model subagent uses it (200k ->
+    # 25%); a spurious different-model path would read 1000k (20%).
+    local parent="${TEST_DIR}/main.jsonl"
+    _seed_window 800000
+    _write_main_transcript "$parent" "anthropic/claude-opus-5.5" 10000
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "anthropic/claude-opus-5.5" 200000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "200k / 800k tokens (25%)"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    assert_output "anthropic/claude-opus-5.5"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    assert_output "anthropic/claude-opus-5.5"
+}
+
+@test "same model, different spelling: dotted/hyphenated session vs subagent stays on the session window" {
+    # context-bar.sh seeds claude-model-<session> from the REQUESTED .model.id
+    # (dotted on OpenRouter); a transcript may carry the hyphenated RESPONSE
+    # spelling. Both sides are normalized, so this is a same-model subagent.
+    local pair session_spelling agent_spelling
+    for pair in \
+        "anthropic/claude-opus-5.5 anthropic/claude-opus-5-5" \
+        "anthropic/claude-opus-5-5 anthropic/claude-opus-5.5"; do
+        read -r session_spelling agent_spelling <<< "$pair"
+        _dotted_subagent_fixture "$agent_spelling" 200000 "$session_spelling" 800000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "200k / 800k tokens (25%)"
+        refute_output --partial "/ 1000k"
+    done
+}
+
+@test "gpt-6-sol subagents (bare, provider-prefixed, [1m]) map to 1050k and use the extended tier" {
+    local model row tokens expected
+    for model in gpt-6-sol openai/gpt-6-sol 'gpt-6-sol[1m]' 'openrouter/openai/gpt-6-sol[1m]'; do
+        for row in \
+            "299000 NOMINAL" \
+            "300000 ELEVATED" \
+            "400000 HIGH" \
+            "500000 CRITICAL"; do
+            read -r tokens expected <<< "$row"
+            _dotted_subagent_fixture "$model" "$tokens"
+            run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+            assert_success
+            assert_output --partial "[${expected}]: $((tokens / 1000))k / 1050k"
+        done
+    done
+}
+
+@test "gpt-6-sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct
+    _seed_window 400000
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-6-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 400k tokens (${expected_pct}%)"
+    done
+}
+
+@test "flagship -pro forms of 5.6-sol, 6-astra, and 6-sol map to 1050k and use the extended tier" {
+    local model
+    for model in gpt-5.6-sol-pro gpt-6-astra-pro gpt-6-sol-pro 'gpt-6-sol-pro[1m]' \
+                 openai/gpt-6-astra-pro 'openrouter/openai/gpt-5.6-sol-pro[1m]'; do
+        _dotted_subagent_fixture "$model" 300000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        # Conservative would be CRITICAL at 300k; extended is ELEVATED.
+        assert_output --partial "[ELEVATED]: 300k / 1050k tokens (28%)"
+    done
+}
+
+@test "gpt-6-luna, gpt-6-luna-pro, gpt-5.6-terra-pro: 1050k window but conservative tier" {
+    local model
+    for model in gpt-6-luna openai/gpt-6-luna 'gpt-6-luna[1m]' gpt-6-luna-pro gpt-5.6-terra-pro; do
+        _dotted_subagent_fixture "$model" 150000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        # Extended would be NOMINAL; a 200k window would be 75%.
+        assert_output --partial "[ELEVATED]: 150k / 1050k tokens (14%)"
+    done
+}
+
+@test "chatgpt lane caps gpt-6-sol, gpt-6-luna, and flagship -pro subagents at 919k" {
+    local model
+    for model in gpt-6-sol gpt-6-luna gpt-6-sol-pro 'gpt-6-sol-pro[1m]' gpt-6-astra-pro gpt-5.6-sol-pro gpt-5.4-pro; do
+        _dotted_subagent_fixture "$model" 111000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "111k / 919k"
+    done
+}
+
+@test "GPT-6 and -pro near misses stay conservative on the generic 200k window (no 919k cap)" {
+    local model
+    for model in gpt-6-terra gpt-6 gpt-6-sol-mini gpt-6-sol-chat 'gpt-6-sol[1m]-pro' \
+                 gpt-6-sol-pro-x gpt-5.6-mini-pro xgpt-6-sol vendor/notgpt-6-sol; do
+        _dotted_subagent_fixture "$model" 90000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        # 90k / 200k = 45% -> conservative ELEVATED (extended would be NOMINAL).
+        assert_output --partial "[ELEVATED]: 90k / 200k tokens (45%)"
+        refute_output --partial "/ 919k"
+        refute_output --partial "/ 1050k"
+    done
+}
+
+# =========================================================================
+# GPT-6.1 Sol (USER POLICY DECISION 2026-10-12, not validation): gpt-6.1-sol,
+# with an optional -pro and then an optional [1m], reads exactly as gpt-6-sol —
+# 1,050,000 window (OpenRouter openai/gpt-6.1-sol, fetched 2026-10-12), the
+# 919k ChatGPT-lane cap (lane ceiling measured 2026-10-13: accepted 919,744;
+# rejected a request of ~921,973), and the GPT extended tier. No gpt-6.1-*
+# wildcard: other GPT-6.1 names stay conservative.
+# =========================================================================
+
+@test "gpt-6.1-sol subagents (bare, provider-prefixed, [1m], -pro) map to 1050k and use the extended tier" {
+    local model row tokens expected
+    for model in gpt-6.1-sol openai/gpt-6.1-sol 'gpt-6.1-sol[1m]' 'openrouter/openai/gpt-6.1-sol[1m]' \
+                 gpt-6.1-sol-pro 'gpt-6.1-sol-pro[1m]'; do
+        for row in \
+            "299000 NOMINAL" \
+            "300000 ELEVATED" \
+            "400000 HIGH" \
+            "500000 CRITICAL"; do
+            read -r tokens expected <<< "$row"
+            _dotted_subagent_fixture "$model" "$tokens"
+            run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+            assert_success
+            assert_output --partial "[${expected}]: $((tokens / 1000))k / 1050k"
+        done
+    done
+}
+
+@test "gpt-6.1-sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct
+    _seed_window 400000
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-6.1-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 400k tokens (${expected_pct}%)"
+    done
+}
+
+@test "chatgpt lane caps gpt-6.1-sol subagents at 919k" {
+    local model
+    for model in gpt-6.1-sol 'gpt-6.1-sol[1m]' gpt-6.1-sol-pro; do
+        _dotted_subagent_fixture "$model" 111000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "111k / 919k"
+    done
+}
+
+@test "GPT-6.1 near misses stay conservative on the generic 200k window (no 919k cap)" {
+    # gpt-6x1-sol proves the ERE dot is literal; gpt-6.10-sol and gpt-6.1 the
+    # anchors; gpt-6.1-luna/-astra/-sol-mini that no gpt-6.1-* wildcard exists.
+    local model
+    for model in gpt-6.1-luna gpt-6.1-astra gpt-6.1 gpt-6.1-sol-mini gpt-6.1-sol-chat \
+                 'gpt-6.1-sol[1m]-pro' gpt-6.1-sol-pro-x gpt-6.10-sol gpt-6x1-sol xgpt-6.1-sol; do
+        _dotted_subagent_fixture "$model" 90000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        # 90k / 200k = 45% -> conservative ELEVATED (extended would be NOMINAL).
+        assert_output --partial "[ELEVATED]: 90k / 200k tokens (45%)"
+        refute_output --partial "/ 919k"
+        refute_output --partial "/ 1050k"
+    done
+}
+
+# Cross-script window agreement (review fix 2026-09-29). Malformed GPT-family
+# ids used to diverge: subagent-bar.sh's generic Claude *\[1m\]* arm gave
+# gpt-6-sol[1m]-pro etc. 1,000,000 while this hook (family pre-filter glob)
+# gave 200,000. Both static_window_for_model functions are extracted and
+# evaluated with their own EREs and must return the same expected window.
+# The context-bar.sh side of the same table lives in tests/bash/subagent_bar.bats.
+_static_window_from() {
+    bash -c '
+        eval "$(grep -E "^(GPT_[A-Z_]+_RE|gpt_[a-z_]+_re)=" "$1")"
+        eval "$(sed -n "/^static_window_for_model() {\$/,/^}\$/p" "$1")"
+        static_window_for_model "$2"
+    ' _ "$1" "$2"
+}
+
+@test "cross-script: reporter and subagent-bar agree on windows for malformed and exact GPT-family ids" {
+    local row model expected rep bar
+    for row in \
+        'gpt-6-sol[1m]-pro 200000' \
+        'gpt-6-sol-mini[1m] 200000' \
+        'gpt-6-astra[1m]-pro 200000' \
+        'gpt-5.6-sol[1m]-pro 200000' \
+        'gpt-5.6-sol[1m]x 200000' \
+        'gpt-6-astra[1m]-x 200000' \
+        'openai/gpt-6-luna[1m]-pro 200000' \
+        'gpt-6-sol-pro[1m] 1050000' \
+        'openai/gpt-6-luna 1050000' \
+        'gpt-6.1-sol 1050000' \
+        'gpt-6.1-sol-pro[1m] 1050000' \
+        'gpt-6.1-sol[1m]-pro 200000' \
+        'gpt-6.1-sol-mini[1m] 200000' \
+        'gpt-6.1-luna 200000' \
+        'gpt-5.6-mini[1m] 400000' \
+        'gpt-5.6-chat 128000' \
+        'claude-opus-4-8[1m] 1000000'; do
+        read -r model expected <<< "$row"
+        rep=$(_static_window_from "$CONTEXT_REPORTER_SH" "$model")
+        bar=$(_static_window_from "$SUBAGENT_BAR_FOR_LOCKSTEP" "$model")
+        [ "$rep" = "$expected" ] || { echo "reporter $model -> $rep (want $expected)"; return 1; }
+        [ "$bar" = "$expected" ] || { echo "subagent-bar $model -> $bar (want $expected)"; return 1; }
+    done
+}
+
+@test "lockstep: GPT flagship-family pre-filter glob is byte-identical across reporter, subagent-bar, and context-bar" {
+    local rep_glob bar_glob ctx_glob
+    rep_glob=$(sed -n 's/^[[:space:]]*\(gpt-5\.4|gpt-5\.4.*\))$/\1/p' "$CONTEXT_REPORTER_SH")
+    bar_glob=$(sed -n 's/^[[:space:]]*\(gpt-5\.4|gpt-5\.4.*\))$/\1/p' "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    ctx_glob=$(sed -n 's/^[[:space:]]*\(gpt-5\.4|gpt-5\.4.*\))$/\1/p' "$CONTEXT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep_glob" ]
+    [ "$(printf '%s\n' "$rep_glob" | wc -l)" -eq 1 ]
+    [ "$rep_glob" = "$bar_glob" ]
+    [ "$rep_glob" = "$ctx_glob" ]
+}
+
+# =========================================================================
+# Hook -> statusline -> hook chain with a "#<effort>" statusline id
+# (Phase 4 review regression, 2026-09-29)
+# -------------------------------------------------------------------------
+# context-bar.sh strips everything from the first '#' of .model.id before it
+# seeds claude-model-<session>. This hook reuses that cache WITHOUT re-parsing
+# whenever the transcript signature is unchanged (resolve_model_cache's
+# signature-HIT early return). Before the strip, a shim slug such as
+# gpt-6-astra[1m]#xhigh poisoned the cache: the statusline could not classify
+# the '#' id (window cache = raw payload 1000000) and the hook's second run
+# classified the '#' id as conservative -> [CRITICAL] 350k / 1000k (35%).
+# After the strip: cache = bare id, window cache = 919000 (ChatGPT-lane cap),
+# hook -> [ELEVATED] 350k / 919k (38%). Reviewer recipe (maintainer-only, not shipped):
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/probes/2026-09-29_phase4-r34-review/03_sighit_probe.sh.
+# Fail-before is demonstrated by
+# pointing CONTEXT_BAR_SH at the pre-strip copy in that workspace's
+# probes/2026-09-29_effort-suffix/.
+#
+# Args: $1 statusline .model.id carrying a '#<effort>' suffix. The transcript
+# carries the bare id (what the shim echoes back as the response model).
+_assert_effort_suffix_chain() {
+    local id="$1"
+    local bare="${id%%#*}"
+    local transcript="${SCRATCH_DIR}/t.jsonl"
+    local model_cache="${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _write_main_transcript "$transcript" "$bare" 350000
+
+    # Hook #1: no window cache yet; resolves the bare model from the transcript
+    # and commits the model cache plus its .transcript-signature sidecar, which
+    # arms the signature-HIT path for hook #2.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "350k / 919k"
+    [ -s "${model_cache}.transcript-signature" ]
+
+    # Statusline: a '#<effort>' id with a 1.0M payload window. The quota-state
+    # path is pinned to an absent scratch file so a scratch copy of the script
+    # (fail-before runs) renders the same segments as the installed one.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="${SCRATCH_DIR}/absent-quota_state.json" \
+        bash "$CONTEXT_BAR_SH" < <(_payload_statusline "$id" "$transcript" 1000000)
+    assert_success
+
+    # Hook #2: transcript UNCHANGED, so the model identity comes straight from
+    # the statusline-written cache. Drop the rate gate so it always emits.
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "350k / 919k"
+    assert_output --partial "(38%)"
+    refute_output --partial "[CRITICAL]"
+    refute_output --partial "/ 1000k"
+
+    # The shared caches hold the bare id and the lane-capped window.
+    run cat "$model_cache"
+    assert_success
+    assert_output "$bare"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
+    assert_success
+    assert_output "919000"
+}
+
+@test "chain: statusline gpt-6-astra[1m]#xhigh id leaves bare cache; unchanged-transcript hook reports ELEVATED on 919k" {
+    _assert_effort_suffix_chain 'gpt-6-astra[1m]#xhigh'
+}
+
+@test "chain: statusline gpt-5.6-sol#high id leaves bare cache; unchanged-transcript hook reports ELEVATED on 919k" {
+    _assert_effort_suffix_chain 'gpt-5.6-sol#high'
+}
+
+# =========================================================================
+# Sonnet 5.x and Haiku 5.5: 1M physical window, CONSERVATIVE profile
+# -------------------------------------------------------------------------
+# Claude Code runs Sonnet 5.x (claude-sonnet-5, claude-sonnet-5-5) and Haiku
+# 5.5 with the 1M window by default, with no [1m] suffix (verified 2026-11-02
+# against the Claude Code model-config docs, "Extended context", and the
+# Claude platform model docs). The window arm includes *sonnet-5* and
+# *haiku-5-5*; the profile arm does not, so on 1M the conservative absolute
+# legs fire first: ELEVATED 150k, HIGH 200k, CRITICAL 250k. Sonnet 4.6,
+# Sonnet 4.5 and Haiku 4.5 stay on 200k.
+#
+# Also the subagent model lookup: line-wise, so a partly written last line
+# cannot blank the model (a blank subagent model falls to the SESSION's
+# window); isApiErrorMessage records are skipped; a subagent transcript's
+# model attachment names the model when no record carries a .message.model;
+# the shared model-scan program is byte-identical in both scripts; and an
+# unreadable transcript prints nothing.
+# =========================================================================
+
+# Fixture records for the model-lookup cases.
+_model_attachment_record() {
+    printf '{"type":"attachment","isSidechain":%s,"attachment":{"type":"model","text":"x","identity":{"modelId":"%s"}}}\n' "$2" "$1"
+}
+_usage_only_record() {
+    # An assistant record with usage but no model field. Args: $1 tokens, $2 isSidechain.
+    printf '{"type":"assistant","isSidechain":%s,"message":{"role":"assistant","usage":{"input_tokens":%d,"output_tokens":10}}}\n' "$2" "$1"
+}
+_partial_tail() {
+    # A transcript line cut off mid-write: no closing brace, no newline.
+    printf '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","model":"claude-son' >> "$1"
+}
+
+@test "mixed: claude-sonnet-5 subagent under an Opus 5.5 [1m] session reads 1000k with conservative gates" {
+    local row tokens severity pct
+    for row in "149999 NOMINAL 14" "150000 ELEVATED 15" "160000 ELEVATED 16" \
+               "199999 ELEVATED 19" "200000 HIGH 20" "210000 HIGH 21" \
+               "249999 HIGH 24" "250000 CRITICAL 25" "260000 CRITICAL 26"; do
+        read -r tokens severity pct <<< "$row"
+        _dotted_subagent_fixture "claude-sonnet-5" "$tokens" 'claude-opus-5-5[1m]' 1000000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "[${severity}]: $((tokens / 1000))k / 1000k tokens (${pct}%)"
+    done
+}
+
+@test "mixed: Sonnet 5.5, Haiku 5.5 and dotted provider forms map to 1000k; Sonnet 4.6/4.5 and Haiku 4.5 stay 200k" {
+    local row model expected
+    for row in \
+        'claude-sonnet-5-5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-sonnet-5-1 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-haiku-5-5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'anthropic/claude-sonnet-5.5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'anthropic/claude-haiku-5.5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-sonnet-4-6 [ELEVATED]: 100k / 200k tokens (50%)' \
+        'claude-sonnet-4-5 [ELEVATED]: 100k / 200k tokens (50%)' \
+        'claude-haiku-4-5 [ELEVATED]: 100k / 200k tokens (50%)'; do
+        model="${row%% *}"
+        expected="${row#* }"
+        _dotted_subagent_fixture "$model" 100000 'claude-opus-5-5[1m]' 1000000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "$expected"
+    done
+}
+
+@test "normalize_model_id (reporter copy): dotted Sonnet 5.5 and Haiku 5.5 become hyphenated" {
+    # Load-bearing for Haiku: raw anthropic/claude-haiku-5.5 contains no
+    # "haiku-5-5", so only the normalized id reaches the *haiku-5-5* arm.
+    local fn
+    fn=$(_extract_normalize "$CONTEXT_REPORTER_SH")
+    [ -n "$fn" ]
+    eval "$fn"
+    run normalize_model_id 'anthropic/claude-sonnet-5.5'
+    assert_output 'anthropic/claude-sonnet-5-5'
+    run normalize_model_id 'anthropic/claude-haiku-5.5'
+    assert_output 'anthropic/claude-haiku-5-5'
+}
+
+@test "cross-script: reporter and subagent-bar agree on Sonnet/Haiku windows" {
+    local row model expected rep bar
+    for row in \
+        'claude-sonnet-5 1000000' \
+        'claude-sonnet-5-5 1000000' \
+        'anthropic/claude-sonnet-5-5 1000000' \
+        'claude-haiku-5-5 1000000' \
+        'claude-sonnet-4-6 200000' \
+        'claude-sonnet-4-5 200000' \
+        'claude-sonnet-4-5-20250929 200000' \
+        'claude-haiku-4-5 200000' \
+        'claude-3-5-haiku-20241022 200000'; do
+        read -r model expected <<< "$row"
+        rep=$(_static_window_from "$CONTEXT_REPORTER_SH" "$model")
+        bar=$(_static_window_from "$SUBAGENT_BAR_FOR_LOCKSTEP" "$model")
+        [ "$rep" = "$expected" ] || { echo "reporter $model -> $rep (want $expected)"; return 1; }
+        [ "$bar" = "$expected" ] || { echo "subagent-bar $model -> $bar (want $expected)"; return 1; }
+    done
+}
+
+@test "first report: a truncated last line does not blank the subagent model (Sonnet 4.6 under a 1M session)" {
+    # The subagent's model is on disk, but the last line is mid-write. A
+    # slurping scan fails on the whole file: no model (so the session's 1000k
+    # window) and no usage (no report). The line-wise scan keeps both.
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 100000 'claude-opus-5-5[1m]' 1000000
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    assert_output "claude-sonnet-4-6"
+}
+
+@test "first report: a truncated last line does not blank a Sonnet 5.x subagent model (Sonnet 4.6 session, 200k)" {
+    # Unresolved, the reading would fall to the session's 200k: 160k = 80% CRITICAL.
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-5" 160000 'claude-sonnet-4-6' 200000
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+}
+
+@test "first report: the subagent's model attachment names its model before any assistant record does" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-sonnet-4-6' 200000
+    {
+        printf '{"type":"user","isSidechain":true,"message":{"role":"user","content":"hi"}}\n'
+        _model_attachment_record "claude-sonnet-5" true
+        _usage_only_record 160000 true
+    } > "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    # Without the attachment source: no model, so the session's 200k (80%, CRITICAL).
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    assert_output "claude-sonnet-5"
+}
+
+@test "model attachment plus truncated last line still classifies the subagent" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-sonnet-4-6' 200000
+    {
+        _model_attachment_record "claude-sonnet-5" true
+        _usage_only_record 160000 true
+    } > "$sub"
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+}
+
+@test "an assistant .message.model wins over the model attachment" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-opus-5-5[1m]' 1000000
+    {
+        _model_attachment_record "claude-sonnet-5" true
+        printf '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":100000,"output_tokens":10}}}\n'
+    } > "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+}
+
+@test "isApiErrorMessage records do not set the subagent model" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 100000 'claude-opus-5-5[1m]' 1000000
+    printf '{"type":"assistant","isSidechain":true,"isApiErrorMessage":true,"message":{"role":"assistant","model":"claude-fable-5"}}\n' >> "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    # Counting the error record would pick claude-fable-5: 1000k, NOMINAL.
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+}
+
+@test "main transcript: the model attachment is not a session-model source" {
+    # The parent scan does not use the model attachment. With no window cache
+    # and no model cache, an attachment-only main transcript leaves the session
+    # model empty, so the static map's 200k default applies.
+    {
+        _model_attachment_record "claude-sonnet-5" false
+        _usage_only_record 100000 false
+    } > "${TEST_DIR}/t.jsonl"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 200k tokens (50%)"
+}
+
+@test "calculate: a truncated last line on the main transcript still reports the last usage" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5-5[1m]" 300000
+    printf '{"type":"assistant","isSidechain":false,"message":{"model":"claude-op' >> "${TEST_DIR}/t.jsonl"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+}
+
+# The model-scan program shared with subagent-bar.sh sits between section-sign
+# markers in both files; both write the same model caches, so the block must
+# match byte for byte (indentation and redirect order included).
+_extract_model_scan() {
+    sed -n '/^# §§ MODEL_SCAN_JQ$/,/^# §§ END MODEL_SCAN_JQ$/p' "$1"
+}
+
+@test "lockstep: the model-scan jq block is byte-identical in the reporter and subagent-bar.sh" {
+    local rep bar f
+    rep=$(_extract_model_scan "$CONTEXT_REPORTER_SH")
+    bar=$(_extract_model_scan "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep" ]
+    [ -n "$bar" ]
+    [ "$rep" = "$bar" ] || { diff <(printf '%s\n' "$rep") <(printf '%s\n' "$bar"); return 1; }
+    # The block holds the program and its redirect, not just the markers.
+    [[ "$rep" == *'inputs | fromjson? | objects'* ]]
+    [[ "$rep" == *"' 2>/dev/null < \"\$transcript\") || model=\"\""* ]]
+    # Exactly one start and one end marker per file, so a second copy outside
+    # the markers cannot hide behind the checked one.
+    for f in "$CONTEXT_REPORTER_SH" "$SUBAGENT_BAR_FOR_LOCKSTEP"; do
+        run grep -c '^# §§ MODEL_SCAN_JQ$' "$f"
+        assert_output "1"
+        run grep -c '^# §§ END MODEL_SCAN_JQ$' "$f"
+        assert_output "1"
+    done
+}
+
+@test "unreadable subagent transcript: exit 0, nothing on stdout or stderr, no injection" {
+    # Both scans redirect stderr before stdin, so a transcript the hook cannot
+    # open prints no "Permission denied". `run` captures stdout and stderr
+    # together, so an empty output means no injection and no diagnostic.
+    [ "$(id -u)" -ne 0 ] || skip "root can read a mode-000 file"
+    local parent="${SCRATCH_DIR}/main.jsonl"
+    local sub="${SCRATCH_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    local readable=1
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "$sub" "claude-sonnet-4-6" 100000
+    printf 'claude-opus-5-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _seed_window 1000000
+    chmod 000 "$sub"
+    [ -r "$sub" ] || readable=0
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    # Restore the mode before any assertion, so the fixture never outlives the
+    # test unreadable; teardown's rm -rf of SCRATCH_DIR then removes it.
+    chmod 600 "$sub"
+    [ "$readable" -eq 0 ]
+    assert_success
+    assert_output ""
 }

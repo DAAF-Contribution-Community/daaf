@@ -33,9 +33,9 @@ The Common Core of Data is the primary source for K-12 public school and distric
 
 | Period | Coverage Issue |
 |--------|----------------|
-| Pre-2000 | Many charter schools missing or miscoded |
-| 2000-2010 | Improving but inconsistent state-to-state |
-| 2010+ | Generally complete coverage |
+| Pre-2000 | (Illustrative/unsourced — verify) Many charter schools missing or miscoded |
+| 2000-2010 | (Illustrative/unsourced — verify) Improving but inconsistent state-to-state |
+| 2010+ | (Illustrative/unsourced — verify) Generally complete coverage |
 
 Always verify charter school counts against state records for early years.
 
@@ -52,11 +52,11 @@ Missing data in CCD tends to cluster by state:
 
 | Variable | Issue | Affected Years |
 |----------|-------|----------------|
-| Free/reduced lunch | Direct certification changed reporting | 2010+ |
+| Free/reduced lunch | CEP (SY 2011-12 in three States; nationwide from SY 2014-15) and direct-certification reporting | Portal 2011+ |
 | FTE staff counts | Inconsistent state reporting | Varies |
 | Enrollment by grade | Some states report all as "ungraded" | Varies |
 | Finance data | Lag in reporting | Most recent 1-2 years |
-| Student demographics | Race/ethnicity changes | Pre-2010 |
+| Student demographics | Race/ethnicity changes: no Two or More Races or separate NHPI rows before 2008; in 2008-2009 only adopting states report them | Portal 2008-2010 (SY 2008-09 to 2010-11); earlier years use 5 categories |
 
 ### Missing Data Check
 
@@ -133,7 +133,7 @@ School locale codes were completely revised in 2006:
 | Old System (pre-2006) | New System (2006+) |
 |----------------------|-------------------|
 | 1-8 numeric codes | 11-43 codes |
-| 7 categories | 12 categories |
+| 8 categories | 12 categories |
 | Based on MSA definitions | Based on Census urban/rural definitions |
 
 **Mapping is not one-to-one.** If analyzing locale over time:
@@ -144,9 +144,9 @@ School locale codes were completely revised in 2006:
 
 | Period | Categories |
 |--------|------------|
-| Pre-1997 | 5 categories (no multiracial) |
-| 1997-2010 | Transition period; inconsistent |
-| 2010+ | 7 categories including two or more races |
+| Before 2008-09 | 5 categories (no Two or more races) |
+| 2008-09 and 2009-10 | Optional 7-category reporting (5 states, then 14) |
+| 2010-11 onward | 7 categories required in all states |
 
 **Hispanic ethnicity**: Collected separately from race. A student can be Hispanic AND any race.
 
@@ -154,11 +154,11 @@ School locale codes were completely revised in 2006:
 
 | Year | Change |
 |------|--------|
-| 2002 | Grade span definitions refined |
+| 2002 | (Illustrative/unsourced — verify) Grade span definitions refined |
 | 2006 | Locale codes revised |
-| 2007 | Graduation rate calculation changed (ACGR introduced) |
-| 2010 | Race categories expanded |
-| 2014 | Virtual school identification improved |
+| 2008-2010 | Race categories expanded to 7 (optional in SY 2008-09 and 2009-10, required from SY 2010-11) |
+| 2010 | ACGR first collected by ED (SY 2010-11, via EDFacts) |
+| 2014 | (Illustrative/unsourced — verify) Virtual school identification improved |
 | 2020 | COVID-related enrollment disruptions |
 
 ## Identifier Issues
@@ -236,10 +236,10 @@ cat("Pct stable:", length(intersect(ids_y1, ids_y2)) / length(ids_y1) * 100, "%\
 
 | State | Year | Issue |
 |-------|------|-------|
-| Puerto Rico | Various | Reporting gaps; not always included |
-| New York | Pre-2010 | NYC charter schools sometimes aggregated |
-| California | Various | Large district reporting delays |
-| Texas | Various | Charter network reporting changes |
+| Puerto Rico | Various | (Illustrative/unsourced — verify) Reporting gaps; not always included |
+| New York | Pre-2010 | (Illustrative/unsourced — verify) NYC charter schools sometimes aggregated |
+| California | Various | (Illustrative/unsourced — verify) Large district reporting delays |
+| Texas | Various | (Illustrative/unsourced — verify) Charter network reporting changes |
 
 ### States with Frequent Issues
 
@@ -276,8 +276,11 @@ The Portal uses integer encoding for grades:
 - `grade = -1` → Pre-Kindergarten (semantic trap!)
 - `grade = 0` → Kindergarten
 - `grade = 1-12` → Grades 1-12
-- `grade = 13` → Ungraded
+- `grade = 13` → Grade 13
+- `grade = 14` → Adult education
+- `grade = 15` → Ungraded
 - `grade = 99` → Total
+- `grade = 999` → Not specified
 
 ```python
 # WRONG - this filters out Pre-K students!
@@ -369,10 +372,10 @@ CCD data uses integer codes, not strings:
 
 | Variable | Values | Notes |
 |----------|--------|-------|
-| Grade | -1 to 13, 99 | -1=Pre-K (semantic trap!), 0=K, 99=Total |
-| Race | 1-7, 99 | 1=White, 2=Black, 3=Hispanic, etc. |
-| Sex | 1, 2, 99 | 1=Male, 2=Female, 99=Total |
+| Grade | -1 to 15, 99, 999 | -1=Pre-K (semantic trap!), 0=K, 14=Adult education, 15=Ungraded, 99=Total, 999=Not specified |
+| Race | 1-7, 9, 99 | 1=White, 2=Black, 3=Hispanic, etc.; 9=Unknown, 99=Total |
+| Sex | 1, 2, 9, 99 | 1=Male, 2=Female, 9=Unknown, 99=Total |
 | Charter | 0, 1 | 0=No, 1=Yes |
-| School Level | 0-4 | 1=Primary, 2=Middle, 3=High |
+| School Level | 0-7 | 0=Prekindergarten, 1=Primary, 2=Middle, 3=High, 4=Other, 5=Ungraded, 6=Adult Education, 7=Secondary |
 
 See `education-data-context` SKILL.md for complete encoding tables.

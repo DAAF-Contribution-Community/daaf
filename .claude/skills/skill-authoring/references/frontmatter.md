@@ -63,17 +63,17 @@ The primary triggering mechanism. This is what agents see when deciding whether 
 | Rule | Limit |
 |------|-------|
 | Length | **≤1,024 characters** (validation limit — Agent Skills spec; description must be non-empty) |
-| Display cap | Combined `description` + `when_to_use` is truncated at **1,536 characters** in the skill listing; a startup warning fires when truncation occurs |
+| Display cap | Combined `description` + `when_to_use` is truncated at **1,536 characters** per skill in the skill listing (the `skillListingMaxDescChars` default); the truncation breakdown is reported by `/doctor`, not a startup notification |
 | No angle brackets | Cannot contain `<` or `>` |
 | Non-empty | Must have content after trimming whitespace |
 
 > **Why description length matters.** The description is the ONLY text agents see when deciding whether to load a skill, so it should be complete and information-rich — a compressed teaser that undertriggers is worse than a longer description that triggers correctly. Three constraints govern length:
 >
 > 1. **Validation limit (1,024 chars):** The `description` field alone must stay within 1,024 characters or skill validation fails.
-> 2. **Display cap (1,536 chars combined):** The skill listing truncates the combined `description` + `when_to_use` text at 1,536 characters (raised from 250 in Claude Code v2.1.105) and warns at startup when truncation occurs.
+> 2. **Display cap (1,536 chars combined):** The skill listing truncates the combined `description` + `when_to_use` text at 1,536 characters per skill (the `skillListingMaxDescChars` default; raised from 250 in Claude Code v2.1.105). The truncation breakdown is reported by `/doctor` (since 2.1.144), not a startup notification.
 > 3. **Aggregate listing budget (~1% of context):** The skill listing as a whole shares a budget of roughly 1% of the model's context window across ALL skills. DAAF has 40+ skills competing for this shared resource — when the listing overflows, descriptions for the least-invoked skills are dropped first (diagnosable with `/doctor`). This is why economy still matters even though the per-skill caps are generous: a bloated description doesn't just cost its own skill, it can crowd out others. Because the budget scales with the context window, the same skill inventory is more likely to overflow on smaller-window models — economy matters even more there.
 >
-> These numbers describe Claude Code behavior as of v2.1.105 / June 2026 and are configurable (`maxSkillDescriptionChars` setting; `skillListingBudgetFraction` setting or `SLASH_COMMAND_TOOL_CHAR_BUDGET` env var for the aggregate budget). If observed behavior differs, verify against current Claude Code docs before assuming this reference is correct.
+> These numbers were verified against the Claude Code settings reference on 2026-09-05 (CC 2.1.261) and are configurable: `skillListingMaxDescChars` (positive integer, default 1,536) sets the per-skill listing cap, and `skillListingBudgetFraction` (a fraction >0 and ≤1, default 0.01 = 1% of the context window; DAAF sets 0.1 as a guardrail — well above any listing size DAAF ships, so truncation only fires if the listing ever grows past 10% of the window) sets the aggregate listing budget. If observed behavior differs, verify against current Claude Code docs before assuming this reference is correct.
 
 **Must Include:**
 

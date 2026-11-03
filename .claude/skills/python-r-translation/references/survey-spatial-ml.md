@@ -140,7 +140,7 @@ pre-installed routes are `leaflet` (interactive) and `ggplot2::geom_sf()`
 | R | Python |
 |---|--------|
 | `rand_forest() |> set_engine("ranger")` | `RandomForestClassifier()` |
-| `logistic_reg()` | `LogisticRegression()` |
+| `logistic_reg()` | `LogisticRegression()` (L2-penalized by default, `C=1.0`; the default `glm` engine is unpenalized) |
 | `linear_reg()` | `Ridge()` / `Lasso()` / `ElasticNet()` |
 | `boost_tree() |> set_engine("xgboost")` | `GradientBoostingClassifier()` |
 

@@ -90,7 +90,7 @@ if isinstance(entries, dict):
     entries = entries["results"]
 raw_paths = [entry[mirror["discovery"].get("file_path_key", "path")] for entry in entries
              if entry.get("type") == "file"]
-data_paths = [path[:-8] for path in raw_paths if path.lower().endswith(".parquet")]
+data_paths = [path[:-8] for path in raw_paths if path.lower().endswith(".parquet") and "/" in path]
 assert all(not path.lower().endswith((".csv", ".parquet", ".xls")) for path in data_paths)
 print(f"Available canonical data paths: {len(data_paths)}")
 ```
@@ -119,7 +119,7 @@ This eliminates guessing — if the file exists in a mirror, use it; if not, fal
 
 The Hugging Face mirror is **versioned by vintage**. A *vintage* is a dated snapshot of the Education Data Portal captured into one HF dataset repo; a *revision* is the HF git ref (branch, tag, or commit SHA) that pins requests to one immutable state of that repo. In `mirrors.yaml` this is one `vintage:` block per mirror — `portal_version`, `collected`, and `hf_revision` — and the fetch helpers thread `hf_revision` into every URL (data, codebook, and discovery) via `build_mirror_url()` / `mirror_revision()`. You do not build these URLs by hand; use the patterns in `./references/fetch-patterns.md`.
 
-**Pin by default.** The current mirror snapshots Portal **v0.26.1** (repo `brhkim/education_data_portal_mirror_2026q3`). Once its commit SHA is pinned in `mirrors.yaml` (`vintage.hf_revision`), every fetch resolves to those exact bytes, so a rerun of a Stage 5 script downloads identical data.
+**Pin by default.** The current mirror snapshots Portal **v0.26.1** (repo `brhkim/education_data_portal_mirror_2026q3`). Its commit SHA is pinned in `mirrors.yaml` (`vintage.hf_revision` = `0ad00ce0e232c96b0642459e4e7326607a8d26aa`), so every fetch resolves to those exact bytes and a rerun of a Stage 5 script downloads identical data.
 
 **Why this matters (silent drift).** The Portal revises historical values between releases *without schema changes* — e.g., Portal 0.26.1 retroactively corrected IPEDS Graduation Rates 150% for 1996-2023. An unpinned mirror (revision `main`) can therefore serve silently different numbers to the same script run months apart, with no error and no column change to signal it. Pinning to an immutable revision is what makes a project's fetches byte-reproducible.
 
@@ -225,7 +225,7 @@ df = pl.read_parquet(url)  # Polars reads HTTP URLs natively
 ```r
 # R only — raise the download timeout BEFORE reading. arrow::read_parquet(url)
 # transfers via download.file(), which caps the whole transfer at getOption("timeout")
-# (default 60s); large mirror files (e.g. ccd/schools_ccd_directory, ~224MB) truncate
+# (default 60s); large mirror files (e.g. ccd/schools_ccd_directory, ~269MB) truncate
 # at ~60s and silently fall through to the next mirror (the CSV fallback, in the
 # default configuration). Python is unaffected.
 options(timeout = max(600, getOption("timeout")))
@@ -287,9 +287,9 @@ See `./references/fetch-patterns.md` for complete code patterns.
 
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
-| Race | 1-7, 99 (total) | WH, BL, HI, AS, etc. |
-| Sex | 1 (Male), 2 (Female), 3 (Another gender, IPEDS 2022+), 4 (Unknown gender, IPEDS 2022+), 9 (Unknown), 99 (Total) | M, F |
-| Grade | -1 to 13, 99 (total) | PK, KG, 01, etc. |
+| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8; 9 is populated only in CCD (2016+) and IPEDS, and EDFacts has no 6 | WH, BL, HI, AS, etc. |
+| Sex | 1 (Male), 2 (Female), 9 (Unknown), 99 (Total); every dictionary also declares 3 (Gender Not-Identified). Populated 3/9: CCD 9 from 2016; CRDC 3 in the 2021 enrollment file only; IPEDS 3 and 9 from 2022 (admissions-enrollment, fall-enrollment-race), plus an undeclared 4 in fall-enrollment-race 2022, which has no 9 | M, F |
+| Grade | -1 to 15, 99 (total), 999 (not specified) | PK, KG, 01, etc. |
 
 ### Grade Encoding (SEMANTIC TRAP!)
 
@@ -298,7 +298,11 @@ See `./references/fetch-patterns.md` for complete code patterns.
 | -1 | Pre-K (**NOT missing!**) | `grade-pk` |
 | 0 | Kindergarten | `grade-k` |
 | 1-12 | Grades 1-12 | `grade-1` to `grade-12` |
+| 13 | Grade 13 | `grade-13` |
+| 14 | Adult education (not "ungraded") | `grade-14` (route form inferred, not tested) |
+| 15 | Ungraded | `grade-15` (route form inferred, not tested) |
 | 99 | Total | `grade-99` |
+| 999 | Not specified | not documented |
 
 ```python
 # WRONG - filters out Pre-K students!
@@ -358,7 +362,7 @@ See `./references/filters-reference.md` for complete list.
 | Source | Skill | Key Fetch Considerations |
 |--------|-------|--------------------------|
 | CCD | `education-data-source-ccd` | Use grade-99 for totals; FRPL affected by CEP |
-| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
+| CRDC | `education-data-source-crdc` | Often called biennial, but no odd/even-year rule (2020 and 2021 are consecutive collections); universe collections since 2011-12, with year coverage varying by topic family; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
 | EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable; CSV fallback needs force-string + `str_pad`/`zfill` + width-assert on ncessch/leaid (2019 ships already-truncated IDs) |
 | IPEDS | `education-data-source-ipeds` | GRS limited to first-time full-time |
 | Scorecard | `education-data-source-scorecard` | High suppression; Title IV recipients only |

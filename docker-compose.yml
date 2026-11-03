@@ -1,8 +1,13 @@
-name: ${DAAF_PROJECT_NAME:-daaf}   # Override in environment_settings.txt to run a second instance
+# To run a second instance, set DAAF_PROJECT_NAME in environment_settings.txt.
+# DAAF's host scripts pass it to Compose; a plain `docker compose` command does
+# not read that file for the project name, so it uses the default `daaf` unless
+# you add `-p <name>`, or set DAAF_PROJECT_NAME in a .env file in this folder
+# or in your shell.
+name: ${DAAF_PROJECT_NAME:-daaf}
 
 services:
   daaf-init:
-    image: busybox
+    image: busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e   # Pinned: same string as BUSYBOX_IMAGE in scripts/host/{backup_daaf,restore_from_backup,migrate_daaf}.{sh,ps1} (see the comment there)
     volumes:
       - daaf-data:/daaf
       - daaf-claude-config:/claude-config   # Repair ownership of the Claude state volume too
@@ -31,7 +36,9 @@ services:
         # environment_settings.txt into the shell env before invoking the build.
         # See the DAAF_DEV block in the Dockerfile for what this installs.
         DAAF_DEV: "${DAAF_DEV:-0}"
-    env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
+    env_file:
+      # `required: false` needs Docker Compose 2.24.0 or later (verified against
+      # https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/ on 2026-11-01).
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist
     ports:
@@ -66,9 +73,10 @@ services:
       # Relocate ~/.claude.json and credentials into the persisted .claude
       # directory (above) so they survive rebuilds too. Set in compose (not the
       # Dockerfile) so it can be adjusted without rebuilding the image.
-      # NOTE: CLAUDE_CONFIG_DIR is community-observed behavior, not yet in the
-      # official Claude Code docs (see anthropics/claude-code issue #3833) --
-      # re-verify if a Claude Code upgrade changes where state files land.
+      # Claude Code keeps its settings, session history and plugins under
+      # CLAUDE_CONFIG_DIR and ignores the variable in project settings, so it is
+      # set here, in the launch environment (verified against
+      # https://code.claude.com/docs/en/env-vars on 2026-11-01).
       - CLAUDE_CONFIG_DIR=/home/appuser/.claude
       # Point the Codex CLI's state home into a subfolder of the persisted
       # .claude volume. Codex stores its OAuth tokens (auth.json) under
@@ -83,6 +91,26 @@ services:
       # optional ChatGPT provider lane. Set in compose (not the Dockerfile) so it
       # is adjustable without a rebuild, matching CLAUDE_CONFIG_DIR.
       - CODEX_HOME=/home/appuser/.claude/codex-daaf
+      # Move Claude Code's own temp root out of /tmp/claude-<uid>/, which is
+      # outside the daaf-data volume, the backup and the audit trail, and wiped
+      # when the container is recreated. Claude Code's built-in instructions
+      # send every session and subagent to a per-session scratchpad there.
+      # Claude Code appends /claude-<uid>/, so the tree lands at
+      # /daaf/claude-code-tmp/claude-1000/: the scratchpad, Bash task output
+      # files plus one tasks/*.output symlink per subagent dispatch (into the
+      # claude-config volume), bash-edit-diff/ stores and bundled-skills/. Unix
+      # sockets go to /daaf/claude-code-tmp/cc-socks/ (backups skip sockets).
+      # TMPDIR is NOT changed: Python's tempfile, mktemp and other programs
+      # still default to /tmp. Claude Code ignores CLAUDE_CODE_TMPDIR in project
+      # settings, .claude/settings.json (verified against
+      # https://code.claude.com/docs/en/env-vars on 2026-11-01), so it is set
+      # here, in the launch environment; compose keeps it adjustable without a
+      # rebuild.
+      # Gitignored by the /claude-code-tmp/ rule; its symlinks are allowlisted
+      # in scripts/check_workspace_invariants.sh. Limitation: two installs
+      # sharing one data volume (DAAF_DATA_VOLUME_NAME) share this folder, and
+      # Claude Code's sweep may remove the other install's session images/.
+      - CLAUDE_CODE_TMPDIR=/daaf/claude-code-tmp
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true

@@ -22,9 +22,11 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 | Category | Subgroups |
 |----------|-----------|
 | All students | Total student population |
-| Race/Ethnicity | 7 racial/ethnic groups |
+| Race/Ethnicity | Each major racial and ethnic group (State-defined) |
 | Special populations | CWD, EL, economically disadvantaged |
 | Additional populations | Homeless, foster care, migrant, military |
+
+> ACGR disaggregation adds homeless and foster care; migrant and military-connected are not required for ACGR (ED January 2017 ACGR guidance, C-6).
 
 ### Subgroup Codes in EDFacts (Portal Integer Encoding)
 
@@ -49,7 +51,7 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 
 > **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers.
 >
-> **Empirically verified** from 2018 assessment data. Only codes 1-5, 7, and 99 are observed in the `race` column. Code 6 (NH/PI) is NOT present in EDFacts data.
+> **Empirically verified** from 2018 assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only codes 1-5, 7, and 99 are observed in the `race` column. Code 6 (NH/PI) is NOT present in EDFacts data.
 
 EDFacts uses the federal OMB race/ethnicity categories:
 
@@ -146,7 +148,7 @@ Students from low-income families:
 | Era | Definition Issues |
 |-----|-------------------|
 | Pre-CEP | FRPL forms = good proxy |
-| CEP schools | 100% counted, inflating rates |
+| CEP schools | May be reported as 100% economically disadvantaged where the State's definition relies on meal eligibility (State definitions vary; inference) |
 | Alternative measures | States using different definitions |
 
 ```python
@@ -327,7 +329,7 @@ def analyze_subgroup_suppression(df, subgroup_col, value_col):
     analysis = (df
         .group_by(subgroup_col)
         .agg([
-            pl.count().alias("total_records"),
+            pl.len().alias("total_records"),
             (pl.col(value_col) == -3).sum().alias("suppressed"),
             (pl.col(value_col) >= 0).sum().alias("valid")
         ])
@@ -599,7 +601,7 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
             pl.col(value_col).mean().alias("avg_outcome"),
             
             # Quality metrics
-            pl.count().alias("n_schools"),
+            pl.len().alias("n_schools"),
             (pl.col(value_col) == -3).sum().alias("n_suppressed"),
             (pl.col(value_col) >= 0).sum().alias("n_valid"),
         ])

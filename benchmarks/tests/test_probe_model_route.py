@@ -30,10 +30,19 @@ def luna_model():
         effort_level="high",
         context_window_tokens=370_000,
         actual_billing_treatment="not_separately_billed",
+        # compute_accounting() prices from this block alone since 2026-09-29 (no
+        # LUNA_* constant fallback), so it carries a complete schedule; rates
+        # mirror the gpt-56-luna-chatgpt entry in config/models.yaml.
         api_equivalent_pricing={
             "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
             "accessed_at": "2026-07-15",
             "threshold_input_tokens": 272_000,
+            "short_context": {
+                "input": 0.20, "cached_input": 0.02, "cache_write": 0.25, "output": 1.20,
+            },
+            "long_context": {
+                "input": 0.40, "cached_input": 0.04, "cache_write": 0.50, "output": 1.80,
+            },
         },
     )
 

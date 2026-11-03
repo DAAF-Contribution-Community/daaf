@@ -5,6 +5,12 @@
 > to write, and which existing agent exemplifies best practice.
 >
 > **Read alongside:** `agent_reference/AGENT_TEMPLATE.md` (the canonical blueprint)
+>
+> **Writing standard:** `agent_reference/DOCUMENTATION_STANDARDS.md` governs the
+> prose in every section. Agent files are agent-facing (§ Audiences): internal
+> terms are fine, present tense only (§ S5 Current State), and any user-facing
+> message template follows § S3 Plain for Users. When an exemplar named below
+> departs from the standard, follow the standard rather than the exemplar.
 
 ---
 
@@ -114,7 +120,7 @@ Your Core Distinction table must use this format:
 | Principle (belongs here) | Step (belongs in Protocol) |
 |--------------------------|---------------------------|
 | "Always capture pre-state before transforming" | "Step 1: Run shape check on input data" |
-| "Never fix code directly — report and recommend" | "Step 3: Write findings to QA report" |
+| "Never fix code directly — report and recommend" | "Step 3: Return findings in the Output Format" |
 
 **Guidance:**
 - 3-7 numbered principles, each 2-5 sentences
@@ -143,6 +149,7 @@ Your Core Distinction table must use this format:
 - Mark which steps are auto-execute vs. require confirmation
 - Reference external files rather than inlining large code blocks (progressive disclosure)
 - For code-heavy protocols: provide ONE representative example inline, link the rest
+- When a step writes a Markdown file, name it with a date or stage/sequence prefix (`{date}_{Title}_Report.md`, `05_consistency_review.md`), never a basename starting with `report`, `summary`, `findings` or `analysis`: Claude Code rejects that Write for subagents (CLAUDE.md § Project Conventions > Subagent File Output). Agents without the Write tool return text instead of writing deliverable or report files
 
 **Common mistake:** Mixing principles (Section 4) with protocol steps. If a step starts with "Always..." or "Never...", it's probably a principle.
 
@@ -328,7 +335,7 @@ For agent landscape context, see `.claude/agents/README.md`.
 ```
 
 **Guidance:**
-- Do NOT include a full Agent() call template — the `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates
+- The `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates. The section may also show the full Agent() call as "the general shape" when seeing the whole prompt helps the agent check what it receives; keep it identical to the canonical template, field for field, and fix the example whenever the two differ (`AGENT_TEMPLATE.md` § Section 11). Exemplar: `paper-reader.md` § Invocation
 - Specify `subagent_type` so readers know the agent's capability level at a glance
 - Reference the relevant WORKFLOW_PHASE file for stage-specific invocation templates (e.g., `WORKFLOW_PHASE3_ACQUISITION.md` for Stage 5-6 agents)
 - The invocation template must map to Upstream Inputs (Section 3)

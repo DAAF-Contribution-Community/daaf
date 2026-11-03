@@ -12,7 +12,7 @@ working within DAAF, framed as "here is what you are used to, here is the
 equivalent, and here is why it is different."
 
 > **Versions referenced:**
-> Python: marimo 0.19.11, Python 3.12, polars 1.39.3
+> Python: marimo 0.25.0, Python 3.12, polars 1.39.3
 > Stata: Stata 18
 > See SKILL.md Section: Library Versions for the complete version table.
 
@@ -656,7 +656,8 @@ summarize income [aw=weight]
 
 Python:
 ```python
-# Weighted regression: use WLS in statsmodels
+# Weighted regression: WLS treats weights as precision (analytic) weights, like [aw=];
+# for [pw=] also request robust SEs: .fit(cov_type="HC1", use_t=True)
 import statsmodels.api as sm
 model = sm.WLS(y, X, weights=pdf["weight"]).fit()
 
@@ -721,6 +722,7 @@ fit = pf.feols("y ~ x1 + x2", data=pdf)
 > (stata.com/manuals, accessed 2026-03-28); StataCorp, "macro -- Macro definition
 > and manipulation" (stata.com/manuals/pmacro.pdf, accessed 2026-03-28);
 > Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); polars documentation
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> polars documentation
 > (docs.pola.rs, accessed 2026-03-28); marimo documentation (docs.marimo.io,
 > accessed 2026-03-28)

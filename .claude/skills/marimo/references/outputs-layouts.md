@@ -167,6 +167,26 @@ mo.accordion({
 })
 ```
 
+Signature in 0.25.0: `mo.accordion(items, multiple=False, lazy=False, *, expanded=False)`. String values in `items` are rendered as markdown.
+
+```python
+# Let several sections be open at once
+mo.accordion({"Summary": summary, "Details": details}, multiple=True)
+
+# Wrap each section in mo.lazy, so its content renders only when opened
+mo.accordion({"View total": expensive_item}, lazy=True)
+
+# Start with a section open (expanded is keyword-only, new since 0.19.11)
+mo.accordion({"Summary": summary, "Details": details}, expanded=["Details"])
+
+# expanded=True opens the first item, or every item with multiple=True
+mo.accordion({"Summary": summary, "Details": details}, multiple=True, expanded=True)
+```
+
+`expanded` takes `True`/`False` or a list of item names; a bare string raises `TypeError`, an unknown name raises `ValueError`, and naming more than one item requires `multiple=True`. Readers can still open and close items.
+
+**Not in Stage 9 execution logs:** keep the canonical `mo.accordion({"Execution Log (<file>.py)": mo.md(...)})` form exactly. `scripts/decompile_notebook.py` requires the execution-log accordion to have one positional mapping and no keyword arguments, so `expanded=`, `multiple=`, or `lazy=` there makes decompilation fail.
+
 ### Sidebar
 
 Fixed sidebar navigation:

@@ -2,7 +2,7 @@
 
 School-level mirror dataset families for the Urban Institute Education Data mirror. Each entry gives the **canonical mirror path** (the acquisition currency — extensionless `{source}/{filename}`, with `{year}` where the family is Yearly), the entity **grain**, **year coverage** (vintage 0.26.1), curated **key variables** (real names — full lists in `variable-dictionary-{source}.md`), **join keys**, **caveats**, and a small **Portal endpoint** annotation for citation/maintenance only.
 
-> **Vintage:** all facts keyed to pinned mirror vintage **0.26.1** (revision `0ad00ce0e232c96b0642459e4e7326607a8d26aa`). The `urban_csv` fallback is unpinned/current-Portal. Primary ID at this level is `ncessch` (12-char zero-padded NCES school ID, string); CRDC files additionally carry `crdc_id` (Office of Civil Rights school ID). Emit paths, not routes. Do not instruct fetching or probing — retrieval belongs to `education-data-query`.
+> **Vintage:** all facts keyed to pinned mirror vintage **0.26.1** (revision `0ad00ce0e232c96b0642459e4e7326607a8d26aa`). The `urban_csv` fallback is unpinned/current-Portal. Primary ID at this level is `ncessch` (12-char zero-padded NCES school ID, string after normalization; raw mirror files store it as String or as Int64 without leading zeros, depending on the file — see the explorer `SKILL.md` Zero-padded IDs note); CRDC files additionally carry `crdc_id` (Office of Civil Rights school ID). Emit paths, not routes. Do not instruct fetching or probing — retrieval belongs to `education-data-query`.
 
 ---
 
@@ -14,7 +14,7 @@ School-level mirror dataset families for the Urban Institute Education Data mirr
 - **Grain:** one row per `ncessch` × `year` (national public-school directory + characteristics + school-level FRPL and staffing).
 - **Key variables:** `school_name`, `lea_name`, `leaid`, `fips`, `enrollment`, `teachers_fte`, `school_level`, `school_type`, `charter`, `magnet`, `virtual`, `title_i_status`, `urban_centric_locale`, `lowest_grade_offered`, `highest_grade_offered`, `free_or_reduced_price_lunch`, `latitude`, `longitude` (full 52-var list: `variable-dictionary-ccd.md` § `ccd/schools_ccd_directory`).
 - **Join keys:** `ncessch` (+ `year`) to any school source; `leaid` (+ `year`) rolls up to the LEA/district level.
-- **Caveats:** `teachers_fte` is rounded in the live Portal API — the mirror/bulk file carries full precision, so prefer the mirror value (observed 2026-08-07, mirror-maintenance fidelity battery; bulk CSV confirmed 28.98 — see /daaf/research/2026-08-06_FrameworkDev_MirrorV2Update/2026-08-07_urban-fidelity/). FRPL counts are affected by Community Eligibility Provision (CEP) coverage; for a modeled poverty measure use MEPS. `virtual`/`charter`/`magnet` coverage thins in the earliest years.
+- **Caveats:** `teachers_fte` is rounded in the live Portal API — the mirror/bulk file carries full precision, so prefer the mirror value (observed 2026-08-07, mirror-maintenance fidelity battery; bulk CSV confirmed 28.98; see `maintenance-live-api.md`). FRPL counts are affected by Community Eligibility Provision (CEP) coverage; for a modeled poverty measure use MEPS. `virtual`/`charter`/`magnet` coverage thins in the earliest years.
 - **Codebook:** `ccd/codebook_schools_ccd_directory`
 - **Portal endpoint(s):** `/schools/ccd/directory/{year}/`
 
@@ -24,7 +24,7 @@ School-level mirror dataset families for the Urban Institute Education Data mirr
 - **Grain:** one row per `ncessch` × `year` × `grade` × `race` × `sex`. Disaggregation dimensions are **columns**, not URL segments — filter to the `99`/total code on each dimension for a school total (do not sum, or totals rows double-count).
 - **Key variables:** `ncessch`, `leaid`, `fips`, `grade`, `race`, `sex`, `enrollment` (complete 9-var family incl. `ncessch_num`: `variable-dictionary-ccd.md` § `ccd/schools_ccd_enrollment_{year}`).
 - **Join keys:** `ncessch` (+ `year`, and dimension codes where relevant).
-- **Caveats:** `grade=-1` is Pre-K (**not** missing); `grade=99` is all-grades total. Fetch each needed year and concatenate. `sex=9` is Unknown; `race` uses the `1-9, 20, 99` scheme (see `variable-codes.md`).
+- **Caveats:** `grade=-1` is Pre-K (**not** missing); `grade=99` is all-grades total. Fetch each needed year and concatenate. `sex=9` is Unknown; `race` declares the `1-9, 20, 99` scheme but populates `1-7, 9, 99` (2022 file, probed 2026-10-28; see `variable-codes.md`).
 - **Codebook:** `ccd/codebook_schools_ccd_enrollment`
 - **Portal endpoint(s):** `/schools/ccd/enrollment/{year}/{grade}/` (+ `/race/`, `/sex/`, `/race/sex/`)
 
@@ -35,7 +35,7 @@ School-level mirror dataset families for the Urban Institute Education Data mirr
 OCR civil-rights collection for U.S. public schools — 24 topic-specific mirror families, each a **separate file per topic** (the Portal exposes many per-disaggregation routes — `.../disability/sex/`, `.../lep/sex/`, `.../race/sex/` — but they resolve to one mirror file per topic family). Shared structure and caveats apply to every CRDC family below and are stated once here:
 
 - **Grain & dimensions:** primary key is `ncessch` × `year`; most topic files disaggregate by `race`, `sex`, `disability`, and/or `lep` as **columns**. Filter each dimension to its `99`/total code for a school total. `disability` uses the full `0-4/99` scheme (code `2` = Section 504 only; see `variable-codes.md`); `sex=9` is Unknown; `grade_crdc` (where present) uses banded codes (`20`=Gr 7-8, `21`=Gr 9-10, `22`=Gr 11-12, `99`=Total).
-- **Collection years:** biennial 2011, 2013, 2015, 2017, 2020, 2021 (a few families extend to 2022 or stop earlier — see each entry). **2013-14 (`year=2013`) is a universe collection** (official evidence); **2020-21 (`year=2020`) is COVID-impacted** and must be interpreted with care.
+- **Collection years:** 2011, 2013, 2015, 2017, 2020, 2021 — often described as biennial, but there is no odd/even-year rule (2020 and 2021 are consecutive collections; a few families extend to 2022 or stop earlier — see each entry). **Every collection since 2011-12 is a universe collection** (per OCR; 2013-14, `year=2013`, confirmed by official evidence); **2020-21 (`year=2020`) is COVID-impacted** and must be interpreted with care.
 - **Suppression & missing:** small cells (typically fewer than 10 students) are suppressed; suppressed = `-3`, missing/not-reported = `-1`, not-applicable = `-2` across all measures.
 - **ID dtypes (no universal contract):** `crdc_id`, `ncessch`, and `leaid` are typed heterogeneously per file and even per vintage (String/Int64 mix — e.g. `discipline_k12_2020` stores `ncessch` as Int64, `school_characteristics` stores all three as String). Always inspect the actual file schema and normalize identifiers on read before joining; never assume a uniform id dtype across CRDC files.
 
@@ -249,11 +249,11 @@ OCR civil-rights collection for U.S. public schools — 24 topic-specific mirror
 
 #### CRDC Retention — `crdc/schools_crdc_retention_{year}`
 
-- **Type / years:** Yearly · 2011, 2013, 2015, 2017 (**not** collected 2020/2021)
+- **Type / years:** Yearly · 2011, 2013, 2015, 2017, 2020 (no 2021 file; the Portal catalog lists 2020 only on the `race/sex` route, while its `disability/sex` and `lep/sex` routes stop at 2017)
 - **Grain:** one row per `ncessch` × `year` × `grade` × `race`/`lep`/`disability` × `sex`.
 - **Key variables:** `students_retained`, plus `grade` and dimension columns `race`, `sex`, `disability`, `lep` (full 11-var list: `variable-dictionary-crdc.md` § `crdc/schools_crdc_retention_{year}`).
 - **Join keys:** `ncessch`/`crdc_id` (+ `year`, `grade`, dimension codes).
-- **Caveats:** grade-in-URL family (retention is analyzed by grade level); coverage stops at 2017.
+- **Caveats:** grade-in-URL family (retention is analyzed by grade level); coverage stops at 2020, and 2020 may lack the disability and LEP breakdowns (per the Portal catalog; the 2020 file's dimension values were not probed).
 - **Codebook:** `crdc/codebook_schools_crdc_retention`
 - **Portal endpoint(s):** `/schools/crdc/retention/{year}/{grade}/disability/sex` (+ `/lep/sex`, `/race/sex`)
 
@@ -324,7 +324,7 @@ OCR civil-rights collection for U.S. public schools — 24 topic-specific mirror
 - **Type / years:** Single-file · 2009-2022 (MEPS 2.0, released 2025-12-11; covers school years 2009-10 through 2022-23)
 - **Grain:** one row per `ncessch` × `year` (Urban Institute modeled school-level poverty estimate).
 - **Key variables:** `meps_poverty_pct` (% of students at ≤100% FPL), `meps_poverty_se`, `meps_mod_poverty_pct`, `meps_poverty_ptl`, `meps_mod_poverty_ptl`, `gleaid` (complete 11-var family: `variable-dictionary-meps.md` § `meps/schools_meps`).
-- **Join keys:** `ncessch` (+ `year`) to CCD/CRDC/EDFacts; `gleaid` for geographic LEA linkage.
+- **Join keys:** `ncessch` (+ `year`) to CCD/CRDC/EDFacts; `gleaid` for geographic LEA linkage. `ncessch` is Int64 here (leading zeros lost) but String in e.g. `ccd/schools_ccd_directory` and `crdc/schools_crdc_apib_enroll` (pinned mirror, probed 2026-10-28), so name the cast-to-String + pad-to-12 normalization as a join caveat.
 - **Caveats:** the poverty field is `meps_poverty_pct` (**not** `school_poverty`). MEPS 2.0 mirror coverage runs to file-year 2022; Portal year 2022 returned rows while **2023 was empty as of 2026-08-06** (re-probe before assuming 2023 availability). Prefer MEPS over CCD FRPL where FRPL is unreliable due to CEP, and for consistent cross-state measurement.
 - **Codebook:** `meps/codebook_schools_meps`
 - **Portal endpoint(s):** `/schools/meps/{year}/`
@@ -338,8 +338,8 @@ OCR civil-rights collection for U.S. public schools — 24 topic-specific mirror
 - **Type / years:** four single-file census-geography vintages — `nhgis/schools_nhgis_geog_1990`, `_2000`, `_2010`, `_2020` — each covering school file-years **1986-2023**. Choose the vintage by the census-geography boundaries you need (1990/2000/2010/2020), not by data year.
 - **Grain:** one row per `ncessch` × `year` (a school's location joined to census geography identifiers for the chosen census vintage).
 - **Key variables:** `tract`, `block_group`, `geoid_block`, `county_fips_geo`, `state_fips_geo`, `cbsa`, `csa`, `census_region`, `census_division`, `place_fips`, `puma`, `gleaid`, `geocode_accuracy` (full 48-var list: `variable-dictionary-nhgis.md` § `nhgis/schools_nhgis_geog_{year}`).
-- **Join keys:** `ncessch` (+ `year`) to any school source; the census geo IDs (`tract`, `geoid_block`, `cbsa`, `county_fips_geo`) then link outward to census/ACS data.
-- **Caveats:** **geography linkage tables ONLY** — these files carry no census demographics. To browse or extract census demographic data, use the public NHGIS Data Finder (free IPUMS NHGIS account required for extracts). Match the census vintage to your demographic data's boundary year to avoid boundary-change mismatch. `geocode_accuracy`/`geocode_accuracy_detailed` flag imprecise geocodes — inspect before spatial analysis.
+- **Join keys:** `ncessch` (+ `year`) to any school source; the census geo IDs (`tract`, `geoid_block`, `cbsa`, `county_fips_geo`) then link outward to census/ACS data. `geoid_block` differs by census vintage (observed on Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27): the 12-digit block-group GEOID in the 2010/2020 files, the 11-digit tract GEOID in the 1990 file, and an unidentified encoding in the 2000 file (do not treat it as a block or block-group GEOID). It is Int64 in every file, so leading zeros are lost — zero-pad before use; it is never a 15-digit block GEOID.
+- **Caveats:** **geography linkage tables ONLY** — these files carry no census demographics. To browse or extract census demographic data, use the public NHGIS Data Finder (free IPUMS NHGIS account required for extracts). Match the census vintage to your demographic data's boundary year to avoid boundary-change mismatch. In the 1990 and 2000 files the parsed geography columns are unreliable on the pinned mirror: 1990 `state_fips_geo` holds the state FIPS × 10 (Ohio = 390) and 2000 `county_fips_geo` is not a county FIPS code (values 10-990); use `fips`/`county_code` or the 2010/2020 files instead. `geocode_accuracy` is a match score (observed 4-100), not the codebook's 1-4 codes, and is `-2` for every row from 2017 on; `geocode_accuracy_detailed` gives the match type — inspect both before spatial analysis. See the NHGIS skill.
 - **Codebook:** `nhgis/codebook_schools_nhgis_census1990` / `census2000` / `census2010` / `census2020`
 - **Portal endpoint(s):** `/schools/nhgis/census-1990/{year}/` (+ `census-2000`, `census-2010`, `census-2020`)
 

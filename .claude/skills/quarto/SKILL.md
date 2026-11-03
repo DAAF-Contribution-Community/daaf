@@ -12,8 +12,8 @@ autoload: never
 metadata:
   audience: research-coders
   domain: r-library
-  library-version: "Quarto 1.7.29"
-  skill-last-updated: "2026-05-08"
+  library-version: "Quarto 1.10.18"
+  skill-last-updated: "2026-11-01"
   tags: ["r", "notebook", "quarto", "knitr", "reproducibility"]
 ---
 
@@ -34,14 +34,16 @@ In DAAF, Quarto serves the same role as marimo in Python pipelines: the Stage 9 
 
 ## Version Notes
 
-This skill targets **Quarto 1.7.29** with **knitr 1.51** and **rmarkdown 2.31**.
+This skill targets **Quarto 1.10.18** (bundling Pandoc 3.10 and Typst 0.15.1) with **knitr 1.51** and **rmarkdown 2.31** on R 4.5.3, the versions installed in the DAAF image, and LaTeX from the image's TinyTeX bundle (TinyTeX v2026.11: TeX Live 2026, LuaHBTeX 1.24.0), which `quarto check` reports as "Installation From Path". The Stage 9 contract in `./references/daaf-notebook.md` holds on this version: with global `execute: eval: false`, archive chunks do not execute and print no output, while a canonical `#| eval: true` preview chunk does run, and `embed-resources` produces a single file. The shipped smoke test `scripts/smoke_tests/smoke_quarto_d.R` exercises HTML rendering (8 of 8 checks pass); LaTeX PDF rendering is exercised by the image build's own smoke render, which fails the build if it does not produce a PDF.
 
-Key features in Quarto 1.7.x:
+Key features in Quarto 1.10.x:
 - `#|` (hash-pipe) chunk option syntax is the standard (replaces legacy `{r, ...}` header syntax)
 - Native cross-referencing with `@fig-`, `@tbl-`, `@sec-` prefixes
 - YAML frontmatter for all format configuration
 - `quarto render` CLI replaces `rmarkdown::render()` as the standard rendering path
-- Typst output format available (alternative to LaTeX for PDF)
+- Two PDF paths, both working in the DAAF image: LaTeX (`format: pdf`, default engine `lualatex`, from the image's TinyTeX) and Typst (`format: typst`, bundled with Quarto). LaTeX is the default PDF path, and the only one for journal or LaTeX templates, kableExtra tables and LaTeX-only options; use Typst when the user asks for it or for a quick, simple draft PDF (`./references/format.md` § Choosing a PDF Path). Set `latex-auto-install: false` in every LaTeX document (or once in a Quarto project's `_quarto.yml`); a missing LaTeX package is a Dockerfile change the user decides on, never a runtime install (`./references/gotchas.md` § PDF Rendering Issues)
+
+Two Quarto changes after 1.7 can surprise older documents: Quarto has defaulted to `lualatex` as the LaTeX `pdf-engine` since 1.8 (earlier versions used `xelatex`), and the Quarto 1.9 changelog says Pandoc 3.8.3 and later can parse a superscript that opens with a span (`^[text]{.class}^`) as an inline footnote. DAAF's one probe of that form on 1.10.18 rendered a superscript, not a footnote (HTML only), so treat the changelog item as a caution rather than observed behavior. Neither affects the Stage 9 HTML archive path. Details in `./references/gotchas.md`.
 
 The `quarto` R package is NOT required. Quarto CLI invokes knitr directly -- the R package is a thin convenience wrapper that adds no functionality beyond what the CLI provides.
 
@@ -60,7 +62,7 @@ Each topic in `./references/` contains focused documentation:
 | `tables.md` | Table output from gt, kable, kableExtra, cross-refs | Adding tables to documents |
 | `daaf-notebook.md` | DAAF Stage 9 notebook assembly pattern for .qmd | **Required for Stage 9 notebook assembly** |
 | `rendering.md` | `quarto render` CLI, format selection, parameters, batch | Rendering documents from command line |
-| `gotchas.md` | Common pitfalls: chunk syntax, YAML, figure paths, cache | Debugging rendering issues |
+| `gotchas.md` | Common pitfalls: chunk syntax, YAML, figure paths, cache, LaTeX/Typst PDF issues | Debugging rendering issues |
 
 ### Reading Order
 
@@ -74,7 +76,7 @@ Each topic in `./references/` contains focused documentation:
 
 **Always Load Together (when execution language is R):**
 - `ggplot2` -- Visualization library used for figure chunks in .qmd documents
-- `data-scientist` -- Methodology and validation principles that inform notebook structure
+- `data-scientist` -- Methodology and validation principles for the scripts a Stage 9 notebook archives
 
 **Load for Specific Features:**
 - `gt` -- Publication-quality tables in .qmd documents
@@ -166,7 +168,7 @@ Creating a .qmd?
 ```
 Choosing output format?
 |- HTML (default, recommended) -> ./references/format.md
-|- PDF (requires LaTeX or Typst) -> ./references/format.md
+|- PDF: LaTeX (format: pdf) or Typst (format: typst), and which to pick -> ./references/format.md
 |- Word (.docx) -> ./references/format.md
 |- Multiple formats -> ./references/rendering.md
 \- Self-contained HTML -> ./references/format.md
@@ -269,7 +271,8 @@ Results show `r nrow(df)` observations.
 |---------|---------|
 | `quarto render doc.qmd` | Render to default format |
 | `quarto render doc.qmd --to html` | Render to HTML |
-| `quarto render doc.qmd --to pdf` | Render to PDF |
+| `quarto render doc.qmd --to pdf` | Render to PDF via LaTeX (`lualatex`); set `latex-auto-install: false` in the YAML first |
+| `quarto render doc.qmd --to typst` | Render to PDF via Typst |
 | `quarto render doc.qmd --to docx` | Render to Word |
 | `quarto preview doc.qmd` | Live preview with auto-reload |
 | `quarto check knitr` | Verify R/knitr installation |
@@ -284,6 +287,7 @@ Results show `r nrow(df)` observations.
 | Chunk options (`#|` syntax) | `./references/chunks.md` |
 | HTML format | `./references/format.md` |
 | PDF format | `./references/format.md` |
+| Choosing LaTeX vs Typst PDF | `./references/format.md` |
 | Word format | `./references/format.md` |
 | Themes and styling | `./references/format.md` |
 | Figure output | `./references/figures.md` |
@@ -300,13 +304,14 @@ Results show `r nrow(df)` observations.
 | Figure path issues | `./references/gotchas.md` |
 | knitr cache problems | `./references/gotchas.md` |
 | PDF rendering issues | `./references/gotchas.md` |
+| Missing LaTeX package, `latex-auto-install` | `./references/gotchas.md` |
 
 ## Citation
 
 When Quarto is used as the document format, include in the report's
 Software & Tools references:
 
-> Allaire, J.J., Teague, C., Scheidegger, C., Xie, Y., & Dervieux, C. (2024). Quarto (Version 1.7) [Computer software]. https://quarto.org
+> Allaire, J.J., Teague, C., Scheidegger, C., Xie, Y., Dervieux, C., & Woodhull, G. (2026). Quarto (Version 1.10) [Computer software]. https://doi.org/10.5281/zenodo.5960048
 
 **Cite when:** The analysis notebook or report is delivered as a Quarto document (typically always true in DAAF R pipelines).
 **Do not cite when:** Quarto is not used for document delivery.

@@ -335,7 +335,8 @@ BIC(fit1, fit2, fit3)   # Returns data.frame with df and BIC columns
 
 ### Detecting Overdispersion in Poisson/Binomial
 
-The dispersion parameter phi = deviance / df_residual. For Poisson and binomial,
+A quick dispersion check is deviance / df_residual (R's quasi-family estimate
+uses Pearson chi-squared / df_residual). For Poisson and binomial,
 phi is assumed to be 1. If phi >> 1, the model is overdispersed.
 
 ```r

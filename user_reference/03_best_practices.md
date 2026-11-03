@@ -9,7 +9,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 ## Table of Contents
 - [**Writing Effective Prompts**](#writing-effective-prompts)
 - [**Reviewing the Plan Before Execution**](#reviewing-the-plan-before-execution)
-- [**Interpreting Validation Checkpoints and STOP Conditions**](#interpreting-validation-checkpoints-and-stop-conditions)
+- [**Interpreting Validation Checks and STOP Conditions**](#interpreting-validation-checks-and-stop-conditions)
 - [**Reviewing Notebooks, Reports, and Script Logs**](#reviewing-notebooks-reports-and-script-logs)
 - [**Human Oversight Responsibilities**](#human-oversight-responsibilities)
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
@@ -47,7 +47,7 @@ You do *not* need to know the exact dataset names, variable codes, or statistica
 
 Plan.md is arguably the most important artifact DAAF produces. It is your **last chance** to shape the entire analysis before any data is fetched, any code is written, or any computation is spent. I cannot overstate this: time spent carefully reviewing Plan.md is the single highest-leverage activity in the entire DAAF workflow.
 
-After DAAF creates the Plan and validates it internally (via the plan-checker agent), it will present you with a Phase Status Update (PSU2) that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The PSU2 summary is helpful but it is a summary -- the full Plan.md contains critical details about methodology, risk, and scope that the summary necessarily condenses.
+After DAAF creates the Plan and validates it internally (with its plan reviewer, the `plan-checker` agent), it will pause at a planning checkpoint: a message that summarizes the Plan and gives you the exact file path to read it yourself. **Read the actual file.** The checkpoint summary is helpful but it is a summary -- the full Plan.md contains critical details about methodology, risk, and scope that the summary necessarily condenses.
 
 A companion file, Plan_Tasks.md, is also created during planning. It contains the detailed machine-readable task definitions that DAAF uses to execute each step. Plan_Tasks.md is available for auditing specific task definitions if you want to inspect the exact transformation sequence, dependencies, and file paths.
 
@@ -125,21 +125,23 @@ When in doubt, just tell DAAF what you are thinking. It will let you know if the
 
 ---
 
-## Interpreting Validation Checkpoints and STOP Conditions
+## Interpreting Validation Checks and STOP Conditions
 
 DAAF runs a *lot* of validation. This is very much by design -- the core philosophy is "every transformation has a validation, no exceptions." But as a user, you do not need to understand every internal check. What you need to understand is: **what the results mean and when you need to act.**
 
-### Understanding Checkpoint Results (CP1-CP4)
+### Understanding Validation Check Results (CP1-CP4)
 
-DAAF has four primary validation checkpoints embedded directly in its code scripts. These run automatically during execution and check for operational problems -- things like empty data, corrupted values, or data loss.
+DAAF has four primary validation checks embedded directly in its code scripts. These run automatically during execution and check for operational problems -- things like empty data, missing columns, or data loss. You'll meet their names in two places: each script's execution log opens the check with a banner such as `CP1 VALIDATION: POST-FETCH` and ends it with a verdict line such as `CP1 VALIDATION: PASSED`, and the research notebook repeats that verdict in a **Status:** line under each script.
 
 **CP1: Post-Fetch Validation** -- *"Did we get the data we expected?"*
 
 This runs right after DAAF downloads data from a source. It checks:
 - Did data actually come back? (Not empty)
+- Is the row count within a broad range of the Plan's estimate? (Far fewer or far more rows than expected is flagged.)
 - Are the expected columns present?
-- Are the data types correct?
+- Are all the requested years there, and does the latest year reach as far as you asked? (A shortfall is flagged as a data lag.)
 - What is the missingness rate for critical fields?
+- Does the data include years the source flags for comparability concerns (for education data, the COVID-affected years 2020 and 2021)?
 
 **What PASSED means:** The data arrived, has the expected structure, and critical fields are mostly populated. You probably will not hear about this unless something went wrong.
 
@@ -154,33 +156,63 @@ This runs after DAAF has processed the raw data -- filtering out coded values (l
 
 **What PASSED means:** The cleaning worked as expected and the remaining data is sufficient for analysis. Suppression rates are within acceptable bounds.
 
-**What WARNING means:** Suppression rates are elevated (typically 30-50%) -- enough data remains for analysis, but your results may be less precise, particularly for subgroup breakdowns. DAAF will document this but proceed.
+**What PASSED WITH WARNINGS means:** Something is notable but not fatal -- most often, suppression above 20% in a key column, but also more than half the rows removed during cleaning, or coded values still present in the clean data. Enough data remains for analysis, but your results may be less precise, particularly for subgroup breakdowns. When suppression falls between 30% and 50%, DAAF pauses, shows you the rate and what it affects, and asks whether to proceed.
 
-**What FAILED means:** Suppression exceeds 50%, meaning more than half the data is missing or suppressed. DAAF will STOP -- this is a hard threshold because analysis on data with >50% suppression is generally unreliable. You will need to decide whether to narrow your scope, change your data source, or acknowledge this as a fundamental limitation.
+**What FAILED means:** Suppression exceeds 50% in a key column, meaning more than half of its values are suppressed (50% is the default for education data; the Plan sets the threshold for each kind of data). DAAF will STOP -- this is a hard threshold because analysis on data with >50% suppression is generally unreliable. You will need to decide whether to narrow your scope, change your data source, or acknowledge this as a fundamental limitation. This validation check also fails, and DAAF stops, if cleaning removed more than 90% of the rows.
 
 **CP3: Post-Transformation Validation** -- *"Did the data transformation do what we intended?"*
 
 This runs after every join, aggregation, or derived-variable calculation. It checks:
-- Did the row count change as expected? (Joins should not unexpectedly multiply rows)
-- Are there new unexpected null values?
-- Do derived variables have reasonable distributions?
+- Did the row count change the way the Plan said it would (stay the same, shrink, grow, or collapse into groups)?
+- Did the step drop most of the rows?
+- Did any columns gain new null values?
+- Are the columns the Plan said must be kept still there?
 
-**What PASSED means:** The transformation produced the expected results. Row counts, null patterns, and distributions look reasonable.
+Joins get a dedicated check of their own as well: whether the join multiplied rows beyond what the Plan allowed, how many rows it lost, and how well the join keys matched.
 
-**What FAILED means:** Something went wrong -- row counts dropped by more than 90%, a join produced unexpected nulls, or derived values are clearly incorrect. DAAF will stop and investigate.
+**What PASSED means:** The transformation produced the expected results. Row counts, null patterns, and the required columns look as expected.
 
-**CP4: Pre-Output Validation** -- *"Does the final output meet our commitments?"*
+**What FAILED means:** Something went wrong -- row counts dropped by more than 90%, a required column disappeared, an aggregation increased the row count, or a join multiplied rows beyond the Plan's limit or was missing its join key. New null values are flagged as a warning rather than a failure. DAAF will stop and investigate.
 
-This runs during the synthesis phase (Stages 11-12), checking the complete output against what the Plan promised. It validates:
-- Are all required columns present in the analysis dataset?
-- Do all promised output files exist (figures, analysis results, report)?
-- Are all Research Outcomes from the Plan rigorously addressed?
-- Are Hypotheses (if any) transparently assessed with evidence?
+**CP4: Post-Analysis and Visualization Validation** -- *"Are the analysis results and figures sound?"*
+
+This runs at the end of the analysis stage, inside the analysis and visualization scripts themselves. It validates:
+- Do the analysis results exist, and are the estimates finite and plausible? Did the model converge? Is the sample size adequate?
+- Are there any nulls in the outcome or key columns being analyzed?
+- Does every figure the task promised exist, is it non-empty, and has DAAF actually looked at it?
+- Did the script read from the cleaned, processed data rather than the raw download?
+
+**What PASSED means:** The results and figures are present, well-formed, and built from the right inputs.
+
+**What FAILED means:** Something is wrong -- an estimate is infinite or missing, the model did not converge, a figure was never produced, or the script analyzed raw instead of processed data. DAAF will stop and investigate.
+
+**Pre-Output Verification** -- *"Does the final output meet our commitments?"*
+
+Separately, just before delivery, DAAF's final reviewer (the `data-verifier` agent) works through a delivery checklist against what the Plan promised:
 - Does the report have all required sections?
+- Do the outputs match the Plan's commitments (data sources, years, geography, methodology)?
+- Are all Research Outcomes from the Plan rigorously addressed with evidence?
+- Are Hypotheses (if any) transparently assessed?
+- Does the research notebook pass its checks (it runs without errors and holds the final scripts verbatim)?
 
-**What PASSED means:** Everything the Plan committed to investigate has been rigorously addressed. The analysis is consistent with the original research question.
+This is a review checklist rather than automated code, so it is one of the places your own judgment matters most.
 
-**What FAILED means:** Something is missing -- a figure was not generated, a report section is incomplete, or a Research Outcome was not addressed. DAAF will identify the gap and attempt to resolve it.
+### Reading a Validation Check Result
+
+Each validation check prints a tally before its verdict, something like:
+
+```
+Checks: 5 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped
+CP2 VALIDATION: PASSED WITH WARNINGS
+```
+
+Three things are worth knowing about that output:
+
+- **"PASSED WITH WARNINGS" is not a clean pass.** Something deviated from expectations but not fatally. When DAAF summarizes that part of the work for you, the deviation is listed as a note for your awareness.
+- **"not verified" means a check could not run** -- a required input was missing, empty, or the wrong type. DAAF treats this as a failure rather than a pass, because a check that never ran has not validated anything. (In the independent quality reviews described below, it is at least a WARNING.)
+- **"skipped" means a check was explicitly declared not applicable**, with a stated reason -- for example, a data source that has no suppression code at all. Skips are always counted and always explain themselves; they are never silent.
+
+A validation check where every individual check was skipped (the tally shows `0 passed, 0 warnings, 0 failed`) has not validated anything either, so DAAF marks it FAILED too.
 
 ### When DAAF Stops and Asks for Guidance
 
@@ -194,22 +226,22 @@ Common STOP conditions and what to do about them:
 | Suppression >50% | More than half the data is suppressed/missing | Suppression rate calculation and affected breakdowns | Narrow geography, reduce subgroups, use different measure |
 | Row loss >90% | A transformation (join, filter) dropped most rows | Pre and post row counts with explanation | Check join keys, verify filter logic, adjust criteria |
 | Cross-state assessment comparison | You asked to compare test scores across states | Explanation of why this is methodologically invalid | Reframe question (within-state trends are valid) |
-| QA BLOCKER after 2 revisions | Code review found a problem that could not be resolved in 2 attempts | Description of the issue, what was tried, why it persists | Guide DAAF's approach, simplify the task, or accept limitation |
+| Quality-review BLOCKER after 2 revisions | Code review found a problem that could not be resolved in 2 attempts | Description of the issue, what was tried, why it persists | Guide DAAF's approach, simplify the task, or accept limitation |
 | Data unavailable | The dataset simply does not exist for your scope | Explanation of what was looked for | Choose a different data source or adjust scope |
 
 When DAAF stops, it will present the issue in a structured format: what happened, what it tried, your options (with pros and cons), and its recommendation. You do not need to have a solution -- you just need to tell DAAF which direction to go. "Try option 2" or "Let us narrow to just California and see if that helps" are perfectly fine responses.
 
-### QA Findings: BLOCKER vs. WARNING vs. INFO
+### Quality Review Findings: BLOCKER vs. WARNING vs. INFO
 
-In addition to the CP checkpoints above, every script DAAF writes gets independently reviewed by a separate code-reviewer agent. Think of this as a second pair of eyes -- an adversarial reviewer whose job is to find problems the original code might have missed. The reviewer classifies its findings by severity:
+In addition to the automated validation checks above, every script DAAF writes gets independently reviewed by its quality reviewer (the `code-reviewer` agent), a separate specialist from the one that wrote the script. Think of this as a second pair of eyes -- an adversarial reviewer whose job is to find problems the original code might have missed. The reviewer classifies its findings by severity. You'll see these three labels in the review scripts in `scripts/cr/` and in the QA Findings Summary in STATE.md; DAAF's checkpoint messages to you describe a WARNING as a note for your awareness and a BLOCKER as an issue that needs to be resolved before continuing.
 
-**INFO:** An observation that does not indicate a problem but is worth noting. Example: "The dataset has 47 states represented instead of 50, which is expected given the query filters." You will generally not see these unless you dig into the QA scripts.
+**INFO:** An observation that does not indicate a problem but is worth noting. Example: "The dataset has 47 states represented instead of 50, which is expected given the query filters." You will generally not see these unless you dig into the review scripts.
 
-**WARNING:** A potential issue that does not block progress but should be documented. Example: "Suppression rate for rural schools is 38%, which may limit subgroup analysis precision." Warnings are accumulated and presented to you at the Phase Status Update after analysis (PSU4). They do not stop execution, but they flag things you should consider when interpreting results.
+**WARNING:** A potential issue that does not block progress but should be documented. Example: "Suppression rate for rural schools is 38%, which may limit subgroup analysis precision." Warnings are collected and summarized for you at the checkpoint after the analysis (warnings about data quality also appear earlier, at the checkpoint after the data is downloaded and cleaned). They do not stop execution, but they flag things you should consider when interpreting results.
 
-**BLOCKER:** A genuine problem that must be fixed before proceeding. Example: "The join produced 40% more rows than expected, indicating a many-to-many join where a many-to-one was specified." Blockers trigger a revision cycle -- DAAF will attempt to fix the script (up to 2 attempts) and re-submit it for review. If the blocker persists after 2 fix attempts, DAAF escalates to you.
+**BLOCKER:** A genuine problem that must be fixed before proceeding. Example: "The join produced 40% more rows than expected, indicating a many-to-many join where a many-to-one was specified." Blockers trigger a revision cycle -- DAAF will attempt to fix the script (up to 2 attempts) and re-submit it for review. If the blocker persists after 2 fix attempts, DAAF escalates to you. If the problem is with the methodology rather than the code, DAAF brings it to you right away instead.
 
-The key thing to understand about this system is that **DAAF catches and resolves most issues automatically.** The vast majority of QA findings are INFO or WARNING -- problems that are noted and documented but do not require your intervention. You only hear about BLOCKERs that could not be resolved, and those are rare.
+The key thing to understand about this system is that **DAAF catches and resolves most issues automatically.** The vast majority of review findings are INFO or WARNING -- problems that are noted and documented but do not require your intervention. You only hear about BLOCKERs that could not be resolved or that concern the methodology, and those are rare.
 
 ---
 
@@ -266,7 +298,7 @@ What to look for in the notebook:
 
 - **Execution logs that show warnings or unexpected values.** Expand the accordions and scan for anything that looks off.
 - **Row counts at each stage.** You should be able to trace the data from raw (usually large) to processed (usually smaller after filtering) to analysis (potentially larger or smaller depending on joins). Dramatic unexpected changes in row count deserve investigation.
-- **Validation results.** Each script includes embedded validation. Look for CP status: PASSED, WARNING, or FAILED.
+- **Validation results.** Each script includes embedded validation. Look for its **Status:** line (for example, "CP1 PASSED"), which reads PASSED, PASSED WITH WARNINGS, or FAILED.
 
 What you will *not* see in the notebook:
 
@@ -278,10 +310,10 @@ What you will *not* see in the notebook:
 
 Every script file in the `scripts/` directory has its execution log appended to the end of the file as comments. You can read these in any text editor. The execution log includes:
 
-- **Start/end timestamps** and total runtime
+- **When it ran**, the command that ran it, and how long it took
 - **Exit code** (0 = success, non-zero = failure)
-- **stdout** -- everything the script printed during execution (row counts, validation messages, summary statistics)
-- **stderr** -- any warnings or errors that occurred
+- **Capture status** -- a `Capture:` line that says `COMPLETE` when the whole record was saved. Trust the validation results in a log only when it says `COMPLETE`.
+- **Output** -- everything the script printed during execution (row counts, validation messages, summary statistics), with any warnings or errors included where they occurred
 
 If a script failed, you will also find versioned revisions:
 - `01_fetch-ccd.py` -- Original (with its failed log embedded)
@@ -290,18 +322,18 @@ If a script failed, you will also find versioned revisions:
 
 (R projects follow the same pattern with `.R` files: `01_fetch-ccd.R`, `01_fetch-ccd_a.R`, and so on.)
 
-The notebook only includes the final successful version, but all versions are preserved in the `scripts/` directory for audit trail purposes. If you want to understand *why* a script needed revision, read the original's execution log and the QA review that flagged the issue (stored in `scripts/cr/`).
+The notebook only includes the final successful version, but all versions are preserved in the `scripts/` directory for audit trail purposes. If you want to understand *why* a script needed revision, read the original's execution log and the quality review that flagged the issue (stored in `scripts/cr/`).
 
-### Reading QA Review Scripts
+### Reading Quality Review Scripts
 
-The `scripts/cr/` directory contains the code-reviewer's inspection scripts for each stage. These are named by convention:
+The `scripts/cr/` directory contains the quality reviewer's inspection scripts. Each name starts with the script folder it reviews (`stage5` for the data-download scripts in `scripts/stage5_fetch/`, `stage6` for cleaning, `stage7` for transformation, `stage8` for analysis and figures), then the reviewed script's number, then the review round:
 
-- `stage5_01_cr1.py` -- First QA review of Stage 5, script 01
-- `stage7_02_cr2.py` -- Second QA iteration for Stage 7, script 02
+- `stage5_01_cr1.py` -- First review of data-download script 01
+- `stage7_02_cr2.py` -- Second review round for transformation script 02
 
-Stage 8 gets two review tracks -- an analysis review (`_cra{N}`, e.g. `stage8_01_cra1.py`) and a visualization review (`_crb{N}`, e.g. `stage8_01_crb1.py`) -- so you'll see both `cra` and `crb` files for Stage 8; that's expected.
+Reviews of the analysis and figure scripts (`stage8_…`) use a different suffix: `_cra{N}` for an analysis script's statistical review (e.g. `stage8_01_cra1.py`) and `_crb{N}` for a figure script's visualization review (e.g. `stage8_02_crb1.py`). An analysis script that also draws figures gets both, so you may see a `cra` and a `crb` file with the same number. (R projects use the same names with `.R`.)
 
-These scripts contain the adversarial checks that the code-reviewer ran, along with their results. If a QA review returned WARNING or BLOCKER, the findings will be in these files. You generally do not need to read these unless you are investigating a specific concern -- but they are there for full transparency.
+These scripts contain the adversarial checks that the reviewer ran, along with their results. Each one prints a result line such as `QA2 RESULT: PASSED`: the label names the kind of review (`QA1` data download, `QA2` cleaning, `QA3` transformation, `QA4a` analysis, `QA4b` figures), and the result is PASSED, WARNING, or BLOCKER. If a review returned WARNING or BLOCKER, the findings will be in these files. You generally do not need to read these unless you are investigating a specific concern -- but they are there for full transparency.
 
 ---
 
@@ -319,16 +351,16 @@ These safeguards run without your involvement throughout the pipeline:
 
 | Safeguard | What It Does | Where It Happens |
 |-----------|-------------|-----------------|
-| **Primary Checkpoints (CP1-CP4)** | Validates data at fetch, clean, transform, and output stages -- catches empty data, type errors, data loss, missing outputs | Embedded in every script |
-| **Secondary QA (QA1-QA4b)** | Independent adversarial review of every script by a separate code-reviewer agent | After every script execution |
+| **Primary Validation Checks (CP1-CP4)** | Validates data after download, cleaning, transformation, and analysis/visualization -- catches empty data, missing columns, data loss, invalid results, missing figures | Embedded in every script |
+| **Independent quality review** | Adversarial review of every script by a separate quality reviewer (the `code-reviewer` agent) | After every script execution |
 | **Iteration Protocol** | Forces every transformation into small steps: DESCRIBE, CODE, EXECUTE, VALIDATE, DECIDE | During all data operations |
-| **Batch Size Limits** | Maximum 1-2 transformations per execution cycle to prevent error accumulation | During Stages 5-8 |
+| **Batch Size Limits** | Maximum 1-2 transformations per execution cycle to prevent error accumulation | While downloading, cleaning, transforming, and analyzing data |
 | **STOP Conditions** | Automatic pause when data quality thresholds are breached | Throughout execution |
 | **Version Control** | Every file revision is saved separately -- nothing is ever overwritten | All stages |
-| **Plan-Checker Validation** | Automated 6-dimension validation of the Plan before execution begins | Stage 4.5 |
+| **Plan-Checker Validation** | Automated 6-dimension validation of the Plan before execution begins | After the Plan is drafted, before you approve it |
 | **Citation Tracking** | Attempts to track and attribute citations for data sources, methods, software, and reporting standards as each script executes -- best-effort, not guaranteed | Throughout execution and report generation |
 
-That is a substantial amount of automated quality control. It means that the majority of *operational* errors -- wrong data types, broken joins, corrupted files, missing columns, data loss during transformation -- will be caught before you ever see the results.
+That is a substantial amount of automated quality control. It means that the majority of *operational* errors -- broken joins, corrupted files, missing columns, data loss during transformation -- will be caught before you ever see the results.
 
 ### What Requires Your Judgment
 
@@ -340,11 +372,11 @@ But automated validation cannot assess everything. Here is what still requires a
 
 **Substantive interpretation.** DAAF will report that "enrollment declined by 12%," but it cannot tell you whether that decline is policy-relevant, expected, or alarming. It cannot contextualize findings within the broader policy landscape or institutional realities you may know about. That is your job.
 
-**Causal claims.** DAAF is designed to be careful about causal language, but LLMs can drift into causal framing even with guardrails. Scrutinize any finding that implies causation -- especially in observational data, which is all that DAAF currently works with.
+**Causal claims.** DAAF is designed to be careful about causal language, but LLMs can drift into causal framing even with guardrails. Scrutinize any finding that implies causation -- especially in observational data, such as the public datasets DAAF works with out of the box.
 
 **Data source appropriateness.** DAAF knows a lot about the technical properties of each dataset -- variable names, coded values, suppression rules. But it may not know that a particular data source has known quality issues in a specific year for a specific state that were discussed at a conference you attended. Your contextual knowledge matters.
 
-**Sufficiency for your use case.** DAAF can tell you the suppression rate is 28% and that this is within its acceptable bounds. Whether 28% suppression is acceptable *for your specific use case* -- whether this is an exploratory analysis for internal discussion or a finding that will inform a policy decision -- is a judgment call that only you can make.
+**Sufficiency for your use case.** DAAF can tell you the suppression rate is 28%, which its checks flag as a warning but which stays below the 30% level at which DAAF stops to ask you. Whether 28% suppression is acceptable *for your specific use case* -- whether this is an exploratory analysis for internal discussion or a finding that will inform a policy decision -- is a judgment call that only you can make.
 
 **Ethical considerations.** DAAF does not assess the ethical dimensions of your analysis. If you are working with data that involves vulnerable populations, politically sensitive topics, or potential for misuse of findings, those considerations are entirely your responsibility.
 
@@ -370,7 +402,7 @@ LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an L
 3. **Check the script execution logs.** Even if the agent hallucinated a variable name, the script's execution log will show whether the code actually worked. Failed scripts with `KeyError` or unexpected empty results often point back to a loading failure.
 4. **Check Session logs to verify reference loading sequences.** DAAF's built-in session log viewer was built in part to help users monitor exactly whether and when DAAF loads proper reference files to inform its work. Load up your session and explore how the orchestrator and subagents loaded reference files accordingly.
 
-The good news is that DAAF's dual-layer validation (CP checkpoints + QA code review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during QA review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
+The good news is that DAAF's dual-layer validation (automatic validation checks + quality review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during quality review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
 
 ---
 
@@ -429,11 +461,11 @@ When you are on the fence, DAAF will offer its assessment. But a useful rule of 
 
 ## Appropriate vs. Inappropriate Use Cases
 
-DAAF is still very much still in active development, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
+DAAF is very much in active development, and there is only so much that one person and his friends can do to check guardrails, test robustness, and so on. With that in mind, it is important to be extremely transparent about what that means in practice.
 
 ### Appropriate Uses
 
-These are genuinely good applications for DAAF in its current state:
+These are genuinely good applications for DAAF:
 
 - **Exploratory analysis with expert oversight.** You have a research question, you want to see what the data shows, you have a good sense of what to expect already, and you are prepared to critically evaluate the results. This is the sweet spot.
 - **Learning and skill-building.** DAAF is excellent for learning how datasets work, what variables are available, and how data pipelines are constructed. Even if you never use DAAF's outputs directly, working with the system teaches you things about the data.
@@ -464,9 +496,9 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. The good news is it's ready for you already -- Git ships right inside the DAAF container, so there's nothing extra to install (spoilers: that's one less thing to set up!). This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
 
-I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
+I would strongly recommend backing up all of your research files to a private repository of your own (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Create a new, empty **private** repository on GitHub (or another Git host), add it to your DAAF copy as an extra remote, and push your work there. Leave the existing `origin` remote pointing at DAAF, because DAAF's updater checks it for new versions. **Don't use a fork for this:** a fork of the public DAAF repository is always public, and its visibility can't be changed, so anything you push to it is published ([verified against GitHub's documentation on forks](https://docs.github.com/en/pull-requests/reference/forks) on 2026-11-01). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
 
-- What does it mean to make a fork of a GitHub repo?
+- How do I create a private repository and add it as a remote for my DAAF work?
 - What does Git actually do, and why is it useful?
 - What's a commit? What does it do?
 - How can I track changes in DAAF using Git? What would that workflow look like?
@@ -478,11 +510,12 @@ There are also a ton of guides online and on YouTube, etc. Take some time to get
 
 Here are a few concrete commands that are especially handy when working with DAAF:
 
-- **`git diff HEAD~1`** -- See exactly what changed in the last session. This is great for reviewing what DAAF produced overnight or after a long run. It shows every file that was added, modified, or deleted, with the specific changes highlighted.
+- **`git status`** -- See every file and folder that is new or changed since your last commit. This is great for reviewing what DAAF produced overnight or after a long run: the new project files DAAF writes show up here as "untracked" until you commit them. (Data files such as parquet, CSV, and Excel are ignored by Git, so they are not listed.)
+- **`git diff`** -- See the specific line-by-line changes to files Git already tracks. It does not show brand-new files, so use `git status` for those. If you commit at the end of each session, `git diff HEAD~1 HEAD` shows every file the last committed session added, modified, or deleted.
 - **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. DAAF does not create commits on its own by default, but if you commit your work manually -- or enable the optional "Git commit management" preference, which has DAAF suggest commits at natural milestones and ask before making them -- this gives you a quick history of recent sessions and what they produced.
-- **`git stash` / `git stash pop`** -- Temporarily set aside all uncommitted changes and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back.
+- **`git stash -u` / `git stash pop`** -- Temporarily set aside your uncommitted changes, including new files, and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash -u` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back. The `-u` matters: plain `git stash` sets aside only changes to files Git already tracks, and leaves the new files DAAF created where they are. Files Git ignores, such as parquet data, stay in place either way. Run in the DAAF folder, `git stash -u` sets aside the new files of *every* project, so use it only when no DAAF session is working; to limit it to one project, use `git stash push -u -- research/<project-folder>/`.
 
-You can run these commands in the Claude Code terminal inside the container, or in any terminal connected to the DAAF repository.
+To run these commands, choose **6) Open Terminal in Container** in the DAAF Control Panel; the terminal opens in the DAAF folder (`/daaf`), where they work as written. You can also type a command into Claude Code with `!` in front (for example, `!git status`). Claude Code runs it directly, without going through Claude, and adds the command and its output to the conversation; Claude then responds to that output, at the cost of a normal prompt (verified against the [Claude Code interactive-mode documentation](https://code.claude.com/docs/en/interactive-mode) on 2026-11-01).
 
 ---
 
@@ -528,7 +561,7 @@ It's worth saying explicitly: Claude Code is **extremely powerful and capable**,
 
 I set up this whole project to use Docker in part to protect users directly and enforce some paternalistic standards for new users (with me also packaging in a lot of guardrails into the Hooks and permissions files for Claude as well). That being said, there's a lot that I don't know enough about to fully protect all users. At the end of the day, this is a wild west frontier, and things can go wrong in extremely unexpected ways as it continues to develop.
 
-Right now, my main recommendation is to not allow Claude Code to run and cook fully unattended. Check back on it periodically, even if only just to spot-check what it's output looks like and what it's reporting back on in the chat. Letting it go completely unsupervised for long periods of time is kind of asking for trouble, even if I've never seen anything go awry yet in my dozens of hours of testing.
+My main recommendation is to not allow Claude Code to run and cook fully unattended. Check back on it periodically, even if only just to spot-check what its output looks like and what it's reporting back on in the chat. Letting it go completely unsupervised for long periods of time is kind of asking for trouble.
 
 Secondly, one of the most common attack surfaces for Claude Code is what's known as a "prompt injection." As you can imagine from our earlier conversations about context management (see [**02. Understanding and Working with DAAF: Context Windows and Context Rot**](02_understanding_daaf.md#context-windows-and-context-rot) for more info): having someone unexpectedly insert a lot of context into your context window can cause Claude to act erratically. With DAAF, there are really only two or three main ways that can happen:
 1. You load in data documentation or data files that are unvetted and contain malicious instructions/code that Claude may not be prepared to resist. This can cause it to do strange activities or other arbitrary commands depending on how sophisticated the attack is.
@@ -537,17 +570,17 @@ Secondly, one of the most common attack surfaces for Claude Code is what's known
 
 The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users.
 
-DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checkpoints help catch outputs that don't match the data, even if something slips past the initial guardrails.
+DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checks help catch outputs that don't match the data, even if something slips past the initial guardrails.
 
-**A note on data privacy:** All computation happens locally on your machine, and DAAF prevents Claude from bulk-uploading your data files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through Anthropic's servers as part of the conversation -- that's how Claude Code works. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your specific Anthropic license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for the full picture.
+**A note on data privacy:** All computation happens locally on your machine, and DAAF's safety hooks block the common commands for uploading files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through your model provider's servers as part of the conversation -- that's how Claude Code works. Which provider receives it depends on how you connect: Anthropic, with an Anthropic subscription or API key; OpenAI, with an OpenAI API key or ChatGPT subscription through DAAF's provider shim (the small adapter, built into DAAF, that lets Claude Code use OpenAI's GPT models); OpenRouter and the model provider it routes to, with OpenRouter; or your organization's own cloud account, with AWS Bedrock or Google Vertex AI. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your provider, your specific license, and your access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-where-is-my-data-sent-what-about-privacy) for the full picture.
 
-If your data truly can't leave your environment, you're not out of options: DAAF includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report, and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+If your data truly can't leave your environment, you're not out of options: DAAF includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report (or, at the highest disclosure tier, synthetic rows you generate yourself), and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
 
 ### If You Write or Paste Your Own Code
 
 DAAF's safety layer is tuned around how its own agents work, so a few conventions are worth knowing if you drop in your own scripts or paste code for Claude to run:
 
-- **Keep temporary files inside the project.** Write scratch and intermediate files to `scripts/scratch/` in your project folder, never to `/tmp` -- only the project tree is inside DAAF's backup boundary and audit trail, so anything written to `/tmp` is invisible to backups and can vanish silently.
+- **Keep temporary files inside the project.** Write scratch and intermediate files to `scripts/scratch/` in your project folder, never to `/tmp` -- only the project tree is inside DAAF's backup boundary and audit trail, so anything written to `/tmp` is invisible to backups and can vanish silently. DAAF keeps scratch, but nothing should rely on it: if a note or report is going to point at a file, move it to a named project folder first (DAAF does the same before writing its final report, or at the end of a session that has none, and tells you what it moved).
 - **Run one shell command at a time.** DAAF's guardrails evaluate each command on its own, so chaining several together with `&&`, `;`, or `||` is blocked -- split the steps into separate commands instead.
 - **Add new packages through the Dockerfile, not at runtime.** A `pip install` or `install.packages()` run mid-session disappears on the next rebuild and quietly breaks reproducibility, so the durable path is to add the package to the Dockerfile and rebuild. See [Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the full reasoning.
 
@@ -561,7 +594,7 @@ Data Onboarding mode profiles raw data files and creates reusable data source sk
 - **Have your data file ready** in a common tabular format (CSV, TSV, Parquet, or Excel). Parquet is preferred for speed and type preservation, but any of these work.
 - **Gather any documentation** you have — codebooks, data dictionaries, README files, methodology papers. Providing documentation lets DAAF cross-check what the documentation says against what the data actually shows, catching discrepancies that could trip you up later.
 - **Know your data's provenance** — where it came from, when you downloaded it, and what it covers. DAAF records this in the skill for future reference.
-- **If your data comes from an API**, have the API key set up in your environment before starting. DAAF will write a reproducible fetch script for you, but it needs the key to test the download.
+- **If your data comes from an API**, set up the API key before starting: add it to `environment_settings.txt` in your `daaf-docker` folder, then choose **11) Restart Container** in the DAAF Control Panel so the container picks it up. DAAF will write a reproducible fetch script for you, but it needs the key to test the download.
 
 **During the process:**
 - **The interpretation review is the most important checkpoint.** When DAAF presents its preliminary interpretations, take the time to carefully confirm, reject, or modify each one. These interpretations become the foundation of the skill that all future analyses will rely on.

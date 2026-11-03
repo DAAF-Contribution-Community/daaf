@@ -50,7 +50,7 @@ state_missingness <- df |>
 
 | Variable | Typical Issue | Most Affected Years |
 |----------|---------------|---------------------|
-| Free/reduced lunch | Reporting methodology changes | 2012+ (CEP) |
+| Free/reduced lunch | Reporting methodology changes | 2011-12+ (CEP phase-in; nationwide 2014-15) |
 | FTE staff counts | Inconsistent state definitions | All years |
 | Enrollment by grade | Some states report as "ungraded" | Varies |
 | Race/ethnicity detail | Suppression for small groups | All years |
@@ -121,9 +121,9 @@ FRPL eligibility is commonly used as a poverty proxy, but has significant limita
 
 ### Community Eligibility Provision (CEP)
 
-**Enacted**: 2014-15 nationwide (phased in from 2011-12)
+**Authorized**: Healthy, Hunger-Free Kids Act of 2010. Phased in SY 2011-12 to 2013-14 in 11 jurisdictions, nationwide from SY 2014-15.
 
-**What it is**: High-poverty schools (≥40% directly certified) can provide free meals to all students.
+**What it is**: Schools, groups of schools, or districts with an identified student percentage (ISP) ≥ 25% (≥ 40% before 2023-10-26; 88 FR 65778) can serve free meals to all students. ISP counts students certified for free meals without an application, measured as of April 1 of the prior year. It is not identical to CCD's direct-certification count. Since SY 2013-14, CCD's NSLPSTATUS variable records the meal-program provision a school uses (CEP is one such provision).
 
 **Impact on Data**:
 - CEP schools may report 100% eligibility
@@ -134,9 +134,9 @@ FRPL eligibility is commonly used as a poverty proxy, but has significant limita
 
 | Period | Reporting Method | Notes |
 |--------|------------------|-------|
-| Pre-2012 | Application-based | Standard FRPL applications |
-| 2012-2016 | Transition | States began reporting direct certification separately |
-| 2016+ | Split reporting | States report FRPL, Direct Cert, or both |
+| Through 2015-16 | FRPL only | CCD published just FRPL counts |
+| 2013-14+ | NSLP status added | NSLPSTATUS identifies the meal-program provision (including CEP) a school uses |
+| 2016-17+ | Split reporting | States may report FRPL and/or direct certification; CCD publishes both |
 
 ### Alternative Poverty Measures
 
@@ -242,7 +242,7 @@ if (suppression_rate > 0.1) {
 - **Multi-State Operations**: Some virtuals operate across states
 - **Program vs. School**: Distinguishing virtual programs from schools
 
-### Virtual Indicator Limitations (2014-15+)
+### Virtual Indicator Limitations (yes/no flag from 2013-14; categorical start year not verified)
 
 | Classification | What it Captures | Limitations |
 |----------------|------------------|-------------|
@@ -370,7 +370,7 @@ Before longitudinal analysis, check:
 
 ### Quality Indicators in Data
 
-- Imputation flags (indicate imputed values)
+- Imputation flags (state-level files only; NCES does not impute school or LEA values)
 - Status codes (indicate reporting status)
 - Missing data codes (indicate type of missingness)
 

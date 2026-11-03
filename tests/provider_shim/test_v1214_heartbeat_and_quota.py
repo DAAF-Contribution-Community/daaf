@@ -10,8 +10,9 @@ idle-gap telemetry, and D1 quota-window header capture / allowlist prefix.
 3. D1 quota snapshot: a chatgpt-lane 2xx with synthetic ``x-codex-*`` headers emits
    exactly one ``event=quota_snapshot`` line of numeric/enum fields (absent headers
    render as ``-``); the openai lane and a chatgpt 4xx emit none.
-4. D1 allowlist prefix: an ``x-codex-*`` header is captured in the diagnostic
-   header line while an unrelated header stays excluded.
+4. Diagnostic header allowlist (v1.4.9 replaced the D1 ``x-codex-*`` prefix rule
+   with exact names): an allowlisted x-codex numeric is captured in the diagnostic
+   header line, while other x-codex-* and unrelated headers stay excluded.
 """
 
 from __future__ import annotations
@@ -186,13 +187,15 @@ class ProviderShimV1214QuotaSnapshotTests(unittest.TestCase):
                 shim.assert_offline_contract()
                 backend.assert_request_counts(responses=1)
 
-    def test_allowlist_prefix_captures_x_codex_excludes_unrelated(self) -> None:
-        # A chatgpt 4xx routes its headers through _diag_headers. The x-codex-*
-        # header must be captured by the new prefix rule; an unrelated header (not
-        # exact- or prefix-allowlisted) must stay excluded from the diagnostic line.
+    def test_allowlist_exact_names_only_no_x_codex_prefix(self) -> None:
+        # A chatgpt 4xx routes its headers through _diag_headers. v1.4.9 removed the
+        # v1.2.14 x-codex-* prefix rule: an exact-allowlisted x-codex numeric is
+        # captured, while any other x-codex-* header and an unrelated header stay
+        # excluded from the diagnostic line.
         scenario = backend_status_scenario("prefix-4xx", 400)
         scenario.stream_headers = {
-            "x-codex-anything": "capturedval",
+            "x-codex-primary-used-percent": "41",
+            "x-codex-anything": "prefixonlyval",
             "x-unrelated-header": "excludedval",
         }
         with MockResponsesServer(scenario) as backend:
@@ -201,7 +204,9 @@ class ProviderShimV1214QuotaSnapshotTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_for_response(shim, result)
                 logs = shim.captured_stderr()
-                self.assertIn("x-codex-anything=capturedval", logs)
+                self.assertIn("x-codex-primary-used-percent=41", logs)
+                self.assertNotIn("x-codex-anything", logs)
+                self.assertNotIn("prefixonlyval", logs)
                 self.assertNotIn("x-unrelated-header", logs)
                 self.assertNotIn("excludedval", logs)
                 shim.assert_offline_contract()

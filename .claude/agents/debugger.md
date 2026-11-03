@@ -136,16 +136,16 @@ When debugging Stage 8 analysis failures: if the error traceback involves a spec
 - **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, cumulative 0.40→0.60 breaking changes
 - **statsmodels:** Convergence failures, perfect separation in logit, singular matrix in GLS, missing formula API import
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
-- **geopandas:** CRS mismatch errors, invalid geometry, spatial join row explosion, Shapely 2.x migration issues
+- **geopandas:** CRS mismatch warnings (sjoin, sjoin_nearest, overlay and clip emit a UserWarning and still run, returning wrong or empty matches; errors come from to_crs() on a CRS-less frame, pd.concat of frames with different CRS, or set_crs() over a different existing CRS), invalid geometry, spatial join row explosion, Shapely 2.x migration issues
 - **scikit-learn:** Data leakage from fitting on test data, forgetting to scale features, misinterpreting t-SNE distances as meaningful, class imbalance handling, pipeline ordering errors
-- **igraph:** Non-deterministic community detection without a seed (`random.seed()`), closeness/betweenness on disconnected graphs, weights auto-used as distances (not strengths), directed-vs-undirected mode mismatches, unseeded force-directed layouts breaking figure reproducibility
+- **igraph:** Non-deterministic community detection without a seed (`random.seed()`), closeness/betweenness on disconnected graphs, weights treated as distances by path measures (betweenness, closeness, shortest paths) but as strengths by Louvain, Leiden and edge-betweenness clustering (unlike R's `cluster_edge_betweenness()`, which reads distances), and used only when passed (python-igraph uses a `weight` attribute only if `weights="weight"` is given), directed-vs-undirected mode mismatches, unseeded force-directed layouts breaking figure reproducibility
 
 **R libraries:**
 - **fixest:** Formula parsing differences from lm(), absorbed variable warnings, sunab() syntax
 - **r-stats (lm/glm):** Convergence failures in glm(), singular.ok defaults, sandwich SE version mismatches
 - **tidyverse:** Non-standard evaluation pitfalls, arrow parquet type coercions, join suffix collisions
 - **ggplot2:** Aesthetic inheritance confusion, scale_*_continuous on discrete data, coord_flip deprecation patterns
-- **igraph-r (+ tidygraph/ggraph):** `cluster_leiden`/`cluster_louvain` erroring on directed input (require `as.undirected()`), `weight` attribute silently auto-used as distance (pass `weights = NA` to suppress), non-deterministic community detection without `set.seed()`, unseeded ggraph layouts breaking figure reproducibility
+- **igraph-r (+ tidygraph/ggraph):** `cluster_leiden`/`cluster_louvain` erroring on directed input (require `as.undirected()`), `weight` attribute silently auto-used (as distance by path measures and `cluster_edge_betweenness()`, as strength by Louvain, Leiden and walktrap; pass `weights = NA` to suppress; `cluster_leiden()` and `cluster_optimal()` still use it with `NA` in igraph 2.2.3, so pass `weights = rep(1, ecount(g))`), non-deterministic community detection without `set.seed()`, unseeded ggraph layouts breaking figure reproducibility
 
 ### 6. Common Error Patterns
 
@@ -191,14 +191,16 @@ When diagnosing pipeline failures, load skills that match the pipeline language.
 | Data manipulation | `polars` | `tidyverse` |
 | Static visualization | `plotnine` | `ggplot2` |
 | Interactive visualization | `plotly` | `plotly-r` |
-| Fixed effects / DiD | `pyfixest` | `fixest` |
+| Fixed effects / IV with FE / DiD | `pyfixest` | `fixest` |
 | OLS / GLM / time series | `statsmodels` | `r-stats` |
-| Panel RE / GMM | `linearmodels` | `plm` |
+| Panel RE / between / FD / Fama-MacBeth | `linearmodels` | `plm` |
+| Dynamic-panel GMM (Arellano-Bond) | no skill: escalate | `plm` (`pgmm`) |
+| LIML / non-panel GMM-IV / SUR / 3SLS | `linearmodels` | no installed package: escalate |
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
 | Network / graph analysis | `igraph` | `igraph-r` |
-| Table formatting | — | `gt` |
+| Table formatting | `great-tables` | `gt` |
 
 **Skill loading informs hypothesis formation.** Library skills contain known gotchas, common failure modes, and API quirks that directly map to diagnostic hypotheses. Load the relevant skill early in the debugging session — before forming your first hypothesis — so you can draw on documented failure patterns rather than guessing.
 
@@ -258,6 +260,8 @@ Document the problem precisely before any investigation:
 ### Step 2: Evidence Gathering
 
 Collect from available sources: error output (exact message, traceback), state at failure (shape, columns, sample values), recent changes, prior validation results. Write all evidence into an evidence table before proceeding to hypotheses.
+
+When searching logs or code through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
 
 ### Step 3: Hypothesis Formation
 

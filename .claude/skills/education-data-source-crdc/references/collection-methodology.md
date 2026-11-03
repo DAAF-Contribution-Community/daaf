@@ -22,7 +22,7 @@ Understanding how CRDC data is collected, who reports it, and what universe it c
 | Attribute | Value |
 |-----------|-------|
 | **Collector** | U.S. Department of Education, Office for Civil Rights |
-| **Frequency** | Biennial (every 2 school years) |
+| **Frequency** | Generally biennial; 2020-21 and 2021-22 were consecutive |
 | **Unit of collection** | School and LEA (Local Educational Agency) |
 | **Reference period** | Full school year |
 | **Respondents** | All public schools and LEAs receiving federal financial assistance |
@@ -34,7 +34,7 @@ Understanding how CRDC data is collected, who reports it, and what universe it c
 2. **Civil rights focus** - Designed for equity monitoring and enforcement
 3. **Subgroup disaggregation** - Extensive breakdown by protected classes
 4. **Self-reported** - Schools report their own data
-5. **Universe coverage** - Official evidence establishes the 2013-14 collection as a universe collection; verify each collection's scope from its own documentation
+5. **Universe coverage** - OCR documents every modern collection (2011-12, 2013-14, 2015-16, 2017-18, 2020-21, 2021-22, 2023-24) as a universe collection; collections from 1968 to 2010 were samples, except 1976 and 2000
 
 ---
 
@@ -44,14 +44,15 @@ Understanding how CRDC data is collected, who reports it, and what universe it c
 
 | Year | Approach | Coverage | Notes |
 |------|----------|----------|-------|
-| **1968-2008** | Collection-specific | Varied | Consult historical collection documentation |
-| **2009-10** | Transitional | ~7,000 LEAs | Modern CRDC redesign |
-| **2011-12** | Not re-verified here | Portal data include selected 2011 topics | Do not infer sampled or universe status without authoritative collection-specific evidence |
-| **2013-14** | **Universe** | 16,758 districts; 95,507 schools | Official first-look document explicitly identifies a universe collection |
-| **2015-16** | Universe | ~96,000 schools | Chronic absenteeism added |
-| **2017-18** | Universe | ~96,000 schools | Expanded variables |
+| **1968-2008** | Sample (universe in 1976 and 2000) | Varied | Per OCR, collections from 1968 to 2010 were samples, except 1976 and 2000 |
+| **2009-10** | Sample | ~7,000 LEAs | Modern CRDC redesign |
+| **2011-12** | **Universe** | All public schools and districts (response: 98.4% of districts, 99.2% of schools, 99.6% of students) | First modern universe collection (OCR 2011-12 Data Snapshot) |
+| **2013-14** | **Universe** | 16,758 districts; 95,507 schools | Official First Look explicitly identifies a universe collection; chronic absenteeism first collected |
+| **2015-16** | Universe | 96,440 schools (final target) | Chronic absenteeism collected again |
+| **2017-18** | Universe | ~97,600 schools (17,637 LEAs final target) | Expanded variables; Puerto Rico added; chronic absenteeism now taken from EDFacts |
 | **2020-21** | Universe | ~97,500 schools | COVID-impacted year |
 | **2021-22** | Universe | ~98,000 schools | Consecutive collection after 2020-21 |
+| **2023-24** | Universe | 17,591 LEAs; 97,094 schools | Public-use file released August 31, 2026 |
 
 ### Implications for Analysis
 
@@ -60,30 +61,24 @@ def check_coverage_appropriateness(year, analysis_type):
     """
     Determine if CRDC year is appropriate for analysis type.
     """
-    coverage_requires_verification = [2011]
-    universe_years = [2013, 2015, 2017, 2020, 2021]
+    # Portal year = fall of the school year (2020 = 2020-21, 2021 = 2021-22).
+    # Every modern collection is a universe collection per OCR; 2023 is
+    # exposed for some topics only, so check the family's years first.
+    universe_years = [2011, 2013, 2015, 2017, 2020, 2021, 2023]
+    covid_years = [2020]  # 2020-21; 2021-22 is not the COVID year
     
-    if analysis_type == 'national_totals':
-        if year in coverage_requires_verification:
-            return {
-                'appropriate': False,
-                'reason': 'This skill did not re-verify 2011-12 collection coverage',
-                'recommendation': 'Consult authoritative 2011-12 collection documentation'
-            }
-    
-    if analysis_type == 'school_level':
-        if year in coverage_requires_verification:
-            return {
-                'appropriate': True,
-                'warning': 'Collection coverage was not re-verified here',
-                'recommendation': 'Verify inclusion and coverage in official 2011-12 documentation'
-            }
-    
-    if analysis_type == 'time_series':
+    if year not in universe_years:
         return {
-            'appropriate': year in universe_years,
-            'reason': 'Time series requires consistent coverage',
-            'recommendation': 'Use consistently defined verified-universe collections; note the COVID break'
+            'appropriate': False,
+            'reason': f'{year} is not a CRDC collection year label',
+            'recommendation': 'Use a collection year label (fall year of the school year)'
+        }
+    
+    if analysis_type == 'time_series' and year in covid_years:
+        return {
+            'appropriate': False,
+            'reason': '2020-21 is COVID-impacted and not comparable for trends',
+            'recommendation': 'Exclude or flag Portal year 2020; harmonize definitions across cycles'
         }
     
     return {'appropriate': True}
@@ -91,40 +86,37 @@ def check_coverage_appropriateness(year, analysis_type):
 
 ```r
 # Determine if a CRDC year is appropriate for the analysis type.
-coverage_requires_verification <- c(2011)
-universe_years <- c(2013, 2015, 2017, 2020, 2021)
+# Portal year = fall of the school year (2020 = 2020-21, 2021 = 2021-22).
+# Every modern collection is a universe collection per OCR; 2023 is
+# exposed for some topics only, so check the family's years first.
+universe_years <- c(2011, 2013, 2015, 2017, 2020, 2021, 2023)
+covid_years <- c(2020)  # 2020-21; 2021-22 is not the COVID year
 
 year <- 2013
 analysis_type <- "national_totals"  # or "school_level", "time_series"
 
-if (analysis_type == "national_totals" && year %in% coverage_requires_verification) {
+if (!(year %in% universe_years)) {
   result <- list(
     appropriate = FALSE,
-    reason = "This skill did not re-verify 2011-12 collection coverage",
-    recommendation = "Consult authoritative 2011-12 collection documentation"
+    reason = sprintf("%d is not a CRDC collection year label", year),
+    recommendation = "Use a collection year label (fall year of the school year)"
   )
-} else if (analysis_type == "school_level" && year %in% coverage_requires_verification) {
+} else if (analysis_type == "time_series" && year %in% covid_years) {
   result <- list(
-    appropriate = TRUE,
-    warning = "Collection coverage was not re-verified here",
-    recommendation = "Verify inclusion and coverage in official 2011-12 documentation"
-  )
-} else if (analysis_type == "time_series") {
-  result <- list(
-    appropriate = year %in% universe_years,
-    reason = "Time series requires consistent coverage",
-    recommendation = "Use consistently defined verified-universe collections; note the COVID break"
+    appropriate = FALSE,
+    reason = "2020-21 is COVID-impacted and not comparable for trends",
+    recommendation = "Exclude or flag Portal year 2020; harmonize definitions across cycles"
   )
 } else {
   result <- list(appropriate = TRUE)
 }
 ```
 
-### Early Collection Coverage Verification
+### Early Collection Coverage
 
-The 2011-12 coverage status was not independently established by the authoritative evidence used for this correction. Do not copy a sample/universe label from another collection year; consult the official 2011-12 collection documentation before estimating totals or generalizing beyond observed schools.
+OCR's 2011-12 Data Snapshot (School Discipline, March 2014) states that the 2011-12 CRDC "included all public schools and public school districts in the nation that serve students for at least 50% of the school day", with a response rate of 98.4% of school districts and 99.2% of schools, representing 99.6% of students. The 2020-21 user's manual adds that collections from 1968 to 2010 were samples, except the 1976 and 2000 collections, which covered a universe of school districts. The 2025-26 overview lists 2011-12 first among the universe collections.
 
-### Universe Collection Strengths (2013-14 and later verified collections)
+### Universe Collection Strengths (2011-12 onward)
 
 - **Comprehensive enumeration** - Official 2013-14 evidence reports 16,758 districts and 95,507 schools
 - **National aggregation possible** - Subject to response, suppression, and data-quality checks
@@ -168,7 +160,10 @@ School Year (e.g., 2021-22)
 | 2015-16 | 2018 | ~2 years |
 | 2017-18 | 2020 | ~2 years |
 | 2020-21 | 2023 | ~2 years |
-| 2021-22 | 2025 | ~2-3 years |
+| 2021-22 | 2025 (Jan 17) | ~2-3 years |
+| 2023-24 | 2026 (Aug 31) | ~2 years after the school year; ~1.4 years after the collection closed (April 7, 2025) |
+
+Submission windows from the user's manuals: December 13, 2021 to April 8, 2022 (2020-21); December 11, 2023 to February 26, 2024 (2021-22); December 9, 2024 to April 7, 2025 (2023-24).
 
 ### Reference Period
 
@@ -205,7 +200,7 @@ All public schools and LEAs that receive **federal financial assistance** from t
 | Bureau of Indian Education schools | No | Tribal schools excluded |
 | DoD schools | No | Department of Defense operated |
 | U.S. territory schools (except PR) | No | Guam, Virgin Islands, etc. |
-| Puerto Rico | Yes (since 2017-18) | Treated as state under ESSA |
+| Puerto Rico | Yes | Added beginning with the 2017-18 CRDC |
 | Private schools | No | Not receiving ED financial assistance |
 
 ### Legal Authority
@@ -426,8 +421,8 @@ if (unmatched > 0) {
 ### Year Alignment
 
 When linking:
-- CRDC year refers to **spring** of school year (2020-21 = year 2021 in Portal data)
-- CCD year may use fall reference point
+- CRDC Portal `year` is the fall of the school year (2020-21 = year 2020)
+- CCD Portal `year` uses the same fall convention (see `education-data-context`)
 - Ensure same school year for accurate linking
 
 ---

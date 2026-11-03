@@ -10,7 +10,7 @@ metadata:
   audience: research-coders
   domain: r-library
   library-version: "gt 1.3.0"
-  skill-last-updated: "2026-05-13"
+  skill-last-updated: "2026-11-01"
   tags: ["r", "tables", "gt", "kableExtra", "modelsummary", "formatting"]
 ---
 
@@ -213,6 +213,8 @@ df |>
   kable_styling(bootstrap_options = c("striped", "hover", "condensed")) |>
   add_header_above(c(" " = 1, "Group A" = 2, "Group B" = 2))
 ```
+
+This pattern is for HTML output only: `format = "html"` stops a LaTeX PDF render ("Functions that produce HTML output found in document targeting pdf output"), and kableExtra does not work in a Typst PDF (use gt, or `knitr::kable()` with no `format =`, there). In a Quarto chunk, omit `format =` and `caption =` and use the chunk's `tbl-` label and `tbl-cap` (see `./references/export.md` § kableExtra in Quarto Chunks).
 
 ### modelsummary Quick Pattern
 

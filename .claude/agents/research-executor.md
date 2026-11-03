@@ -104,7 +104,18 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
 - **After clean (Stage 6):** CP2 -- suppression rate, coded values, data loss
 - **After transform (Stage 7):** CP3 -- row counts, new nulls, invariants
-- **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source, visual inspection of generated figures via **Read tool**
+- **After analysis & viz (Stage 8):** CP4 -- Post-Analysis & Visualization Validation. **CP4.1** analysis outputs valid (results object exists, estimates finite, convergence flag `TRUE` where the estimator reports one, n adequate against the Plan's minimum, expected sign only where the Plan pre-registers it); **CP4.2** critical nulls (no nulls in the analysis frame's outcome/key columns); **CP4.3** figures (every promised figure exists, is non-empty, and has been visually inspected via **Read tool**); **CP4.4** correct data source (script loads `data/processed/` or the Plan's named input, not `data/raw/`)
+
+Report-section completeness, Plan-commitment consistency, Research Outcome coverage, and Hypothesis assessment are **not** CP4 — they belong to **Pre-Output Verification (Stage 12)**, a data-verifier checklist, and are outside the executor's scope.
+
+Every checkpoint ends with a count line and a verdict line:
+
+```
+Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped
+CP4 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED
+```
+
+Derive the verdict from the counters, never hard-code it: `FAILED` if `failed > 0` **or `not_verified > 0`** (a gate with missing evidence has not gated) or if zero checks ran; else `PASSED WITH WARNINGS` if `warning > 0`; else `PASSED`. Each per-check line begins with exactly one of `[PASS]`, `[WARNING]`, `[FAIL]`, `[NOT VERIFIED]`, `[SKIPPED]`, and `[PASS]` lines must carry the observed numbers.
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
@@ -132,6 +143,8 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type
 
 Confirm what you will execute, the target script path, and which skill(s) you will load. Verify that dependency files exist (check `<depends_on>` paths).
 
+When searching files through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
+
 ### Step 2: Load Additional Skills
 
 The `data-scientist` skill is preloaded via frontmatter — do NOT call the skill tool for it.
@@ -148,14 +161,16 @@ The orchestrator's prompt includes an execution language directive. Load skills 
 | Data manipulation | `polars` | `tidyverse` |
 | Static visualization | `plotnine` | `ggplot2` |
 | Interactive visualization | `plotly` | `plotly-r` |
-| Fixed effects / DiD | `pyfixest` | `fixest` |
+| Fixed effects / IV with FE / DiD | `pyfixest` | `fixest` |
 | OLS / GLM / time series | `statsmodels` | `r-stats` |
-| Panel RE / GMM | `linearmodels` | `plm` |
+| Panel RE / between / FD / Fama-MacBeth | `linearmodels` | `plm` |
+| Dynamic-panel GMM (Arellano-Bond) | no skill: escalate | `plm` (`pgmm`) |
+| LIML / non-panel GMM-IV / SUR / 3SLS | `linearmodels` | no installed package: escalate |
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
 | Network / graph analysis | `igraph` | `igraph-r` |
-| Table formatting | — | `gt` |
+| Table formatting | `great-tables` | `gt` |
 
 #### Stage-Specific Skill Loading
 
@@ -281,7 +296,7 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.R
 ```
 
-The wrapper automatically detects the file extension and routes `.py` files to `python3` and `.R` files to `Rscript`. No explicit interpreter specification needed. It captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
+The wrapper automatically detects the file extension and routes `.py` files to `python3` and `.R` files to `Rscript`. No explicit interpreter specification needed. It captures stdout/stderr, records timestamp/duration/exit code/capture status, appends the execution log as comments to the script file, and verifies the record landed. **Read the wrapper's final banner, not just the script's output:** `SUCCESS: Script passed.` means the script exited 0 *and* the log was appended and verified. An `EVIDENCE INCOMPLETE` banner (wrapper exit 74) means the audit record is incomplete even if the computation ran — it is neither success nor a script failure; follow `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes (the banner says whether to re-run in place or create a revision) rather than Step 5 below.
 
 ### Step 4b: Visual Inspection (Stage 8.2 visualization scripts only)
 
@@ -358,7 +373,7 @@ When you receive a revision request due to QA BLOCKER:
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (these are already appended to the script file)
 - Data samples, row-level examples, or Polars table displays
-- Full checkpoint output (summarize as PASSED/FAILED/WARNING + 1-line reason)
+- Full checkpoint output (summarize as PASSED/WARNING/FAILED + the checkpoint's count line + 1-line reason)
 - Verbose reasoning or multi-paragraph explanations in any section
 - QA script code or contents
 
@@ -369,6 +384,8 @@ Return findings in this structure:
 ### Summary
 **Status:** [PASSED | FAILED | WARNING]
 **Task:** [Task name from specification]
+
+> **Mapping the log verdict to this status.** The log prints one of three strings; report the corresponding status: `CP{n} VALIDATION: PASSED` ⇒ `PASSED`; **`CP{n} VALIDATION: PASSED WITH WARNINGS` ⇒ `WARNING`**; `CP{n} VALIDATION: FAILED` ⇒ `FAILED`. Never round `PASSED WITH WARNINGS` up to `PASSED`. Quote the count line with the summary — `not verified > 0` means the checkpoint FAILED, because a check that could not run has not gated anything.
 **Final Script:** `scripts/stage{N}_{type}/{step}_{task-name}[_suffix].py` (or `.R` for R pipelines)
 
 ### Script Versions
@@ -596,7 +613,7 @@ Awaiting guidance before proceeding.
 
 **This task execution is COMPLETE when:**
 1. [ ] Script written to correct path following naming convention
-2. [ ] Script executed via `run_with_capture.sh` with execution log appended
+2. [ ] Script executed via `run_with_capture.sh` with execution log appended and verified (wrapper printed `Execution log appended to:`; the log's `# Capture:` line reads `COMPLETE`; no `EVIDENCE INCOMPLETE` banner / exit 74)
 3. [ ] Checkpoint validation (CP1-CP4) passed within the script
 4. [ ] Output data file(s) saved as parquet to correct directory
 5. [ ] Pre/post state documented with row counts, shapes, sample IDs

@@ -10,12 +10,15 @@
 # parses; only an all-unreadable archive exits non-zero.
 #
 # These tests drive the Python builder directly (no Docker) against synthetic
-# JSONL fixtures written into a temp logs/ dir.
+# JSONL fixtures written into a temp logs/ dir. The last tests run the
+# generate_log_viewer.sh wrapper only as far as its missing-logs checks, which
+# exit before any manifest or server work.
 # ============================================================================
 
 load 'test_helper'
 
 BUILDER="${REPO_ROOT}/scripts/generate_log_viewer.py"
+WRAPPER="${REPO_ROOT}/scripts/generate_log_viewer.sh"
 
 setup() {
     common_setup
@@ -48,6 +51,48 @@ write_poison_session() {
     local hh="$2"
     local f="${LOGS_DIR}/2026-07-05_${hh}-00-00_${short}_orchestrator.jsonl"
     printf '%s\n' "{\"type\": \"assistant\", \"timestamp\": \"2026-07-05T${hh}:00:00.000Z\", \"message\": \"THIS-SHOULD-BE-A-DICT\", \"uuid\": \"p-${short}\"}" > "$f"
+}
+
+# Write a session whose orchestrator dispatches one subagent through tool $1
+# ("Agent" today, "Task" in older transcripts), plus that subagent's transcript.
+# The tool_result record carries toolUseResult.agentId, which is how the
+# builder links the subagent back to its dispatch.
+write_dispatch_session() {
+    local tool="$1"
+    local f="${LOGS_DIR}/2026-07-05_10-00-00_d15a7c00_orchestrator.jsonl"
+    local sa="${LOGS_DIR}/2026-07-05_10-00-00_d15a7c00_subagent_ab12cd34.jsonl"
+    {
+        jq -nc '{type: "user", sessionId: "d15a7c00-0000", version: "2.1.281", timestamp: "2026-07-05T10:00:00.000Z",
+                 message: {content: [{type: "text", text: "check the logs"}]}, uuid: "u-1"}'
+        jq -nc --arg tool "$tool" '{type: "assistant", timestamp: "2026-07-05T10:00:01.000Z",
+                 message: {id: "m-1", model: "claude-opus", stop_reason: "tool_use", content: [
+                     {type: "tool_use", id: "toolu_1", name: $tool, input: {
+                         subagent_type: "search-agent", description: "Scope the log viewer",
+                         prompt: "scope it"}}]}, uuid: "u-2"}'
+        jq -nc '{type: "user", timestamp: "2026-07-05T10:00:09.000Z",
+                 message: {content: [{type: "tool_result", tool_use_id: "toolu_1", content: "done"}]},
+                 toolUseResult: {agentId: "ab12cd34ef", agentType: "search-agent", totalDurationMs: 8000},
+                 sourceToolAssistantUUID: "u-2", uuid: "u-3"}'
+    } > "$f"
+    {
+        jq -nc '{type: "user", agentId: "ab12cd34ef", timestamp: "2026-07-05T10:00:02.000Z",
+                 message: {content: "scope it"}, uuid: "s-1"}'
+        jq -nc '{type: "assistant", agentId: "ab12cd34ef", timestamp: "2026-07-05T10:00:08.000Z",
+                 message: {id: "sm-1", model: "claude-sonnet", stop_reason: "end_turn",
+                           content: [{type: "text", text: "scoped"}]}, uuid: "s-2"}'
+    } > "$sa"
+}
+
+# Print the dispatch fields of the built manifest, one per line: activity type,
+# description, block summary, linked subagent id, subagent label, and the
+# orchestrator line the subagent's invocation points at.
+dispatch_fields() {
+    jq -r '.sessions[0] as $s
+        | ($s.blocks[] | select(.type == "assistant")) as $b
+        | ($b.activities[0].type, $b.activities[0].description, $b.summary,
+           $b.activities[0].subagentId, $s.subagents[0].label,
+           ($s.subagents[0].invocation.orchestratorLine | tostring))' \
+        "${LOGS_DIR}/session_manifest.json"
 }
 
 # --- Sanity ---
@@ -107,4 +152,55 @@ write_poison_session() {
     run python3 "${BUILDER}" --logs-dir "${LOGS_DIR}"
     assert_failure
     assert_output --partial "No JSONL session files found"
+}
+
+# --- Subagent dispatches: the "Agent" tool name and the older "Task" ---
+
+@test "an Agent dispatch is shown as a dispatch and linked to its subagent" {
+    write_dispatch_session "Agent"
+    run python3 "${BUILDER}" --logs-dir "${LOGS_DIR}"
+    assert_success
+    run dispatch_fields
+    assert_success
+    assert_output "delegate
+Dispatched search-agent specialist: Scope the log viewer
+Dispatched 1 agent
+ab12cd34
+Scope the log viewer
+2"
+}
+
+@test "a Task dispatch (older transcripts) is shown and linked the same way" {
+    write_dispatch_session "Task"
+    run python3 "${BUILDER}" --logs-dir "${LOGS_DIR}"
+    assert_success
+    run dispatch_fields
+    assert_success
+    assert_output "delegate
+Dispatched search-agent specialist: Scope the log viewer
+Dispatched 1 agent
+ab12cd34
+Scope the log viewer
+2"
+}
+
+# --- Wrapper: missing-logs hints give a runnable command ---
+
+@test "wrapper, project without logs/: exit 1 and the hint gives the full collect command" {
+    local proj="${TEST_DIR}/2026-11-02_No_Logs"
+    mkdir -p "$proj"
+    run bash "${WRAPPER}" "$proj" --no-serve
+    assert_failure 1
+    assert_output --partial "ERROR: No logs/ directory found in: ${proj}"
+    assert_output --partial "bash ${REPO_ROOT}/scripts/collect_session_logs.sh ${proj}"
+    assert_output --partial "--archive"
+}
+
+@test "wrapper, project with an empty logs/ (a collect run that found nothing): same full hint" {
+    local proj="${TEST_DIR}/2026-11-02_Empty_Logs"
+    mkdir -p "${proj}/logs"
+    run bash "${WRAPPER}" "$proj" --no-serve
+    assert_failure 1
+    assert_output --partial "ERROR: No orchestrator JSONL files found in: ${proj}/logs"
+    assert_output --partial "bash ${REPO_ROOT}/scripts/collect_session_logs.sh ${proj}"
 }

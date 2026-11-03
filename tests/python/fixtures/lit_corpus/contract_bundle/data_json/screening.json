@@ -1,0 +1,137 @@
+{
+ "rows": [
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70001",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70002",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70003",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70004",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "exclude",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "W900000005",
+   "pass": "primary",
+   "rationale": "adults, not pupils",
+   "reason_code": "population",
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "maybe",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "W900000005",
+   "pass": "second",
+   "rationale": "unclear ages",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture-second\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "exclude",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "W900000005",
+   "pass": "resolution",
+   "rationale": "the abstract says adults",
+   "reason_code": "population",
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ta"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70001",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ft"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70002",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ft"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70003",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ft"
+  },
+  {
+   "decided_at": null,
+   "decision": "include",
+   "input_sha256": "6098fe43d92e2ea3a9d819c0e4e7678c0afcebeba97304d88491d69aaaf563ed",
+   "paper_key": "user_f1c70004",
+   "pass": "primary",
+   "rationale": "",
+   "reason_code": null,
+   "recorded_version": 1,
+   "screener_json": "{\"agent\":\"fixture\",\"model_id\":\"fixture-synthetic\"}",
+   "stage": "ft"
+  }
+ ],
+ "source": "data/screening_v1.parquet"
+}

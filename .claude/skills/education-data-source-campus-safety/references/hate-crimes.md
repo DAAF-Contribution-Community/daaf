@@ -6,10 +6,10 @@
 >
 > | Code | Bias Category | Code | Crime Type |
 > |------|---------------|------|------------|
-> | `1` | Race | `12` | Larceny-Theft |
-> | `2` | Religion | `13` | Simple Assault |
-> | `3` | Sexual Orientation | `14` | Intimidation |
-> | `4` | Gender | `15` | Vandalism |
+> | `1` | Race | `11` | Simple Assault |
+> | `2` | Religion | `12` | Larceny |
+> | `3` | Sexual orientation (Portal label "Sex") | `13` | Intimidation |
+> | `4` | Gender | `14` | Destruction, Damage, or Vandalism |
 > | `99` | Total | — | *(crime_type has no Total code)* |
 >
 > **`crime_type` values are `1`-`18` only** — code `99` (Total) does NOT appear in the actual mirror data (empirically verified 2026-08-07), despite older references documenting it. See `variable-definitions.md` for complete mappings. Verify codes against the live codebook.
@@ -41,7 +41,9 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Examples**: Anti-Jewish, Anti-Islamic (Muslim), Anti-Catholic, Anti-Protestant, Anti-Atheist/Agnostic, Anti-Buddhist, Anti-Hindu, Anti-Sikh, Anti-Other Religion
 
-### Code 3: Sexual Orientation
+### Code 3: Sexual Orientation (Portal label "Sex")
+
+**Portal code**: the Portal metadata labels code 3 "Sex"; Portal 2017 rows match UC Berkeley's CY2017 ASR entries for "Sexual Orientation". For the code-order provenance (2019 CSS form) and known row-level Portal/ASR disagreements, see `variable-definitions.md` § Bias Category Codes.
 
 **Definition**: A preformed negative opinion or attitude toward a group of persons based on their actual or perceived sexual orientation.
 
@@ -65,33 +67,33 @@ Under the Clery Act, institutions report hate crimes motivated by bias based on 
 
 **Examples**: Anti-Transgender, Anti-Gender Non-Conforming
 
-**Note**: Added as a bias category with 2013 VAWA amendments (applicable to 2014+ data).
+**Note**: Added to the statutory bias categories by VAWA 2013 (Pub. L. 113-4). Code 5 was observed in the UC Berkeley 2016 Portal probe but not the 2010 probe.
 
-### Code 6: Ethnicity
-
-**Definition**: A preformed negative opinion or attitude toward a group of people whose members identify with each other, through a common heritage, often consisting of a common language, common culture, and/or ideology that stresses common ancestry.
-
-**Examples**: Anti-Hispanic/Latino, Anti-Arab (when based on ethnicity), Anti-Other Ethnicity
-
-**Note**: Ethnicity was separated from National Origin with 2013 VAWA amendments.
-
-### Code 7: National Origin
-
-**Definition**: A preformed negative opinion or attitude toward a group of people based on their actual or perceived country of birth.
-
-**Examples**: Anti-Mexican National, Anti-Chinese National, Anti-Iranian National
-
-**Note**: National Origin was separated from Ethnicity with 2013 VAWA amendments.
-
-### Code 8: Disability
+### Code 6: Disability
 
 **Definition**: A preformed negative opinion or attitude toward a group of persons based on their physical or mental impairments, whether such disability is temporary or permanent, congenital or acquired by heredity, accident, injury, advanced age, or illness.
 
 **Examples**: Anti-Physical Disability, Anti-Mental Disability
 
-### Code 9: Unknown/Other
+### Code 7: Ethnicity
 
-Bias category not specified or does not fit standard categories.
+**Definition**: A preformed negative opinion or attitude toward a group of people whose members identify with each other, through a common heritage, often consisting of a common language, common culture, and/or ideology that stresses common ancestry.
+
+**Examples**: Anti-Hispanic/Latino, Anti-Arab (when based on ethnicity), Anti-Other Ethnicity
+
+**Note**: VAWA 2013 (Pub. L. 113-4) added national origin and gender identity to the statutory bias categories (ethnicity was already listed). The Portal carries pre-2014 ethnicity as code 9 and post-2014 ethnicity/national origin as codes 7/8 — do not splice 9 with 7 without documenting the break.
+
+### Code 8: National Origin (Portal label "Nationality")
+
+**Definition**: A preformed negative opinion or attitude toward a group of people based on their actual or perceived country of birth.
+
+**Examples**: Anti-Mexican National, Anti-Chinese National, Anti-Iranian National
+
+**Note**: National origin was added to the statutory bias categories by VAWA 2013 (Pub. L. 113-4). Portal 2017 rows match UC Berkeley's CY2017 ASR entry for "National Origin".
+
+### Code 9: Ethnicity (Pre 2014)
+
+Portal label "Ethnicity (Pre 2014)": the ethnicity category in pre-2014 rows. Code 9 was observed in the UC Berkeley 2010 Portal probe and not in the 2016 probe; codes 5, 7 and 8 the reverse. Document the break before splicing 9 with 7.
 
 ### Code 99: Total
 
@@ -238,7 +240,7 @@ In Portal mirror parquet files:
 | `non_campus_hate_crimes` | Integer | Count at noncampus properties |
 | `public_property_hate_crimes` | Integer | Count on public property |
 | `other_hate_crimes` | Integer | Count in other locations |
-| `total_hate_crimes` | Integer | Total across all locations |
+| `total_hate_crimes` | Integer | Sum of location columns; appears to add the residence-hall subset to on-campus (double-counting housing incidents — verified against UC Berkeley CY2016–2017 and UC Riverside CY2015 ASRs). Recompute as on_campus + non_campus + public_property (+ other) |
 
 **Filtering Example**:
 ```python
@@ -247,7 +249,7 @@ import polars as pl
 # Race-based intimidation crimes
 df.filter(
     (pl.col("bias") == 1) &  # Race
-    (pl.col("crime_type") == 14)  # Intimidation
+    (pl.col("crime_type") == 13)  # Intimidation
 )
 ```
 
@@ -256,7 +258,7 @@ df.filter(
 library(dplyr)
 
 # Race-based intimidation crimes
-df |> filter(bias == 1, crime_type == 14)
+df |> filter(bias == 1, crime_type == 13)
 ```
 
 ## Historical Changes
@@ -268,12 +270,12 @@ Effective with 2008 calendar year:
 
 ### 2013 Changes (VAWA)
 
-Effective with 2014 calendar year:
-- Added gender identity as a bias category
-- Separated national origin and ethnicity into distinct categories
+VAWA 2013 (Pub. L. 113-4) added national origin and gender identity to the statutory bias categories (ethnicity was already listed). The Portal carries pre-2014 ethnicity as code 9 and post-2014 ethnicity/national origin as codes 7/8 — do not splice 9 with 7 without documenting the break.
 
-**Pre-2014 Data**:
-- National origin and ethnicity were combined
+VAWA 2013 required good-faith reporting starting with calendar-year 2013 statistics in the October 1, 2014 ASR; the final regulations (79 FR 62752, Oct. 20, 2014) took effect July 1, 2015, and statistics for 2013–2014 did not have to be revised to the final definitions.
+
+**Pre-2014 Portal Data** (observed in UC Berkeley 2010/2016 Portal probes):
+- Bias code 9 ("Ethnicity (Pre 2014)") appears; codes 5, 7 and 8 do not
 - Gender identity was not a separate category
 - Comparisons across this period require caution
 

@@ -34,9 +34,9 @@ The financial responsibility standards aim to:
 ### Reporting Requirements
 
 - Annual submission of audited financial statements
-- Due within six months of fiscal year end
+- Due by the earlier of 30 days after the later of the two auditor's reports (compliance audit; audited financial statements) or six months after fiscal year end, except as provided by the Single Audit Act (34 CFR 668.23(a)(4))
 - Combined with compliance audit submission
-- Submitted through eZ-Audit system
+- Submission system (eZ-Audit) not checked against an FSA source; 34 CFR 668.23 does not name one (checked 2026-10-28)
 
 ## Composite Score Calculation
 
@@ -51,19 +51,25 @@ The composite score combines three ratios into a single measure of financial hea
 
 ### Score Formula
 
+The weights differ by sector:
+
 ```
-Composite Score = (Primary Reserve Score × 0.40) + 
-                  (Equity Score × 0.40) + 
-                  (Net Income Score × 0.20)
+Private nonprofit (34 CFR 668 subpart L, Appendix B, 84 FR 49788, 2019):
+  0.40 × Primary Reserve SF + 0.40 × Equity SF + 0.20 × Net Income SF
+
+Proprietary (34 CFR 668 subpart L, Appendix A, 84 FR 49788, 2019):
+  0.30 × Primary Reserve SF + 0.40 × Equity SF + 0.30 × Net Income SF
 ```
+
+Composite is rounded to one decimal (34 CFR 668.172(a)(5); Appendices A/B, Step 2).
 
 ### Weighting
 
-| Ratio | Weight | Purpose |
-|-------|--------|---------|
-| Primary Reserve | 40% | Measures expendable resources relative to expenses |
-| Equity | 40% | Measures asset base relative to liabilities |
-| Net Income | 20% | Measures operating performance |
+| Ratio | Proprietary weight (App. A) | Nonprofit weight (App. B) | Purpose |
+|-------|--------|--------|---------|
+| Primary Reserve | 30% | 40% | Measures expendable resources relative to expenses |
+| Equity | 40% | 40% | Measures asset base relative to liabilities |
+| Net Income | 30% | 20% | Measures operating performance |
 
 ## Three Financial Ratios
 
@@ -73,19 +79,19 @@ Measures the institution's ability to support operations from expendable resourc
 
 **For Proprietary Institutions:**
 ```
-Primary Reserve Ratio = Adjusted Equity / Total Expenses
+Primary Reserve Ratio = Adjusted Equity / Total Expenses and Losses
 ```
 
 **For Private Non-Profit Institutions:**
 ```
-Primary Reserve Ratio = Expendable Net Assets / Total Expenses
+Primary Reserve Ratio = Expendable Net Assets / Total Expenses and Losses Without Donor Restrictions
 ```
 
 **Components:**
 - Expendable Net Assets = Net Assets Without Donor Restrictions + Net Assets With Donor Restrictions (expendable portion)
-- Total Expenses = Operating and non-operating expenses
+- Total Expenses and Losses (nonprofit: Without Donor Restrictions) = the appendices' denominator line items
 
-**Interpretation:**
+**Interpretation (illustrative; not a regulatory category):**
 
 | Ratio Value | Interpretation |
 |-------------|----------------|
@@ -93,13 +99,7 @@ Primary Reserve Ratio = Expendable Net Assets / Total Expenses
 | 0.10 - 0.40 | Adequate reserves |
 | < 0.10 | Limited reserves; potential vulnerability |
 
-**Strength Factor Conversion (simplified):**
-
-| Ratio Range | Score |
-|-------------|-------|
-| ≥ 0.40 | 3.0 |
-| 0.00 to 0.40 | Linear scale 0 to 3.0 |
-| < 0.00 | Negative (down to -1.0) |
+Strength-factor conversion for all three ratios: see [Strength Factor Conversion](#strength-factor-conversion) below.
 
 ### Equity Ratio
 
@@ -119,7 +119,7 @@ Equity Ratio = Modified Net Assets / Modified Assets
 - Modified Equity/Net Assets = Total equity/net assets with certain adjustments
 - Modified Assets = Total assets with adjustments for intangibles and related-party receivables
 
-**Interpretation:**
+**Interpretation (illustrative; not a regulatory category):**
 
 | Ratio Value | Interpretation |
 |-------------|----------------|
@@ -127,29 +127,21 @@ Equity Ratio = Modified Net Assets / Modified Assets
 | 0.10 - 0.30 | Adequate equity |
 | < 0.10 | Highly leveraged; limited cushion |
 
-**Strength Factor Conversion (simplified):**
-
-| Ratio Range | Score |
-|-------------|-------|
-| ≥ 0.30 | 3.0 |
-| 0.00 to 0.30 | Linear scale 0 to 3.0 |
-| < 0.00 | Negative (down to -1.0) |
-
 ### Net Income Ratio
 
 Measures the institution's profitability and operating sustainability.
 
 **For Proprietary Institutions:**
 ```
-Net Income Ratio = (Income Before Taxes + Interest Expense) / Total Revenue
+Net Income Ratio = Income Before Taxes / Total Revenues and Gains
 ```
 
 **For Private Non-Profit Institutions:**
 ```
-Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Revenue
+Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Revenues and Gains Without Donor Restrictions
 ```
 
-**Interpretation:**
+**Interpretation (illustrative; not a regulatory category):**
 
 | Ratio Value | Interpretation |
 |-------------|----------------|
@@ -157,13 +149,15 @@ Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Reven
 | 0.00 - 0.03 | Break-even to modest surplus |
 | < 0.00 | Operating deficit |
 
-**Strength Factor Conversion (simplified):**
+### Strength Factor Conversion
 
-| Ratio Range | Score |
-|-------------|-------|
-| ≥ 0.03 | 3.0 |
-| -0.03 to 0.03 | Linear scale -1.0 to 3.0 |
-| ≤ -0.03 | -1.0 |
+| Ratio | Nonprofit SF (App. B) | Proprietary SF (App. A) |
+|---|---|---|
+| Primary reserve | 10 × ratio (3.0 at ≥0.30) | 20 × ratio (3.0 at ≥0.15) |
+| Equity | 6 × ratio (3.0 at ≥0.50) | 6 × ratio |
+| Net income | 1 + 50 × ratio if > 0; 1 + 25 × ratio if < 0; 1 if 0 | 1 + 33.3 × ratio |
+
+Every strength factor, in both sectors, is set to 3 if ≥ 3 and to −1 if ≤ −1 (Appendices A and B, Step 1), so the composite runs −1.0 to 3.0. The current appendices are published as images in eCFR (graphics er23se19.000-.016); values here were read from those images on 2026-10-28.
 
 ## Score Classification and Consequences
 
@@ -172,62 +166,53 @@ Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Reven
 | Composite Score | Classification | Status |
 |-----------------|----------------|--------|
 | 1.5 to 3.0 | Financially Responsible | Full participation |
-| 1.0 to 1.49 | In the Zone | Provisional certification |
-| -1.0 to 0.99 | Not Financially Responsible | Restricted participation |
+| 1.0 to 1.4 | In the Zone | Zone alternative (not provisional certification) |
+| -1.0 to 0.9 | Not Financially Responsible | Restricted participation |
+
+Scores are reported to one decimal (34 CFR 668.172(a)(5)), so band bounds read 1.4 and 0.9, not 1.49 and 0.99.
 
 ### Consequences by Classification
 
 #### Financially Responsible (1.5 - 3.0)
 
-- Standard certification period (up to 6 years)
+- Certification period of up to six years (34 CFR 668.13(b))
 - No additional financial oversight
 - No letter of credit required
 - Full Title IV participation
 
-#### In the Zone (1.0 - 1.49)
+#### In the Zone (1.0 - 1.4)
 
-**Provisional Certification Requirements:**
+**Zone Alternative Requirements (34 CFR 668.175(d)):**
 
 | Requirement | Description |
 |-------------|-------------|
-| Certification period | Maximum 3 years |
-| Heightened Cash Monitoring 1 (HCM1) | May be required |
-| Financial reporting | More frequent submissions may be required |
-| Zone monitoring | Department tracks progress |
+| Duration | No more than three consecutive years |
+| Payment method | Heightened cash monitoring or reimbursement (required) |
+| Event reporting | Must report realized contingent liabilities and unusual/infrequent losses within 10 days (668.175(d)(2)(ii), (d)(3)(i)) |
+| Audit | Auditor must opine on zone-alternative compliance; ED may require earlier audit submission (668.175(d)(2)(iii), (d)(3)(ii)) |
 
-**Additional Requirements May Include:**
-- Cash monitoring
-- More frequent financial reporting
-- Compliance audits
-- On-site reviews
+**ED may also require** information about current operations and future plans (668.175(d)(2)(iv)).
 
 #### Not Financially Responsible (Below 1.0)
 
-**Immediate Consequences:**
+**Alternatives (34 CFR 668.175):**
 
-| Consequence | Description |
-|-------------|-------------|
-| Letter of Credit | Minimum 10% of prior year Title IV disbursements |
-| Provisional certification | Shortened certification period |
-| Heightened Cash Monitoring 2 (HCM2) | Funds released after disbursement verification |
-| Additional oversight | Enhanced monitoring and reporting |
+| Alternative | Requirement |
+|---|---|
+| Financial protection alternative (668.175(c)) | Letter of credit/other protection ≥ 50% of prior-FY Title IV funds; institution then treated as financially responsible |
+| Provisional certification alternative (668.175(f)) | Up to 3 consecutive years; letter of credit ≥ 10% of prior-FY Title IV funds; HCM or reimbursement per zone provisions; not considered financially responsible |
 
 **Letter of Credit Requirements:**
 - Irrevocable letter of credit from acceptable financial institution
-- Amount: Typically 10-25% of Title IV funds
 - Duration: Until financial improvement demonstrated
 - Callable if institution fails to meet obligations
 
-### Triggers for Recalculation
+### Triggering Events (34 CFR 668.171(c)-(d))
 
-Institutions may need to recalculate composite scores mid-year if:
-
-- Accreditor places institution on probation or equivalent
-- State agency places institution on probation
-- Audit finding of material weakness
-- Going concern opinion
-- Significant teach-out activity
-- Ownership change
+- **Mandatory triggers with recalculation** (668.171(c)(2)(i)(A), (C)-(D), (ii), (x); recalculation under (e)): e.g., final monetary judgments or settlements, borrower-defense recoveries, withdrawals of owner's equity; failing if the recalculated score is below 1.0.
+- **Mandatory triggers that are automatic failures**: e.g., a teach-out plan required for financial reasons (668.171(c)(2)(iv)), a declaration of financial exigency.
+- **Discretionary triggers** (668.171(d)): e.g., accreditor or government probation or show-cause orders, negative interim-reporting indicators; ED may require financial protection of at least 10% of prior-year Title IV funds.
+- Separately, a going-concern disclosure (668.171(h)) and a change in ownership (668.176) carry their own requirements.
 
 ## Alternative Standards
 
@@ -235,20 +220,17 @@ Institutions that fail to meet the composite score threshold may qualify under a
 
 ### Zone Alternative
 
-Institutions scoring 1.0-1.49 may participate under zone provisions:
-- Submit financial improvement plan
-- Demonstrate progress toward 1.5+ score
-- Accept provisional certification
+Institutions scoring 1.0-1.4 may participate as financially responsible under the zone alternative (34 CFR 668.175(d)):
+- Duration: no more than three consecutive years
+- Payment method: heightened cash monitoring or reimbursement (required)
 - Meet reporting requirements
 
 ### Not Financially Responsible Alternatives
 
 Institutions scoring below 1.0 may participate by:
 
-1. **Letter of Credit**: Post surety bond or letter of credit
-2. **Operating Plan**: Submit acceptable financial plan
-3. **Combination**: Letter of credit plus compliance agreement
-4. **Past Performance**: Demonstrate sustained financial improvement
+1. **Financial protection alternative (668.175(c))**: Letter of credit/other protection ≥ 50% of prior-FY Title IV funds; institution then treated as financially responsible
+2. **Provisional certification alternative (668.175(f))**: Up to 3 consecutive years; letter of credit ≥ 10% of prior-FY Title IV funds; HCM or reimbursement per zone provisions; not considered financially responsible
 
 ### Public Institution Standards
 
@@ -271,7 +253,7 @@ Public institutions are generally:
 | Variable | Type | Description | Values |
 |----------|------|-------------|--------|
 | `unitid` | Int64 | IPEDS institution identifier | 6-digit integer |
-| `year` | Int64 | Fiscal year | 2006-2016 |
+| `year` | Int64 | Award year (fall start year) in which the institution's fiscal year ended, e.g., `year`=2015 covers fiscal years ending 2015-07-01 through 2016-06-30, so a June-2016 fiscal year end is `year`=2015, not 2016 | 2006-2016 |
 | `fips` | Int64 | State FIPS code | Integer |
 | `opeid` | Int64 | Office of Postsecondary Education ID | Integer |
 | `inst_name_fsa` | String | Institution name (FSA) | Text |
@@ -316,7 +298,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Financially Responsible
@@ -336,7 +318,7 @@ df_at_risk <- df |> filter(financial_resp_score < 1.0)
 
 | Variable | Years Available |
 |----------|----------------|
-| `financial_resp_score` | 2006-2016 |
+| `financial_resp_score` | 2006-2016 (`year` = award year in which the institution's fiscal year ended) |
 
 **Note**: Data availability may lag 2-3 years due to audit submission timelines.
 
@@ -369,7 +351,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Filter for institutions in the zone or below

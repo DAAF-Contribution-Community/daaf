@@ -2,7 +2,7 @@
 
 Form 990 is the annual information return that tax-exempt organizations file with the IRS. This reference covers the form's structure and the data elements available for research.
 
-> **Variable naming context:** This file uses original IRS/NCCS variable names (e.g., `CONT`, `TOTREV`, `COMPENS`) which are UPPERCASE and abbreviated. In the Portal dataset, these are mapped to lowercase descriptive names (e.g., `contributions_total`, `revenue_total`, `compensation_officers`). See SKILL.md Portal Variable Name Mapping for the crosswalk. Governance and schedule detail variables (Part VI, VII, Schedule D/J) are available only in the full NCCS Efile database, not in the Portal mirror dataset.
+> **Variable naming context:** Older NCCS documentation used legacy NCCS Core names (e.g., `CONT`, `TOTREV`, `COMPENS`), which no current NCCS file uses as column names. This file gives the Efile names. In the Portal dataset the same items have lowercase descriptive names (e.g., `contributions_total`, `revenue_total`, `compensation_officers`); see SKILL.md Portal Variable Name Mapping, and `variable-definitions.md` for the full legacy-to-current mapping. Governance and schedule detail variables (Part VI, VII, Schedule D/J) are available only in the full NCCS Efile database, not in the Portal mirror dataset.
 
 ## Contents
 
@@ -30,9 +30,9 @@ Form 990, "Return of Organization Exempt From Income Tax," is required annually 
 
 | Organization Type | Gross Receipts | Assets | Required Form |
 |-------------------|----------------|--------|---------------|
-| Most 501(c) | < $50,000 | N/A | 990-N (e-Postcard) |
+| Most 501(c) | normally ≤ $50,000 | N/A | 990-N (e-Postcard) |
 | Most 501(c) | < $200,000 | < $500,000 | 990-EZ |
-| Most 501(c) | ≥ $200,000 | ≥ $500,000 | 990 (full form) |
+| Most 501(c) | ≥ $200,000 **or** | ≥ $500,000 | 990 (full form) |
 | Private foundations | Any | Any | 990-PF |
 
 ### 2008 Form Redesign
@@ -41,10 +41,10 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 
 | Pre-2008 | Post-2008 |
 |----------|-----------|
-| 8 pages | 11 pages + schedules |
+| 9 pages (2007) | 11 pages (2008); 12 pages from at least 2016 |
 | Basic governance questions | Detailed governance section |
 | Limited compensation detail | Extensive compensation reporting |
-| Functional expense info optional | Required for most |
+| Functional columns (B)-(D) required for 501(c)(3)/(4) (unchanged) | Same requirement, now Part IX |
 
 **Important**: When analyzing pre-2008 vs. post-2008 data, be aware of definitional and structural changes.
 
@@ -55,7 +55,7 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 ### Form 990 (Full Form)
 
 - **Filers**: Larger organizations (gross receipts ≥ $200K or assets ≥ $500K)
-- **Length**: 11 pages + applicable schedules
+- **Length**: 12 pages (2025 form) + applicable schedules
 - **Detail level**: Comprehensive financial and governance information
 - **In NCCS**: Core PC files, Efile database
 
@@ -87,18 +87,20 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 
 High-level organizational overview and key financial totals.
 
-| Line | Description | Variable (approx.) |
-|------|-------------|-------------------|
-| 1 | Mission/activities description | Text field |
-| 8 | Contributions and grants | CONT |
-| 9 | Program service revenue | PROGREV |
-| 10 | Investment income | INVINC |
-| 12 | Total revenue | TOTREV |
-| 18 | Total expenses | EXPS |
-| 19 | Revenue less expenses | NETINC |
-| 20 | Total assets (EOY) | TOTASS |
-| 21 | Total liabilities (EOY) | TOTLIAB |
-| 22 | Net assets (EOY) | NETASS |
+| Line | Description | Efile name (current year) | Legacy NCCS Core name |
+|------|-------------|---------------------------|-----------------------|
+| 1 | Mission/activities description | Text field | — |
+| 8 | Contributions and grants | `F9_01_REV_CONTR_TOT_CY` | `CONT` |
+| 9 | Program service revenue | `F9_01_REV_PROG_TOT_CY` | `PROGREV` |
+| 10 | Investment income | `F9_01_REV_INVEST_TOT_CY` | `INVINC` |
+| 12 | Total revenue | `F9_01_REV_TOT_CY` | `TOTREV` |
+| 18 | Total expenses | `F9_01_EXP_TOT_CY` | `EXPS` |
+| 19 | Revenue less expenses | `F9_01_EXP_REV_LESS_EXP_CY` | `NETINC` |
+| 20 | Total assets (EOY) | `F9_01_NAFB_ASSET_TOT_EOY` | `TOTASS` |
+| 21 | Total liabilities (EOY) | `F9_01_NAFB_LIAB_TOT_EOY` | `TOTLIAB` |
+| 22 | Net assets (EOY) | `F9_01_NAFB_TOT_EOY` | `NETASS` |
+
+Efile names are matched by the Form 990 line the Efile data dictionary gives. The Classic HRMN Core dictionary has the Part VIII-X equivalents for the full-990 (PC) files instead (`F9_08_REV_TOT_TOT`, `F9_09_EXP_TOT_TOT`, `F9_10_ASSET_TOT_EOY`, `F9_10_LIAB_TOT_EOY`, `F9_10_NAFB_TOT_EOY`); harmonized Core names are in `variable-definitions.md`.
 
 ### Part II: Signature Block
 
@@ -115,7 +117,7 @@ Narrative descriptions of the three largest program services with associated exp
 
 ### Part IV: Checklist of Required Schedules
 
-Yes/No questions determining which schedules must be attached (26 questions).
+Yes/No questions determining which schedules must be attached (38 numbered lines, many with sub-questions).
 
 ### Part V: Statements Regarding Other IRS Filings
 
@@ -160,11 +162,16 @@ Detailed breakdown of all revenue sources.
 
 | Line | Category |
 |------|----------|
-| 1a-1f | Federated campaigns, membership dues, fundraising events, related organizations, government grants, other contributions |
-| 2a-2g | Program service revenue by activity |
-| 3-7 | Investment income (interest, dividends, royalties, rental) |
-| 8a-8c | Net gain/loss from sales (securities, other assets) |
-| 9-10 | Fundraising events, gaming |
+| 1a-1h | Contributions (federated campaigns, membership dues, fundraising events, related organizations, government grants, all other; 1h total) |
+| 2a-2g | Program service revenue |
+| 3 | Investment income (dividends, interest, similar) |
+| 4 | Income from investment of tax-exempt bond proceeds |
+| 5 | Royalties |
+| 6a-6d | Rents |
+| 7a-7d | Gain/loss from sales of assets (securities, other) |
+| 8a-8c | Fundraising events |
+| 9a-9c | Gaming |
+| 10a-10c | Sales of inventory |
 | 11a-11e | Other revenue |
 | 12 | Total revenue |
 
@@ -191,7 +198,7 @@ Expenses broken down by function (program, management, fundraising).
 | 15 | Royalties |
 | 16 | Occupancy |
 | 17 | Travel |
-| 18 | Payments to affiliates |
+| 18 | Travel/entertainment payments for public officials |
 | 19 | Conferences and meetings |
 | 20 | Interest |
 | 21 | Payments to affiliates |
@@ -244,6 +251,8 @@ Assets, liabilities, and net assets at beginning and end of year.
 | 25 | Other liabilities |
 | 26 | Total liabilities |
 
+> Line numbers below are for the 2019+ form, the first to use the "without/with donor restrictions" net-asset classes (IRS Form 990 for 2018 and 2019, https://www.irs.gov/pub/irs-prior/f990--2018.pdf and f990--2019.pdf, fetched 2026-10-30). The 2017 and 2018 forms used 27 Unrestricted, 28 Temporarily restricted, 29 Permanently restricted, 30-32 capital stock / paid-in / retained earnings, 33 Total net assets, 34 Total liabilities and net assets; that this layout holds back to the 2008 redesign is inference (the 2008-2016 forms were not checked). Forms before the 2008 redesign have a different balance sheet: on the 2007 form it is Part IV, with total net assets on line 73 (https://www.irs.gov/pub/irs-prior/f990--2007.pdf, fetched 2026-10-30). Portal years (1993-2016) span both layouts; see § 2008 Form Redesign.
+
 **Net Assets**:
 | Line | Category |
 |------|----------|
@@ -290,11 +299,14 @@ Required for 501(c)(3) public charities.
 | 1b | Contributions |
 | 1c | Net investment earnings |
 | 1d | Grants or scholarships |
-| 1e | Other expenditures |
+| 1e | Other expenditures for facilities and programs |
 | 1f | Administrative expenses |
 | 1g | End of year balance |
-| 2 | Land, buildings, equipment held for investment |
-| 3 | Qualifying distributions from endowment |
+| 2a-2c | % of year-end balance held as board-designated/quasi-, permanent, and term endowment |
+| 3a-3b | Endowment funds held by unrelated/related organizations |
+| 4 | Intended uses (described in Part XIII) |
+
+Part V reports five columns: current year through four years back.
 
 Other Parts:
 - Part I: Donor advised funds
@@ -332,11 +344,12 @@ Information about related entities (common for university systems).
 
 | Part | Content |
 |------|---------|
-| I | Related exempt organizations |
-| II | Related taxable corporations/trusts |
-| III | Related partnerships |
-| IV | Unrelated organizations taxable as partnership |
+| I | Disregarded entities |
+| II | Related tax-exempt organizations |
+| III | Related organizations taxable as a partnership |
+| IV | Related organizations taxable as a corporation or trust |
 | V | Transactions with related organizations |
+| VI | Unrelated organizations taxable as a partnership |
 
 ---
 
@@ -356,17 +369,17 @@ Total Revenue
 │   ├── Tuition and fees
 │   ├── Auxiliary enterprises
 │   └── Other program revenue
-├── Investment Income
-│   ├── Interest
-│   ├── Dividends
-│   ├── Royalties
-│   └── Rental income
-├── Net Gain/Loss from Sales
+├── Investment Income (lines 3-4)
+│   ├── Dividends, interest, similar (line 3)
+│   └── Tax-exempt bond proceeds investment (line 4)
+├── Royalties (line 5)
+├── Rents (line 6)
+├── Net Gain/Loss from Sales (line 7)
 │   ├── Securities
 │   └── Other assets
 └── Other Revenue
-    ├── Special events
-    └── Miscellaneous
+    ├── Fundraising events, gaming, inventory sales (lines 8-10)
+    └── Miscellaneous (line 11)
 ```
 
 ### Expense Categories (Part IX)
@@ -430,8 +443,9 @@ This allocation is important for calculating efficiency ratios.
 **Who is reported**:
 - Current officers, directors, trustees
 - Key employees (>$150K compensation with organizational responsibility)
-- Highest compensated employees (>$100K)
+- Five highest compensated employees (>$100K reportable)
 - Former officers/employees receiving >$100K
+- Former directors/trustees receiving >$10K in that capacity
 - Independent contractors receiving >$100K
 
 **What is reported**:
@@ -459,12 +473,12 @@ This allocation is important for calculating efficiency ratios.
 
 ### Missing Data Codes
 
-In NCCS data:
+In the Education Data Portal (not NCCS source files): -1 Missing, -2 Not applicable, -3 Suppressed (generic Portal labels; rare in NCCS columns).
 | Code | Meaning |
 |------|---------|
-| -1 | Data unavailable |
+| -1 | Missing |
 | -2 | Not applicable |
-| -3 | Suppressed (confidentiality) |
+| -3 | Suppressed |
 | `null` | Not reported (blank in CSV, null in parquet) |
 
 > **Portal note:** In the Portal dataset, most missing data appears as `null` rather than negative codes. The `-1`/`-2`/`-3` codes exist but are rare (only a few financial columns). Always check for both `null` and negative codes when cleaning.

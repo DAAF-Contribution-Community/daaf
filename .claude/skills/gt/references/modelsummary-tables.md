@@ -44,7 +44,7 @@ modelsummary(models)
 # gt object (richest formatting -- must be requested explicitly)
 modelsummary(models, output = "gt")
 
-# kableExtra (good for Quarto)
+# kableExtra (good for Quarto HTML or LaTeX PDF; not for a Typst PDF)
 modelsummary(models, output = "kableExtra")
 
 # Markdown (good for DAAF reports)

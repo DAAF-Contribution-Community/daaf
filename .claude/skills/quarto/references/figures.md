@@ -242,7 +242,7 @@ format:
   html:
     fig-width: 8
     fig-height: 5
-  pdf:
+  typst:
     fig-width: 6
     fig-height: 4
 ---

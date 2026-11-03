@@ -396,7 +396,7 @@ Key differences:
 
 ## References
 
-- Robinson, D., Hayes, A., & Couch, S. (2023). broom: Convert Statistical
+- Robinson, D., Hayes, A., Couch, S., & Hvitfeldt, E. (2026). broom: Convert Statistical
   Objects into Tidy Tibbles. R package version 1.0.12.
 - Arel-Bundock, V. (2022). "modelsummary: Data and Model Summaries in R."
   *Journal of Statistical Software*, 103(1), 1-23.

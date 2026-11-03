@@ -69,7 +69,7 @@ from sklearn.preprocessing import OneHotEncoder
 encoder = OneHotEncoder(
     sparse_output=False,     # Dense array (True for sparse matrix)
     drop="first",            # Drop first category to avoid multicollinearity
-    handle_unknown="ignore"  # Unknown categories become all-zeros
+    handle_unknown="ignore"  # Unknown categories become all-zeros (= the dropped first category when drop="first")
 )
 X_encoded = encoder.fit_transform(X_categorical)
 

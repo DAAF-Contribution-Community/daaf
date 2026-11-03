@@ -116,8 +116,9 @@ generated decoys (Wickham, Cook, Hofmann & Buja 2010 —
 https://vita.had.co.nz/papers/inference-infovis.pdf). If the researcher can pick the
 real panel out of the lineup, the pattern is unlikely to be chance — converting an
 eyeballed impression into a calibrated low-α visual test. State the null model used to
-generate the decoys; a lineup with an ill-matched null model can mislead
-(https://arxiv.org/pdf/2503.01509). See Family 8 in `challenge-families.md` for the
+generate the decoys; the lineup's validity depends on choosing an appropriate null and
+decoy-generating method (Wickham et al. 2010, §4). Bayesian visual predictive checks
+carry a related caution (https://arxiv.org/pdf/2503.01509). See Family 8 in `challenge-families.md` for the
 generation recipe.
 
 ---
@@ -139,4 +140,4 @@ unaudited interface and must not be presented as a verification result.
 - Empty-state UX (why + what next) — https://www.pencilandpaper.io/articles/empty-states
 - Marimo reproducibility / static `html-wasm` export — https://marimo.io/features/feat-deploy
 - Wickham, Cook, Hofmann & Buja (2010), lineup protocol — https://vita.had.co.nz/papers/inference-infovis.pdf
-- Visual predictive checks, null-model caution — https://arxiv.org/pdf/2503.01509
+- Bayesian visual predictive checks, caution — https://arxiv.org/pdf/2503.01509

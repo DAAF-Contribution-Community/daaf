@@ -328,7 +328,7 @@ stopifnot(file.exists("output/figures/2026-01-24a_event_study.png"))
 
 ## References
 
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly
   Econometrics Estimations: The R Package fixest." arXiv:2601.21749.
 - fixest documentation — Tables and Plots:
   https://lrberge.github.io/fixest/articles/etable_new_features.html

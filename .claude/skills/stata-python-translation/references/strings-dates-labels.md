@@ -18,7 +18,8 @@ value label system has no direct Python equivalent and requires explicit workaro
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); SSCC/UW-Madison, "Working with Text Data
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> SSCC/UW-Madison, "Working with Text Data
 > in Stata" (sscc.wisc.edu, accessed 2026-03-28); Stata Blog, "A tour of datetime in
 > Stata" (blog.stata.com, 2015); polars 1.x User Guide and API Reference
 > (docs.pola.rs, accessed 2026-03-28); pyreadstat (github.com/Roche/pyreadstat,

@@ -41,7 +41,7 @@ Understanding the critical differences between accounting standards used by publ
 |------|-----------------|----------|
 | F1 | Public | GASB |
 | F2 | Private nonprofit | FASB |
-| F2 | Public using FASB (~20 institutions) | FASB |
+| F2 | Public using FASB (count unsourced) | FASB |
 | F3 | Private for-profit | FASB |
 
 ### Key Structural Differences
@@ -49,7 +49,7 @@ Understanding the critical differences between accounting standards used by publ
 | Aspect | GASB (Public) | FASB (Private) |
 |--------|--------------|----------------|
 | Revenue classification | Operating vs non-operating | By restriction level |
-| State appropriations | Major category | N/A (not received) |
+| State appropriations | Major category | Reported when received (some private institutions receive state appropriations) |
 | Net assets | Net position | Net assets by restriction |
 | Pell Grant treatment | Federal non-operating revenue | May be passthrough |
 
@@ -197,9 +197,9 @@ Same functional categories as GASB but:
 | Sector | Treatment |
 |--------|-----------|
 | Public (GASB) | Major revenue source, clearly reported |
-| Private (FASB) | Not applicable - don't receive appropriations |
+| Private (FASB) | Usually small or zero, but some private nonprofits report state appropriations (e.g., Cornell, unitid 190415: $370M in Portal `year` 2017) |
 
-**Impact**: Cannot compare "government support" across sectors because public institutions receive direct appropriations that private institutions do not.
+**Impact**: "Government support" is not comparable across sectors without examining each institution's reported appropriations.
 
 ### Pell Grant Treatment
 
@@ -265,10 +265,7 @@ This is more comparable across sectors than functional classification.
 
 #### Delta Cost Project
 
-The Delta Cost Project (Urban Institute) created harmonized finance data:
-- Adjusts for GASB/FASB differences
-- Creates comparable categories
-- Available through IPEDS Data Center
+The Delta Cost Project, managed by American Institutes for Research (AIR), built a harmonized longitudinal database from IPEDS finance, enrollment, staffing, completions and aid data for academic years 1986-87 through 2011-12 (not updated past 2011-12). NCES distributes it as "IPEDS Analytics: Delta Cost Project Database" (https://nces.ed.gov/ipeds/use-the-data/delta-cost-project-finance-data).
 
 #### Manual Harmonization
 
@@ -486,7 +483,7 @@ instruction_share <- instruction / total_core_expenses * 100
 |-----------------|-------------|
 | `endowment_beg` | Endowment value at beginning of year |
 | `endowment_end` | Endowment value at end of year |
-| `form_type` | Finance form type (1-5, indicates GASB vs FASB) |
+| `form_type` | Reporting form (codebook labels: 1=Common form, 2=Form 1, 3=Form 1A, 4=Form 2, 5=Form 3); private nonprofits Harvard and Cornell carry 4. For the accounting standard (GASB vs FASB) use `reporting_form` |
 | `assets` | Total assets |
 | `liabilities` | Total liabilities |
 | `calc_fte` | Calculated FTE enrollment |

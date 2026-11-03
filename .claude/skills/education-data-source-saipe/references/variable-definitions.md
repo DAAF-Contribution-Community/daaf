@@ -121,12 +121,14 @@ Poverty status determined by comparing family income to threshold based on:
 
 | Family Size | Children Under 18 | Threshold |
 |-------------|-------------------|-----------|
-| 2 persons | None | $19,515 |
-| 2 persons | 1 child | $20,088 |
-| 3 persons | 1 child | $24,580 |
-| 3 persons | 2 children | $24,677 |
+| 2 persons (householder under 65) | None | $20,404 |
+| 2 persons (householder under 65) | 1 child | $21,002 |
+| 3 persons | 1 child | $24,526 |
+| 3 persons | 2 children | $24,549 |
 | 4 persons | 2 children | $30,900 |
-| 5 persons | 3 children | $36,591 |
+| 5 persons | 3 children | $36,363 |
+
+Source: Census Bureau, "Poverty Thresholds for 2023 by Size of Family and Number of Related Children Under 18 Years" (`thresh23.xlsx`).
 
 ### What Counts as Income
 
@@ -152,7 +154,7 @@ Poverty status determined by comparing family income to threshold based on:
 |--------|------------------|------------|---------------|
 | Income threshold | 100% of threshold | 130% of guidelines | 185% of guidelines |
 | Threshold source | Census Bureau | HHS Guidelines | HHS Guidelines |
-| 2024 example (family of 4) | ~$31,000 | ~$40,560 | ~$57,720 |
+| Example: family of 4 with 2 children (2024 SAIPE threshold; FRPL SY 2025-26) | $31,812 | ≤ $41,795 | < $59,478 |
 | Non-cash benefits | Not counted | Not counted | Not counted |
 
 ## Geographic Identifiers
@@ -379,7 +381,7 @@ Example for 2023 SAIPE (released December 2024):
 
 SAIPE estimates are for **calendar year** income, not school year:
 - 2023 SAIPE = calendar year 2023 income
-- School district boundaries from School Year 2022-2023
+- School district boundaries for the 2023-2024 school year (districts identified in the 2024 school district mapping survey, as of January 1, 2024)
 
 ## Education Data Portal Variable Names
 

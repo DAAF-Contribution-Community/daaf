@@ -107,7 +107,7 @@ g = Graph.build_knn(gdf.geometry, k=6)
 g = Graph.build_distance_band(gdf.geometry, threshold=10000)
 
 # Kernel
-g = Graph.build_kernel(gdf.geometry, kernel="gaussian", k=10)
+g = Graph.build_kernel(gdf.centroid, kernel="gaussian", k=10)  # point geometries only
 
 # Inspect
 print(g.n)                  # Number of observations
@@ -134,12 +134,15 @@ w.transform = "r"  # Row-standardize
 g_std = g.transform("R")
 ```
 
+**esda changes `w.transform` in place.** Passing a `W` to `Moran`, `Geary` or `Moran_Local` sets it to `"R"`; `G` and `Join_Counts` set it to `"B"`, and so does `G_Local(..., transform="B")` with the default `star=False` (with `star=True` it transforms a copy and leaves your `w` unchanged). spreg then uses whatever transform the object has (with a binary W, `GM_Lag` returns a rho on a different scale and `ML_Lag` may fail). Set `w.transform = "r"` immediately before each spreg call, or pass a `libpysal.graph.Graph`, which esda does not modify.
+
 ### Saving and Loading Weights
 
 ```python
 # Save as parquet (Graph API)
 g.to_parquet("weights.parquet")
-g = Graph.read_parquet("weights.parquet")
+from libpysal.graph import read_parquet
+g = read_parquet("weights.parquet")
 
 # Save as GAL/GWT (legacy W format)
 from libpysal.io import open as ps_open
@@ -157,7 +160,10 @@ gal.close()
 Tests whether a variable is spatially clustered (positive I), dispersed (negative I), or random (I ≈ 0).
 
 ```python
+import numpy as np
 from esda.moran import Moran
+
+np.random.seed(42)  # Moran, Geary, G, Join_Counts, Moran_BV and Moran_Rate permute with numpy's global RNG; seed it for reproducible p_sim
 
 # Compute Moran's I
 mi = Moran(gdf["poverty_rate"], w, permutations=999)
@@ -222,13 +228,13 @@ Identifies local clusters and outliers — where spatial autocorrelation is stro
 from esda.moran import Moran_Local
 
 # Compute LISA
-lisa = Moran_Local(gdf["poverty_rate"], w, permutations=999)
+lisa = Moran_Local(gdf["poverty_rate"], w, permutations=999, seed=42)
 
 # Results per observation
 gdf["lisa_I"] = lisa.Is              # Local Moran's I value
 gdf["lisa_q"] = lisa.q               # Quadrant (1=HH, 2=LH, 3=LL, 4=HL)
 gdf["lisa_p"] = lisa.p_sim           # p-value (permutation)
-gdf["lisa_sig"] = lisa.p_sim < 0.05  # Significant at 0.05
+gdf["lisa_sig"] = lisa.p_sim < 0.05  # One-sided (folded) pseudo p-value per location; not adjusted for multiple testing
 
 # Cluster labels
 quadrant_labels = {1: "HH", 2: "LH", 3: "LL", 4: "HL"}
@@ -285,7 +291,7 @@ Identifies statistically significant hot spots and cold spots:
 ```python
 from esda.getisord import G_Local
 
-gi = G_Local(gdf["poverty_rate"], w, permutations=999)
+gi = G_Local(gdf["poverty_rate"], w, transform="B", star=True, permutations=999, seed=42)  # star=True gives Gi*; the default star=False computes Gi
 
 gdf["gi_z"] = gi.Zs                # Z-scores
 gdf["gi_p"] = gi.p_sim             # p-values
@@ -311,12 +317,14 @@ y = gdf[["poverty_rate"]].values           # Dependent variable (n, 1)
 X = gdf[["median_income", "pct_rural"]].values  # Independent variables (n, k)
 
 # OLS with spatial diagnostics
+w.transform = "r"  # esda calls above may have left w binary; spreg uses whatever transform w has
 ols = OLS(
     y, X, w=w,
     name_y="poverty_rate",
     name_x=["median_income", "pct_rural"],
     name_ds="counties",
-    spat_diag=True       # Include LM tests for spatial dependence
+    spat_diag=True,      # Include LM tests for spatial dependence
+    moran=True,          # Moran's I on residuals (spat_diag alone does not compute it)
 )
 
 print(ols.summary)
@@ -328,16 +336,19 @@ print(ols.summary)
 
 ### LM Test Decision Rule
 
-```
-LM test results from OLS:
-├─ LM-lag significant, LM-error not → Spatial Lag Model (SAR)
-├─ LM-error significant, LM-lag not → Spatial Error Model (SEM)
-├─ Both significant → Check robust versions:
-│   ├─ Robust LM-lag significant → SAR
-│   ├─ Robust LM-error significant → SEM
-│   └─ Both robust significant → Spatial Durbin Model or SAR+SEM combo
-└─ Neither significant → OLS is fine, no spatial model needed
-```
+Follow these steps in order on the OLS diagnostics (spreg attributes in brackets). Rule verified against Anselin (2005), *Exploring Spatial Data with GeoDa: A Workbook*, §23.6.3, pp. 197-200, on 2026-11-02.
+
+1. Read LM-lag [`ols.lm_lag`] and LM-error [`ols.lm_error`], the standard (non-robust) tests. Each is a (statistic, p-value) tuple.
+2. Neither significant → keep OLS. If Moran's I on residuals is still significant, suspect heteroskedasticity or non-normality rather than spatial dependence (Anselin 2005, p. 198 fn. 8).
+3. Exactly one significant → estimate the matching model: LM-lag → spatial lag (`ML_Lag`/`GM_Lag`); LM-error → spatial error (`ML_Error`/`GM_Error`). Do not look at the robust tests here; they are only valid when both standard tests are significant (p. 197).
+4. Both significant → read Robust LM-lag [`ols.rlm_lag`] and Robust LM-error [`ols.rlm_error`]:
+   a. One significant and the other not, or one orders of magnitude more significant → estimate that model.
+   b. Both highly significant → choose the model with the larger robust statistic, with caution: re-run with other spatial weights and revisit the non-spatial specification, since another misspecification may be present (p. 200).
+   c. Neither significant → do not fit a spatial model yet; fix the more serious misspecification first (p. 200).
+5. Ignore LM-SARMA [`ols.lm_sarma`] for model choice: it is significant under either single alternative (p. 197).
+6. The "- Spatial Durbin -" block of the spreg summary (`lm_wx`, `rlm_wx`, `rlm_durlag`, `lm_spdurbin`; Koley & Bera 2024) answers a different question (whether WX belongs in the model). Never feed "Robust LM Lag - SDM" into steps 1-4.
+
+Refinements (verified against Anselin, Serenini & Amaral 2024, "Spatial Econometric Model Specification Search: Another Look", pp. 10, 12, 26, on 2026-11-02): in case 4b the authors estimate the lag model by spatial 2SLS and run the Anselin-Kelejian test (`spreg.AKtest`): significant → SAR-Error (`GM_Combo`), otherwise lag. Their simulations support p = 0.01 per decision rather than 0.05. SDM is selected only through the Koley-Bera tests (joint SDM test significant, then both robust ρ and WX tests significant), not through steps 1-4.
 
 ### Spatial Lag Model (SAR)
 
@@ -381,7 +392,7 @@ sem_ml = ML_Error(
 print(sem_ml.summary)
 # Key output: lambda (spatial error coefficient), betas
 
-# GMM (robust to heteroskedasticity)
+# GMM (no standard error for lambda; GM_Error_Het is the heteroskedasticity-robust variant)
 sem_gm = GM_Error(
     y, X, w=w,
     name_y="poverty_rate",
@@ -415,9 +426,9 @@ After fitting a spatial model, verify that residuals no longer exhibit spatial a
 from esda.moran import Moran
 
 # Check residuals
-mi_resid = Moran(model.u, w, permutations=999)  # model.u = residuals
+mi_resid = Moran(model.u, w, permutations=999)  # lag models: model.u; error models (ML_Error/GM_Error): use model.e_filtered (their .u still contains the spatial error)
 print(f"Moran's I on residuals: {mi_resid.I:.4f}, p={mi_resid.p_sim:.4f}")
-# p > 0.05 indicates spatial dependence has been adequately modeled
+# p > 0.05: no detectable residual autocorrelation under this W (absence of evidence, not proof)
 ```
 
 ---
@@ -549,7 +560,8 @@ mlr = Moran_Local_Rate(
     gdf["crime_count"].values,
     gdf["population"].values,
     w,
-    permutations=999
+    permutations=999,
+    seed=42
 )
 ```
 

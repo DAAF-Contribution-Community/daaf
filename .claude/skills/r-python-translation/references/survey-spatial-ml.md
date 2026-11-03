@@ -537,7 +537,7 @@ search.fit(X_train, y_train)
 | R | Python | Notes |
 |---|--------|-------|
 | `parsnip::rand_forest() %>% set_engine("ranger")` | `RandomForestClassifier()` / `RandomForestRegressor()` | |
-| `parsnip::logistic_reg()` | `LogisticRegression()` | |
+| `parsnip::logistic_reg()` | `LogisticRegression()` | Default is L2-penalized (`C=1.0`); `LogisticRegression(C=1e10, max_iter=1000)` approximates the unpenalized `glm` engine (to solver tolerance) |
 | `parsnip::linear_reg()` | `Ridge()` / `Lasso()` / `ElasticNet()` | scikit-learn separates by regularization type |
 | `parsnip::boost_tree() %>% set_engine("xgboost")` | `GradientBoostingClassifier()` or `HistGradientBoostingClassifier()` | Or `XGBClassifier()` from xgboost |
 | `parsnip::svm_rbf()` | `SVC(kernel="rbf")` | |

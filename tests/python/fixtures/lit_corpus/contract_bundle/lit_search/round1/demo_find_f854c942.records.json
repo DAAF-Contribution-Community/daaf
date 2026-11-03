@@ -1,0 +1,49 @@
+{
+ "schema_version": "scholar-records-v1",
+ "tool_version": "synthetic (lit_corpus demo)",
+ "command": "find",
+ "query": "adult reading clubs",
+ "raw_artifact": "demo_find_f854c942.json",
+ "raw_sha256": "3c7a117f9f43aa516e8b8934e95423612c4739d8da00493bf669ad7860244d33",
+ "fusion": {
+  "version": "fuse-v1"
+ },
+ "limit": 10,
+ "groups_total": 1,
+ "legs": [
+  {
+   "leg": "openalex_semantic",
+   "backend": "openalex",
+   "count": 1,
+   "total": 1,
+   "failed": null
+  }
+ ],
+ "groups": [
+  {
+   "rank": 1,
+   "score": 0.03,
+   "found_by": {
+    "openalex_semantic": 1,
+    "elicit": 1
+   },
+   "primary": {
+    "title": "An Invented Survey of Adult Reading Clubs",
+    "authors": [
+     "Eve Evans"
+    ],
+    "year": 2018,
+    "doi": "10.9999/fixture.0005",
+    "ids": {
+     "openalex": [
+      "W900000005"
+     ],
+     "doi": [
+      "10.9999/fixture.0005"
+     ]
+    }
+   },
+   "members": []
+  }
+ ]
+}

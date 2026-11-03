@@ -35,15 +35,35 @@ SCRIPT_DIR="$DAAF_LIB_DIR"
 # Bridge environment_settings.txt's DAAF_* keys into the environment so
 # `docker compose` interpolation resolves the project name and published host
 # ports. See load_daaf_settings in daaf_lib.sh for the full rationale.
-load_daaf_settings
+# An existing but unreadable file makes the loader return non-zero without
+# printing anything (its open check silences only bash's raw "Permission
+# denied" line). This runs before the ERR and pause traps below are registered,
+# so say what to fix instead of exiting silently. The call keeps its stderr: any
+# other loader error (a bug) must stay visible, because nothing else would
+# report it here.
+if ! load_daaf_settings; then
+    echo "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it." >&2
+    echo "Fix that (or move the file aside), then start the DAAF Control Panel again." >&2
+    exit 1
+fi
 
 # Host-facing ports for browser URLs and status display. These are the ports
 # published on the HOST (docker-compose.yml maps them to the fixed container
 # ports 2718/2719/2720). Default to the container ports when unset so existing
 # single-instance installs behave identically.
-DAAF_PORT_MARIMO="${DAAF_PORT_MARIMO:-2718}"
-DAAF_PORT_LOGVIEWER="${DAAF_PORT_LOGVIEWER:-2719}"
-DAAF_PORT_VSCODE="${DAAF_PORT_VSCODE:-2720}"
+#
+# The display values live in their OWN PANEL_PORT_* variables and the defaults
+# are never written into the DAAF_PORT_* names the settings loader fills: a
+# defaulted DAAF_PORT_* would look "already set" to reload_daaf_settings and mask
+# a port the user later adds to environment_settings.txt. set_panel_ports runs at
+# startup and again after a Restart Container reload (twin of daaf.ps1
+# Initialize-DaafPortDisplay).
+set_panel_ports() {
+    PANEL_PORT_MARIMO="${DAAF_PORT_MARIMO:-2718}"
+    PANEL_PORT_LOGVIEWER="${DAAF_PORT_LOGVIEWER:-2719}"
+    PANEL_PORT_VSCODE="${DAAF_PORT_VSCODE:-2720}"
+}
+set_panel_ports
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -60,6 +80,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             *"compose exec"*"git"*"log"*) echo "2026-06-21" ;;
             *"compose exec"*"git"*"branch"*) echo "main" ;;
             *"compose exec"*"git"*"rev-list"*) echo "0" ;;
+            *"compose exec"*"--print-token"*) echo "dryruntoken" ;;
             *"compose exec -d"*) return 0 ;;
             *"compose exec"*) echo "[DRY-RUN] docker $*" >&2; return 0 ;;
             *) echo "[DRY-RUN] docker $*" >&2; return 0 ;;
@@ -84,7 +105,7 @@ if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
     fi
 
     if ! docker info &> /dev/null; then
-        echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
+        echo "ERROR: Docker does not seem to be running. Start Docker Desktop (or the Docker service) and try again." >&2
         exit 1
     fi
 fi
@@ -100,7 +121,7 @@ if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
     # the failing command -- so a failure is never silent. Important for users
     # who launch the panel by double-clicking in Terminal, where the window
     # would otherwise close instantly on an uncaught error.
-    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug -- please report it. The panel will now exit." >&2' ERR
+    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug. Please report it, with the lines above, at" >&2; echo "  https://github.com/DAAF-Contribution-Community/daaf/issues" >&2; echo "  The panel will now exit." >&2' ERR
 
     # On any error exit, pause so a double-clicked Terminal window does not
     # vanish before the diagnostic above can be read. Skips the clean-quit path
@@ -146,6 +167,13 @@ gather_status() {
             </dev/null 2>/dev/null > "$tmpdir/date" &
         docker compose exec -T daaf-docker git -C /daaf branch --show-current \
             </dev/null 2>/dev/null > "$tmpdir/branch" &
+        # Commits on origin/main that HEAD lacks, as of the last fetch. The
+        # panel never fetches (a fetch per redraw is a network call); the
+        # updater's fetch from origin does. The installer's clone sets
+        # origin/main only for an install from main (the clone is
+        # single-branch); with no origin/main the count is empty and the label
+        # is omitted. The count is against origin/main even when the updater
+        # follows DAAF_BRANCH or an `upstream` remote.
         docker compose exec -T daaf-docker git -C /daaf rev-list --count HEAD..origin/main \
             </dev/null 2>/dev/null > "$tmpdir/updates" &
         local ports_probe='
@@ -183,7 +211,7 @@ gather_status() {
     if [ -e "${backup_dirs[0]}" ]; then
         # Bash 3.2 (macOS /bin/bash) does not support negative array subscripts
         # (${arr[-1]} was added in 4.3), so index the last element via arithmetic.
-        # Timestamp-prefixed names sort lexicographically, so the last glob match
+        # Date-prefixed names sort lexicographically, so the last glob match
         # is the newest backup.
         local last_backup_dir="${backup_dirs[$((${#backup_dirs[@]} - 1))]}"
         STATUS_LAST_BACKUP=$(basename "$last_backup_dir" | sed 's/_daaf_backup//')
@@ -220,13 +248,14 @@ display_menu() {
     fi
     echo "$version_line"
 
-    # Branch line
+    # Branch line. The count is only as fresh as the last update check (the panel
+    # does not fetch; see gather_status), so the label says so.
     local branch_line
     branch_line="  Branch:     ${STATUS_BRANCH}"
     if [ -n "$STATUS_UPDATES" ] && [ "$STATUS_UPDATES" != "0" ]; then
-        branch_line="${branch_line} (${STATUS_UPDATES} updates available)"
+        branch_line="${branch_line} (${STATUS_UPDATES} updates available as of the last update check)"
     elif [ -n "$STATUS_UPDATES" ]; then
-        branch_line="${branch_line} (up to date)"
+        branch_line="${branch_line} (up to date as of the last update check)"
     fi
     echo "$branch_line"
 
@@ -242,17 +271,17 @@ display_menu() {
     # --- Services ---
     echo "  Services:"
     if [ "$STATUS_PORT_2718" = true ]; then
-        echo "    ${GREEN}*${RESET} Notebooks    localhost:${DAAF_PORT_MARIMO}"
+        echo "    ${GREEN}*${RESET} Notebooks    localhost:${PANEL_PORT_MARIMO}"
     else
         echo "    ${DIM}o${RESET} Notebooks    (not running)"
     fi
     if [ "$STATUS_PORT_2719" = true ]; then
-        echo "    ${GREEN}*${RESET} Log Viewer   localhost:${DAAF_PORT_LOGVIEWER}"
+        echo "    ${GREEN}*${RESET} Log Viewer   localhost:${PANEL_PORT_LOGVIEWER}"
     else
         echo "    ${DIM}o${RESET} Log Viewer   (not running)"
     fi
     if [ "$STATUS_PORT_2720" = true ]; then
-        echo "    ${GREEN}*${RESET} VS Code      localhost:${DAAF_PORT_VSCODE}"
+        echo "    ${GREEN}*${RESET} VS Code      localhost:${PANEL_PORT_VSCODE}"
     else
         echo "    ${DIM}o${RESET} VS Code      (not running)"
     fi
@@ -275,7 +304,8 @@ display_menu() {
     echo "    8) Restore from Backup"
     echo "    9) Check for Updates"
     echo "   10) Rebuild Container"
-    echo "   11) Stop Web Services"
+    echo "   11) Restart Container"
+    echo "   12) Stop Web Services"
 
     echo ""
 
@@ -314,11 +344,12 @@ dispatch_choice() {
         8)  handle_restore ;;
         9)  handle_update ;;
         10) handle_rebuild ;;
-        11) handle_stop_services ;;
+        11) handle_restart ;;
+        12) handle_stop_services ;;
         h|H) handle_help ;;
         q|Q) handle_quit ;;
         "") ;;  # Empty input -- just redraw
-        *)  echo "  Invalid choice. Please enter a number (1-11), h, or q." ;;
+        *)  echo "  Invalid choice. Please enter a number (1-12), h, or q." ;;
     esac
 }
 
@@ -365,7 +396,9 @@ handle_notebooks() {
     # Ensure the container is up before attempting docker compose exec, so we
     # give a clear message instead of letting a failed exec surface obscurely.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
@@ -397,9 +430,36 @@ handle_notebooks() {
         fi
     fi
 
-    # Browser URL uses the HOST-published port (DAAF_PORT_MARIMO); the container
+    # marimo requires the access token launch_marimo.sh generates for each launch,
+    # so ask the running server for it (--print-token). Its stdout carries only
+    # the token, which stays in a local variable and is never written to a file or
+    # log. -T: no TTY, so the captured value has no CR. Exit 5: an older
+    # launcher's server without a token; 6: started outside the launcher, token
+    # unknown; anything else (4 = not listening yet): fall back to the bare URL.
+    local token="" token_rc=0
+    token=$(docker compose exec -T daaf-docker \
+        bash /daaf/scripts/launch_marimo.sh --print-token </dev/null 2>/dev/null) || token_rc=$?
+    token="$(printf '%s' "$token" | tr -d '\r\n')"
+
+    # Browser URL uses the HOST-published port (PANEL_PORT_MARIMO); the container
     # port probed above stays fixed at 2718.
-    local url="http://localhost:${DAAF_PORT_MARIMO}"
+    local url="http://localhost:${PANEL_PORT_MARIMO}"
+    if [ "$token_rc" -eq 0 ] && [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        url="${url}/?access_token=${token}"
+    elif [ "$token_rc" -eq 5 ]; then
+        echo "  ${YELLOW}The running notebook server was started by an older DAAF launcher${RESET}"
+        echo "  ${YELLOW}without an access token, so any web page open in your browser could reach it.${RESET}"
+        echo "  Stop it with 12) Stop Web Services, then choose 4 again to restart it with a token."
+        return
+    elif [ "$token_rc" -eq 6 ]; then
+        echo "  ${YELLOW}The running notebook server was not started by DAAF's launcher, so its${RESET}"
+        echo "  ${YELLOW}access token is unknown.${RESET} Use the link printed when it started, or stop it"
+        echo "  with 12) Stop Web Services and choose 4 again."
+        return
+    else
+        echo "  If the browser asks for an access token, choose 4 again in a moment to"
+        echo "  reopen the notebooks with the token."
+    fi
     echo ""
     echo "  ${CYAN}${url}${RESET}"
     echo ""
@@ -412,16 +472,19 @@ handle_vscode() {
 
     # Ensure the container is up before attempting docker compose exec.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
-    # code-server runs with --auth password; the launcher prints the password to
-    # its own stdout, which is lost under `exec -d`. Mirror launch_code_server.sh's
-    # default here so the menu can display it. Honor a PASSWORD override if the
-    # user exported one before launching the panel.
-    # Default mirrors launch_code_server.sh (PASSWORD env var overrides both).
-    local vscode_password="${PASSWORD:-daaf}"
+    # code-server runs with --auth password. launch_code_server.sh reads PASSWORD
+    # from the CONTAINER environment (default "daaf"), which Compose fills from
+    # environment_settings.txt (env_file) when it creates the container. The
+    # launcher prints the value, but its stdout is lost under `exec -d`, and the
+    # panel's own environment does not hold it (the settings loader bridges only
+    # DAAF_* keys), so the menu names where the password is set instead of
+    # printing a value.
 
     if check_port 2720; then
         echo "  VS Code is already running."
@@ -451,12 +514,12 @@ handle_vscode() {
         fi
     fi
 
-    # Browser URL uses the HOST-published port (DAAF_PORT_VSCODE); the container
+    # Browser URL uses the HOST-published port (PANEL_PORT_VSCODE); the container
     # port probed above stays fixed at 2720.
-    local url="http://localhost:${DAAF_PORT_VSCODE}"
+    local url="http://localhost:${PANEL_PORT_VSCODE}"
     echo ""
     echo "  ${CYAN}${url}${RESET}"
-    echo "  ${BOLD}Password:${RESET} ${vscode_password}"
+    echo "  ${BOLD}Password:${RESET} the PASSWORD set in environment_settings.txt (default: daaf)"
     echo ""
     open_url "$url"
 }
@@ -467,7 +530,9 @@ handle_logs() {
 
     # Ensure the container is up before attempting docker compose exec.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
@@ -541,13 +606,13 @@ handle_logs() {
             bash /daaf/scripts/generate_log_viewer.sh --archive --no-serve \
             </dev/null 2>&1) || {
             echo "  ${YELLOW}Manifest generation failed for the full archive.${RESET}"
-            echo "  ${YELLOW}The specific error is in the output above.${RESET}"
+            echo "  ${YELLOW}The error was:${RESET}"
             echo "  ${manifest_err}"
             echo "  ${YELLOW}A specific project source may still work -- try selecting"
             echo "  one project instead of the full archive.${RESET}"
             return
         }
-        url="http://localhost:${DAAF_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
+        url="http://localhost:${PANEL_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json"
     else
         manifest_err=$(docker compose exec -T daaf-docker \
             bash /daaf/scripts/generate_log_viewer.sh "$selected" --no-serve \
@@ -557,14 +622,14 @@ handle_logs() {
             return
         }
         local rel_path="${selected#/daaf/}"
-        url="http://localhost:${DAAF_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=${rel_path}/logs/session_manifest.json"
+        url="http://localhost:${PANEL_PORT_LOGVIEWER}/scripts/log_viewer.html?manifest=${rel_path}/logs/session_manifest.json"
     fi
 
     # --- Step 2: Ensure the log viewer server is running ---
-    # Start the server against the SELECTED source, not always --archive. The
-    # old code always launched with --archive, which exits before serving when
-    # the DAAF-wide archive is empty -- leaving a valid project selection with a
-    # dead URL. Serving from the chosen source decouples the two.
+    # Start the server against the SELECTED source, not always --archive, so a
+    # valid project selection is not left with a dead URL when the DAAF-wide
+    # archive is empty (--archive exits before serving then). Serving from the
+    # chosen source decouples the two.
     if ! check_port 2719; then
         echo "  Starting log viewer server..."
         local -a serve_args=()
@@ -663,7 +728,300 @@ handle_rebuild() {
 }
 
 # ============================================================================
-# Handler: Stop Services (option 11)
+# Handler: Restart Container (option 11)
+# ============================================================================
+
+# Apply environment_settings.txt edits without a rebuild. Docker Compose reads
+# that file (a service-level env_file) only when it CREATES the container, so an
+# edit reaches the container only through a recreate: `docker compose down`, then
+# `docker compose up -d`. `docker compose restart` would not do it -- it restarts
+# the existing container with the environment it was created with. Settings the
+# example file marks "rebuild required" are baked into the image and still need
+# Rebuild Container.
+#
+# Inline rather than a delegated host script (unlike Rebuild): the flow is a
+# confirmation, two non-interactive compose calls, and a readiness poll, and it
+# must refresh THIS panel's own settings and port display afterwards, which a
+# child process cannot do.
+#
+# Order matters:
+#   1. Confirm (default No) -- the recreate ends every session on this install.
+#   2. Project-name guard, BEFORE any docker command. DAAF_PROJECT_NAME decides
+#      which compose project `down` targets and which data volume the new
+#      container mounts. If the edited file would change it, `down` (run with the
+#      old name) would stop this install and `up` would start a DIFFERENT one in
+#      its place, so the research would appear to be missing. The names are
+#      compared as Docker Compose normalizes them (resolve_project_name), so a
+#      case-only edit such as `Work` -> `work` passes, and a name that normalizes
+#      to nothing is refused. The edited file is evaluated in a subshell, so the
+#      panel's own environment is untouched.
+#      The probe also catches a file that cannot be read: the loader returns
+#      non-zero, and the handler reports it with nothing changed. The probe runs
+#      the reload as the left side of `&&`, so the failure is a tested status:
+#      the ERR trap, which command substitution inherits, never fires inside it.
+#   3. `docker compose down` with the CURRENT settings, so it targets the running
+#      project. Never `-v`: the volumes hold the research data and the login.
+#   4. snapshot_panel_settings + reload_daaf_settings, so compose interpolation
+#      (project name, published ports) sees the edited values. The reload is
+#      tested with `if !`: if the file cannot be read now (it changed during
+#      `down`), restore_panel_settings puts the pre-restart settings back and
+#      the handler stops WITHOUT `up` -- reported, not fatal.
+#   5. Project re-check: the guard ran before `down`, so if the file was edited or
+#      deleted meanwhile the reload may have adopted a different project, and
+#      `up` would start a DIFFERENT install (compared the same normalized way).
+#      Then restore_panel_settings puts the pre-restart settings back and the
+#      handler stops WITHOUT `up`.
+#   6. set_panel_ports, `docker compose up -d`, then wait for the container as
+#      rebuild_daaf.sh does (30 x 2s). The poll keeps no log file, so a dry run
+#      writes nothing to disk.
+# Both reload calls (steps 2 and 4) keep their stderr. On a read failure the
+# loader's open check returns non-zero without printing, so only the handler's
+# message is shown (daaf.ps1 likewise shows only its own message), while any
+# other loader error stays visible instead of being mislabeled "Cannot read".
+# Each failure prints guidance and returns to the menu; every docker call is
+# guarded with `if !` / `||`, so `set -e` and the ERR trap never end the panel.
+
+# snapshot_panel_settings / restore_panel_settings -- save and put back the
+# settings state reload_daaf_settings owns: the provenance tracker and the value
+# of every key it lists. That is all a reload can change (it unsets exactly the
+# tracked keys and adopts file values only into unset ones, recording each), so
+# restoring = unset whatever the tracker now lists, re-export the saved values,
+# restore the saved tracker. (daaf.ps1's Get-/Restore-DaafSettingsSnapshot
+# snapshot every DAAF_* variable instead, because the PowerShell guard probe runs
+# in-process; here the guard probes in a subshell and needs no restore.)
+# Bash 3.2 safe: an indexed array of KEY=value entries (no associative arrays),
+# expanded with the ${a[@]+...} idiom because "${a[@]}" on an empty array is an
+# unbound-variable error under `set -u` before Bash 4.4.
+snapshot_panel_settings() {
+    local _k
+    _PANEL_SNAP_TRACKER="${_DAAF_KEYS_FROM_FILE:-}"
+    _PANEL_SNAP_VALUES=()
+    # Unquoted on purpose: word-splits the space-separated list of [A-Z_] names.
+    for _k in ${_PANEL_SNAP_TRACKER}; do
+        case "${_k}" in
+            DAAF_*) _PANEL_SNAP_VALUES+=("${_k}=${!_k:-}") ;;
+        esac
+    done
+}
+
+restore_panel_settings() {
+    local _k _entry
+    for _k in ${_DAAF_KEYS_FROM_FILE:-}; do
+        case "${_k}" in
+            DAAF_*) unset -v "${_k}" ;;
+        esac
+    done
+    for _entry in ${_PANEL_SNAP_VALUES[@]+"${_PANEL_SNAP_VALUES[@]}"}; do
+        export "${_entry%%=*}=${_entry#*=}"
+    done
+    _DAAF_KEYS_FROM_FILE="${_PANEL_SNAP_TRACKER:-}"
+}
+
+handle_restart() {
+    local settings_file="./environment_settings.txt"
+
+    echo ""
+    echo "  ${BOLD}Restart Container${RESET}"
+    echo ""
+    echo "  This applies the changes you made in environment_settings.txt by"
+    echo "  stopping and recreating the DAAF container. It usually takes under a"
+    echo "  minute and does not rebuild the image."
+    echo ""
+    echo "  ${YELLOW}It ENDS any open Claude Code session, container terminal, or web"
+    echo "  service (notebooks, log viewer, VS Code) for this DAAF install --"
+    echo "  including ones open in other windows. Save your work and close them"
+    echo "  first.${RESET}"
+    echo ""
+    echo "  Your research files and your Claude Code login are kept (they live in"
+    echo "  Docker volumes)."
+    echo ""
+    echo "  Turning on the provider shim takes effect with this restart. Settings"
+    echo "  marked \"rebuild required\" in environment_settings.txt (such as"
+    echo "  DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml,"
+    echo "  need Rebuild Container instead."
+    echo ""
+
+    # Default No: y or yes in any case, surrounding whitespace ignored (same rule
+    # as daaf.ps1's .Trim()). Only the ENDS are trimmed, so "y es" stays "y es"
+    # and cancels. EOF counts as No. The two parameter expansions strip leading
+    # and trailing whitespace (Bash 3.2 safe); Bash 3.2 has no ${var,,}, so
+    # lower-case with tr.
+    local answer=""
+    read -r -p "  Restart the container now? [y/N]: " answer || answer=""
+    answer="${answer#"${answer%%[![:space:]]*}"}"
+    answer="${answer%"${answer##*[![:space:]]}"}"
+    answer=$(printf '%s' "${answer}" | tr '[:upper:]' '[:lower:]')
+    case "${answer}" in
+        y|yes) ;;
+        *)
+            echo "  Restart cancelled -- nothing was changed."
+            return 0
+            ;;
+    esac
+
+    # --- Project-name guard (no docker command has run yet) ---
+    # Compare the names Docker Compose USES, not the raw values: Compose normalizes
+    # the project name (resolve_project_name, daaf_lib.sh), so editing `Work` to
+    # `work` keeps the same install and must not be refused. The raw values are
+    # kept for the messages, so the user sees the name as they typed it. A name
+    # that normalizes to nothing is refused on the same path, with its own reason.
+    local active_project file_project active_norm file_norm
+    active_project="${DAAF_PROJECT_NAME:-daaf}"
+    active_norm="$(resolve_project_name)"
+    if ! file_project=$(reload_daaf_settings "${settings_file}" && printf '%s' "${DAAF_PROJECT_NAME:-daaf}"); then
+        # The file exists but cannot be read (see step 2).
+        echo ""
+        echo "  ${YELLOW}Cannot read environment_settings.txt -- make sure it is not open in another"
+        echo "  program and that you have permission to read it."
+        echo "  Nothing was changed.${RESET}"
+        return 0
+    fi
+    # Normalize the probed value in its own subshell (the assignment stays there).
+    file_norm="$(DAAF_PROJECT_NAME="${file_project}"; resolve_project_name)"
+    if [ -z "${file_norm}" ] || [ "${file_norm}" != "${active_norm}" ]; then
+        echo ""
+        echo "  ${YELLOW}Restart stopped -- nothing was changed.${RESET}"
+        echo ""
+        if [ -z "${file_norm}" ]; then
+            echo "  With your current environment_settings.txt, the project name would be"
+            echo "  \"${file_project}\", which Docker Compose cannot use. A project name may use"
+            echo "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        else
+            echo "  With your current environment_settings.txt, this install would now use"
+            echo "  the project name \"${file_project}\" (the default is \"daaf\" when the"
+            echo "  file does not set one) instead of \"${active_project}\"."
+            echo "  The project name decides which install and which research data volume"
+            echo "  Docker uses. Restarting under a new name would stop this install and"
+            echo "  start a DIFFERENT one in its place, so your current research would"
+            echo "  appear to be missing."
+        fi
+        echo ""
+        echo "  To keep this install: make environment_settings.txt use the project"
+        echo "  name \"${active_project}\" again, then choose Restart Container again."
+        echo "  To switch installs on purpose: quit this panel and follow \"Running"
+        echo "  multiple DAAF instances\" in the Installation Guide:"
+        echo "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
+        return 0
+    fi
+
+    # --- Stop (current settings, so `down` targets the running project) ---
+    echo ""
+    echo "[1/3] Stopping the DAAF container..."
+    if ! docker compose down; then
+        echo ""
+        echo "  ${YELLOW}Could not stop the container. Check the Docker message above and"
+        echo "  make sure Docker is running, then try again.${RESET}"
+        return 0
+    fi
+
+    # --- Reload the edited settings (compose interpolation + panel display) ---
+    # The file was readable a moment ago; if that changed, say so and stop
+    # rather than starting the container with stale settings. The reload unsets
+    # the file-adopted keys before it reads, so on a read failure put the
+    # pre-restart settings back before reporting it.
+    snapshot_panel_settings
+    if ! reload_daaf_settings "${settings_file}"; then
+        restore_panel_settings
+        echo ""
+        echo "  ${YELLOW}The container is stopped, but environment_settings.txt can no longer"
+        echo "  be read. Make sure it is not open in another program and that you have"
+        echo "  permission to read it, then choose Restart Container again (or Start"
+        echo "  Claude Code, which starts the container).${RESET}"
+        return 0
+    fi
+
+    # --- Project re-check (the guard ran before `down`) ---
+    # If the file was edited or deleted while `down` ran, the reload may have
+    # adopted a different project name, and `up` would then start a DIFFERENT
+    # install. Restore the pre-restart settings and stop without `up`. Same
+    # normalized comparison as the guard above.
+    local reloaded_project reloaded_norm
+    reloaded_project="${DAAF_PROJECT_NAME:-daaf}"
+    reloaded_norm="$(resolve_project_name)"
+    if [ -z "${reloaded_norm}" ] || [ "${reloaded_norm}" != "${active_norm}" ]; then
+        restore_panel_settings
+        echo ""
+        echo "  ${YELLOW}The container is stopped, but it was not started again --"
+        if [ -z "${reloaded_norm}" ]; then
+            echo "  environment_settings.txt now has a project name that cannot be used.${RESET}"
+        else
+            echo "  environment_settings.txt now names a different project.${RESET}"
+        fi
+        echo ""
+        if [ -z "${reloaded_norm}" ]; then
+            echo "  It changed while the container was stopping, and now gives the project"
+            echo "  name \"${reloaded_project}\", which Docker Compose cannot use. A project name may use"
+            echo "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        else
+            echo "  It changed while the container was stopping, and now gives the project"
+            echo "  name \"${reloaded_project}\" (the default is \"daaf\" when the file does not set one)"
+            echo "  instead of \"${active_project}\"."
+            echo "  Starting under the new name would start a DIFFERENT install, so your"
+            echo "  current research would appear to be missing."
+        fi
+        echo ""
+        echo "  To keep this install: make environment_settings.txt use the project"
+        echo "  name \"${active_project}\" again, then choose Restart Container again."
+        echo "  To switch installs on purpose: quit this panel and follow \"Running"
+        echo "  multiple DAAF instances\" in the Installation Guide:"
+        echo "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
+        return 0
+    fi
+    set_panel_ports
+
+    # --- Recreate ---
+    echo ""
+    echo "[2/3] Starting the container with your new settings..."
+    if ! docker compose up -d; then
+        echo ""
+        echo "  ${YELLOW}The container was stopped but could not be started again. Check"
+        echo "  the Docker message above (for example, a port that is already in use),"
+        echo "  fix environment_settings.txt if needed, then choose Restart Container"
+        echo "  again -- or choose Start Claude Code, which also starts the container.${RESET}"
+        return 0
+    fi
+
+    # --- Wait for readiness (mirrors rebuild_daaf.sh) ---
+    echo ""
+    echo "[3/3] Waiting for the container to be ready..."
+    local retries=0
+    local max_retries=30
+    local ready_err
+    until docker compose exec -T daaf-docker true </dev/null 2>/dev/null; do
+        retries=$((retries + 1))
+        if [ "${retries}" -ge "${max_retries}" ]; then
+            # One more attempt to capture Docker's message for the user (held in
+            # a variable, not a temp file). Blank and whitespace-only lines are
+            # dropped before the last five are shown (as daaf.ps1 does), so the
+            # "Docker reported:" header appears only above real text.
+            ready_err=$(docker compose exec -T daaf-docker true </dev/null 2>&1 >/dev/null || true)
+            ready_err=$(printf '%s\n' "${ready_err}" | sed '/^[[:space:]]*$/d')
+            echo ""
+            echo "  ${YELLOW}The container did not become ready within 60 seconds.${RESET}"
+            if [ -n "${ready_err}" ]; then
+                echo "  Docker reported:"
+                printf '%s\n' "${ready_err}" | tail -5 | sed 's/^/    /'
+            fi
+            echo "  Check Docker Desktop for errors."
+            return 0
+        fi
+        sleep 2
+    done
+
+    if ! docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then
+        echo ""
+        echo "  ${YELLOW}The container restarted, but DAAF's files may not be intact."
+        echo "  Choose Open Terminal in Container to take a look.${RESET}"
+        return 0
+    fi
+
+    echo ""
+    echo "  ${GREEN}Container restarted -- your environment_settings.txt changes are now in effect"
+    echo "  (settings marked \"rebuild required\" still need Rebuild Container).${RESET}"
+}
+
+# ============================================================================
+# Handler: Stop Services (option 12)
 # ============================================================================
 
 handle_stop_services() {
@@ -674,6 +1032,10 @@ handle_stop_services() {
     local vscode_running=false
     local logs_running=false
 
+    # Two ports per service: check_port and the stop payload below run INSIDE the
+    # container, so they use the fixed container ports 2718/2719/2720; the list
+    # shows the HOST-published PANEL_PORT_* the user opens, like the status
+    # dashboard.
     if check_port 2718; then marimo_running=true; svc_running=true; fi
     if check_port 2719; then logs_running=true; svc_running=true; fi
     if check_port 2720; then vscode_running=true; svc_running=true; fi
@@ -685,13 +1047,13 @@ handle_stop_services() {
 
     echo "  Running services:"
     if [ "$marimo_running" = true ]; then
-        echo "    ${GREEN}*${RESET} Notebooks    (port 2718)"
+        echo "    ${GREEN}*${RESET} Notebooks    localhost:${PANEL_PORT_MARIMO}"
     fi
     if [ "$logs_running" = true ]; then
-        echo "    ${GREEN}*${RESET} Log Viewer   (port 2719)"
+        echo "    ${GREEN}*${RESET} Log Viewer   localhost:${PANEL_PORT_LOGVIEWER}"
     fi
     if [ "$vscode_running" = true ]; then
-        echo "    ${GREEN}*${RESET} VS Code      (port 2720)"
+        echo "    ${GREEN}*${RESET} VS Code      localhost:${PANEL_PORT_VSCODE}"
     fi
     echo ""
     echo "    1) Stop all"
@@ -707,8 +1069,12 @@ handle_stop_services() {
         # /proc/*/fd (socket symlink) -> PID, then kill it. `ss` is not present
         # in the image, so we reuse the /proc pattern from generate_log_viewer.sh.
         # Surface stderr (do NOT discard) so container-side failures are visible.
+        # Each result line names the service, not $port: $port is the container
+        # port, which differs from the host port the user knows when remapped.
         local stop_script='
-            for port in 2718 2719 2720; do
+            for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do
+                port=${svc%%:*}
+                name=${svc#*:}
                 ph=$(printf "%04X" "$port")
                 inode=$(awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {print $10}'\'' \
                     /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -1)
@@ -720,9 +1086,9 @@ handle_stop_services() {
                     ""|*[!0-9]*) continue ;;
                 esac
                 if kill "$pid" 2>/dev/null; then
-                    echo "    Stopped service on port $port (PID $pid)"
+                    echo "    Stopped $name (PID $pid)"
                 else
-                    echo "    Could not stop service on port $port (PID $pid)"
+                    echo "    Could not stop $name (PID $pid)"
                 fi
             done
         '
@@ -750,7 +1116,7 @@ handle_help() {
     echo "     container. Type /exit within Claude to return to this menu."
     echo ""
     echo "  ${CYAN}2) Browse Files (VS Code)${RESET}"
-    echo "     Open code-server (port 2720) for browser-based file browsing"
+    echo "     Open code-server (port ${PANEL_PORT_VSCODE}) for browser-based file browsing"
     echo "     and editing. Useful for reviewing scripts and data files."
     echo ""
     echo "  ${CYAN}3) View Session Logs${RESET}"
@@ -758,7 +1124,7 @@ handle_help() {
     echo "     Select a project or the full archive to view logs."
     echo ""
     echo "  ${CYAN}4) View Marimo Notebooks (Python)${RESET}"
-    echo "     Open the marimo notebook browser (port 2718). Browse, open,"
+    echo "     Open the marimo notebook browser (port ${PANEL_PORT_MARIMO}). Browse, open,"
     echo "     create, and edit research notebooks across all projects."
     echo ""
     echo "  ${CYAN}5) View Quarto Notebooks (R)${RESET}"
@@ -772,23 +1138,41 @@ handle_help() {
     echo "  ${BOLD}MANAGE${RESET}"
     echo ""
     echo "  ${CYAN}7) Create Backup${RESET}"
-    echo "     Create a timestamped backup of your DAAF Docker volume."
-    echo "     Backups are saved in the current directory."
+    echo "     Copy everything DAAF keeps in its Docker volume (your research,"
+    echo "     plus DAAF's own files and their git history) and your Claude Code"
+    echo "     login and history into a new dated folder (ending in _daaf_backup)"
+    echo "     in this daaf-docker folder. The backup contains your login, so keep"
+    echo "     it private and do not share it."
     echo ""
     echo "  ${CYAN}8) Restore from Backup${RESET}"
-    echo "     Restore a previous backup to the DAAF Docker volume."
-    echo "     You will be prompted to select which backup to restore."
+    echo "     Replace everything DAAF keeps in its Docker volume (your research,"
+    echo "     plus DAAF's own files and their git history, which go back to the"
+    echo "     backup's version) with a backup you pick from this folder, and your"
+    echo "     Claude Code login and history too if the backup has them. You type"
+    echo "     RESTORE to confirm first."
     echo ""
     echo "  ${CYAN}9) Check for Updates${RESET}"
     echo "     Check for and apply updates to the DAAF framework."
     echo ""
     echo "  ${CYAN}10) Rebuild Container${RESET}"
-    echo "     Rebuild the DAAF Docker container from the latest image."
-    echo "     Your data volume is preserved during rebuilds."
+    echo "     Copy the Dockerfile and docker-compose.yml from DAAF's files in the"
+    echo "     container into this folder (replacing the copies here), build a new"
+    echo "     image from them, and start the container. Use it after an update or"
+    echo "     an edit to the container's copies of those files, or for settings"
+    echo "     marked \"rebuild required\". Your research files and login are kept."
     echo ""
-    echo "  ${CYAN}11) Stop Web Services${RESET}"
-    echo "      Stop any running web services (notebooks, log viewer,"
-    echo "      VS Code) without stopping the container itself."
+    echo "  ${CYAN}11) Restart Container${RESET}"
+    echo "     Apply changes you made in environment_settings.txt (API keys,"
+    echo "     provider settings including turning on the provider shim, ports)."
+    echo "     Stops and recreates the container, usually in under a minute --"
+    echo "     no image build. It ends any open Claude Code session or web service."
+    echo "     Settings marked \"rebuild required\" there (such as DAAF_DEV), and"
+    echo "     changes to the Dockerfile, packages, or docker-compose.yml, need"
+    echo "     Rebuild Container instead."
+    echo ""
+    echo "  ${CYAN}12) Stop Web Services${RESET}"
+    echo "     Stop any running web services (notebooks, log viewer,"
+    echo "     VS Code) without stopping the container itself."
     echo ""
     echo "  ${BOLD}OTHER${RESET}"
     echo ""

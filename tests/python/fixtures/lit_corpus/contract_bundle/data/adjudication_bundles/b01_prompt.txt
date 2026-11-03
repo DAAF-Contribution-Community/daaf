@@ -1,0 +1,1 @@
+Synthetic fixture prompt. Read only the bundle at /daaf/tests/python/fixtures/lit_corpus/contract_bundle/data/adjudication_bundles/b01.json and return one JSON line per row.

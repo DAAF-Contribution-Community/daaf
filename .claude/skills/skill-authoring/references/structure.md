@@ -471,23 +471,29 @@ Choose one term for each concept and use it throughout the skill:
 
 Consistency reduces ambiguity and helps the agent follow instructions reliably.
 
-### Time-Sensitive Information
+### Current State, Not History
 
-Avoid information that will become outdated. If historical context is needed, use collapsible sections:
+Describe how things work in this release. Give a reason in the present tense ("`run_with_capture.sh` refuses a plain `cp` copy because it carries the log marker"), not as a story about how the skill got that way. A skill's own change history belongs in CHANGELOG.md (`agent_reference/DOCUMENTATION_STANDARDS.md` § S5 Current State).
+
+Two kinds of past belong in a skill:
+
+- **The data's history.** A data-source skill documents schema changes, methodology breaks and coverage gaps across collection years. These are facts about the data that an analysis has to handle.
+- **Recognizing older forms.** Where agents will meet legacy material in a user's files (an old API call in a user's script, a retired column name in a user's saved data), a short fenced note tells the agent how to recognize it and what the current form is. It covers recognition and mapping only, never when or why anything changed.
 
 ```markdown
-## Current Method
+## Fetching Data
 
-Use the v2 API endpoint: `api.example.com/v2/data`
+Use the v2 endpoint: `api.example.com/v2/data`
 
-<details>
-<summary>Legacy v1 API (deprecated)</summary>
-
-The v1 API used: `api.example.com/v1/data`
-
-This endpoint is no longer supported.
-</details>
+> **Recognizing older forms:** a user's script may call `api.example.com/v1/data`.
+> That endpoint does not respond; replace it with the v2 call above. The v2
+> response names the year column `year` where v1 used `yr`.
 ```
+
+| Do | Don't |
+|----|-------|
+| "Use the v2 endpoint." | "We moved to the v2 endpoint after v1 was deprecated." |
+| "`run_with_capture.sh` refuses a plain `cp` copy because it carries the log marker." | "Plain `cp` copies used to run, but a later update blocked them." |
 
 ## Writing Style
 

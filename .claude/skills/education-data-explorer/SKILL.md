@@ -86,7 +86,7 @@ Need a variable?
 | school-districts | CCD, SAIPE, EDFacts | `leaid` | 7-char zero-padded string |
 | college-university | IPEDS, Scorecard, FSA, PSEO, EADA, NACUBO, NCCS, NHGIS, Campus Safety | `unitid` | 6-digit integer |
 
-> **Zero-padded IDs:** `ncessch` (12) and `leaid` (7) are zero-padded numeric strings — leading zeros are load-bearing (FIPS 01-09 states). `education-data-query` handles the force-string/pad-and-assert read recipe; discovery just needs to name the join key.
+> **Zero-padded IDs:** `ncessch` (12) and `leaid` (7) are zero-padded numeric strings — leading zeros are load-bearing (FIPS 01-09 states). `education-data-query` handles the force-string/pad-and-assert read recipe; discovery just needs to name the join key. Raw mirror dtypes differ by file: `ncessch`/`leaid` are String in some files (e.g. `ccd/schools_ccd_directory`, `crdc/schools_crdc_apib_enroll`) and Int64 without leading zeros in others (e.g. `meps/schools_meps`, `ccd/schools_ccd_enrollment_{year}` before 2024, `saipe/districts_saipe`); a Polars join across the two raises a SchemaError (pinned mirror, probed 2026-10-28). Emit the dtype normalization as a caveat with the join key.
 
 ## Quick Reference: Join Keys
 
@@ -94,7 +94,7 @@ Need a variable?
 |-------------|-----|-------------|
 | School sources (CCD ↔ CRDC ↔ EDFacts ↔ MEPS ↔ NHGIS) | `ncessch` (+ `year`) | Enrollment + discipline + poverty |
 | District sources (CCD ↔ SAIPE ↔ EDFacts) | `leaid` (+ `year`) | Directory + poverty + outcomes |
-| College sources (IPEDS ↔ Scorecard ↔ FSA ↔ PSEO ↔ EADA ↔ NACUBO ↔ NCCS ↔ csafety) | `unitid` (+ `year`) | Characteristics + earnings + aid |
+| College sources (IPEDS ↔ Scorecard ↔ FSA ↔ PSEO ↔ EADA ↔ NACUBO ↔ NCCS ↔ csafety) | `unitid` (+ `year`; PSEO repeats each cohort under every `year` in its span, so de-duplicate first) | Characteristics + earnings + aid |
 | School → district rollup | `leaid` present on school files | Aggregate schools to their LEA |
 | Any level → census geography | `ncessch`/`unitid` via NHGIS crosswalk | Link to tract/CBSA/region |
 
@@ -107,19 +107,19 @@ Verified ranges from the endpoint-file bridge and route reconciliation. Non-cont
 | Family (representative) | Coverage | Note |
 |-------------------------|----------|------|
 | CCD directory / enrollment | 1986-2024 | Annual |
-| CCD district finance | 1991, 1994-2020 | Non-contiguous early years |
-| CRDC (most topics) | 2011, 2013, 2015, 2017, 2020, 2021 | Biennial; chronic-absenteeism reaches 2022 |
+| CCD district finance | 1989, 1991, 1994-2020 | Non-contiguous early years; 1989 is in the mirror file but not in the Portal catalog |
+| CRDC (most topics) | 2011, 2013, 2015, 2017, 2020, 2021 | Often called biennial, but no odd/even rule (2020 and 2021 are consecutive); chronic-absenteeism reaches 2022 |
 | EDFacts assessments | 2009-2018, 2020 | 2019 absent (COVID testing waivers) |
 | EDFacts grad rates | 2010-2019 | — |
 | IPEDS directory / inst-characteristics | 1980, 1984-2024 | — |
-| IPEDS finance | 1979, 1983-2017 | Mirror ends 2017 (API reaches further back, differently packaged) |
+| IPEDS finance | 1979, 1983-2017 | Mirror ends 2017; live Portal API lists 1979, 1983-2023 (endpoint metadata fetched 2026-10-19) — mirror-vintage lag |
 | IPEDS grad-rates (150%) | 1996-2023 | Wholesale-revalued in v0.26.1 — re-run any pre-2026q3 analysis |
 | IPEDS completions (2-/6-dig CIP) | 1991-2023 / 1983-2023 | Yearly shards |
 | Scorecard earnings | 2003-2014, 2018 | Sparse; other Scorecard families 1996-2020 |
 | SAIPE | 1995, 1997, 1999-2024 | Poverty pct on a 0-1 scale despite `_pct` |
 | FSA | 1999-2021 | 90/10 from 2014; campus-based from 2001 |
 | MEPS | 2009-2022 | 2023 empty on 2026-08-06 probe |
-| NHGIS (schools / colleges) | 1986-2023 / 1980-2023 | Crosswalk file-years; census vintages 1990-2020 |
+| NHGIS (schools / colleges) | 1986-2023 / 1980, 1984-2023 | Crosswalk file-years; census vintages 1990-2020 |
 | PSEO | 2001-2021 | Yearly shards |
 | NACUBO / NCCS / EADA / Campus Safety | 2012-2022 / 1993-2016 / 2002-2021 / 2005-2021 | — |
 
@@ -131,7 +131,7 @@ A mirror file's **grain** is the set of columns that uniquely identify a row. Re
 - **Disaggregation dimensions multiply rows.** In the live API these appear as URL path segments (`.../enrollment/{year}/{grade}/race/sex/`); in the mirror file the **same dimensions are columns** (`grade`, `race`, `sex`) and each combination is its own row. So CCD enrollment is one row per `ncessch` × `year` × `grade` × `race` × `sex`. To get a school total, filter to the `99`/total code on each dimension rather than summing (summing double-counts the totals rows).
 - **CRDC** files carry `disability` and `lep` dimensions in addition to `race`/`sex`; a discipline file is one row per school × year × the disaggregation the file name advertises.
 - **Yearly vs Single files.** "Yearly" families have one file per year with `{year}` in the path (fetch each year, concatenate). "Single" families pack all years into one file (filter on `year` locally). The routing files mark each family Single or Yearly.
-- **Coded totals.** Categorical dimensions use `99` = Total and negative sentinels for missing (`-1/-2/-3/-99`) — see `variable-codes.md`. A "total" row and its component rows coexist in the same file.
+- **Coded totals.** Categorical dimensions use `99` = Total and negative sentinels for missing (`-1/-2/-3/-99`) — see `variable-codes.md`. A "total" row and its component rows coexist in the same file. That sentinel legend is the **Portal's declared convention, not a guarantee about any given mirror file**: a captured probe of `districts_saipe` (2026-09-15, 382,099 rows) found zero negative sentinels and plain nulls instead. Test for both null and sentinel missingness, and defer to each source skill's documented convention over this general rule.
 
 ## What Discovery Should Emit (the acquisition currency)
 
@@ -162,11 +162,11 @@ Load a `education-data-source-*` skill when a question needs collection methodol
 
 - **Level / grain:** schools — one row per `ncessch` × `year`.
 - **Files:**
-  - `crdc/schools_crdc_apib_enroll` (Single; 2011-2021) — AP/IB enrollment. Key vars: `enrl_ap`, `enrl_ap_math`, `enrl_ap_science`, `enrl_ib`, `enrl_gifted_talented`. Grain adds `race`/`sex`/`disability`/`lep` columns — filter to totals for a school-level measure.
+  - `crdc/schools_crdc_apib_enroll` (Single; 2011, 2013, 2015, 2017, 2020, 2021) — AP/IB enrollment. Key vars: `enrl_ap`, `enrl_ap_math`, `enrl_ap_science`, `enrl_ib`, `enrl_gifted_talented`. Grain adds `race`/`sex`/`disability`/`lep` columns — filter to totals for a school-level measure.
   - `meps/schools_meps` (Single; 2009-2022) — modeled poverty. Key var: `meps_poverty_pct`.
-- **Join:** `ncessch` + `year`; overlap window 2011-2021.
+- **Join:** `ncessch` + `year` after normalizing both to a 12-character zero-padded string — `crdc/schools_crdc_apib_enroll` stores String, `meps/schools_meps` Int64, so cast each side first (`pl.col("ncessch").cast(pl.Utf8).str.zfill(12)`) and assert every key has length 12; overlap years 2011, 2013, 2015, 2017, 2020, 2021.
 - **Filter:** `fips == 6` (California), high schools via CCD `school_level == 3` (join `ccd/schools_ccd_directory`).
-- **Emit:** the three paths, the year window, the key variables, the `ncessch` join key, and the CRDC disaggregation-totals caveat. Then load `education-data-query` to fetch.
+- **Emit:** the three paths, the year window, the key variables, the `ncessch` join key with its dtype-normalization caveat, and the CRDC disaggregation-totals caveat. Then load `education-data-query` to fetch.
 
 ## Common Pitfalls
 

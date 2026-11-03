@@ -131,25 +131,23 @@ When you receive data with no documentation, follow this process.
 ```python
 import polars as pl
 
-def generate_basic_profile(df: pl.DataFrame):
-    """Generate documentation from data inspection."""
-    
-    profile = []
-    for col in df.columns:
-        info = {
-            "column": col,
-            "dtype": str(df[col].dtype),
-            "null_count": df[col].null_count().item(),
-            "null_pct": round(df[col].null_count().item() / len(df) * 100, 1),
-            "unique_count": df[col].n_unique(),
-            "sample_values": df[col].drop_nulls().unique().head(5).to_list(),
-        }
-        profile.append(info)
-    
-    return pl.DataFrame(profile)
+# Generate documentation from data inspection: one row per column
+profile_rows = []
+for col in df.columns:
+    profile_rows.append({
+        "column": col,
+        "dtype": str(df[col].dtype),
+        "null_count": df[col].null_count(),
+        "null_pct": round(df[col].null_count() / len(df) * 100, 1),
+        "unique_count": df[col].n_unique(),
+        # Joined to a string, as in the R version: columns differ in type, so a
+        # list column of raw values would not share one dtype across rows
+        "sample_values": ", ".join(
+            str(v) for v in df[col].drop_nulls().unique(maintain_order=True).head(5).to_list()
+        ),
+    })
 
-# Use
-profile = generate_basic_profile(df)
+profile = pl.DataFrame(profile_rows)
 print(profile)
 ```
 
@@ -177,33 +175,28 @@ print(profile)
 
 **Python:**
 ```python
-# Test candidate keys for uniqueness
-def find_granularity(df: pl.DataFrame):
-    """Identify what uniquely identifies each row."""
-    
-    candidates = []
-    
-    # Test single columns
-    for col in df.columns:
-        if df[col].n_unique() == len(df):
-            candidates.append([col])
-    
-    # Test common combinations
-    if "id" in df.columns:
-        candidates.append(["id"])
-    
-    # Test date + entity patterns
-    date_cols = [c for c in df.columns if "date" in c.lower() or "time" in c.lower()]
-    id_cols = [c for c in df.columns if "id" in c.lower()]
-    
-    for date_col in date_cols:
-        for id_col in id_cols:
-            if df.select([date_col, id_col]).n_unique() == len(df):
-                candidates.append([date_col, id_col])
-    
-    return candidates
+# Test candidate keys for uniqueness -- identify what uniquely identifies each row
+candidates = []
 
-print("Candidate unique keys:", find_granularity(df))
+# Test single columns
+for col in df.columns:
+    if df[col].n_unique() == len(df):
+        candidates.append([col])
+
+# Test date + entity patterns
+date_cols = [c for c in df.columns if "date" in c.lower() or "time" in c.lower()]
+# A column matching both patterns (e.g. "update_time_id") stays a date column:
+# selecting it twice would give a duplicate output name, which Polars rejects
+id_cols = [c for c in df.columns if "id" in c.lower() and c not in date_cols]
+
+for date_col in date_cols:
+    for id_col in id_cols:
+        if df.select([date_col, id_col]).n_unique() == len(df):
+            candidates.append([date_col, id_col])
+
+print("Candidate unique keys:")
+for key in candidates:
+    print(f"  {key}")
 ```
 
 **R:**
@@ -241,15 +234,13 @@ for (key in candidates) {
 
 **Python:**
 ```python
-def infer_column_purpose(df: pl.DataFrame, col: str):
-    """Infer what a column might represent."""
-    
-    dtype = df[col].dtype
-    n_unique = df[col].n_unique()
-    sample = df[col].drop_nulls().head(5).to_list()
-    
+# Infer what each column might represent
+for col in df.columns:
     inferences = []
-    
+    n_unique = df[col].n_unique()
+    pct_unique = n_unique / len(df) * 100
+    sample_vals = df[col].drop_nulls().unique(maintain_order=True).head(5).to_list()
+
     # Name-based inference
     name_lower = col.lower()
     if "id" in name_lower:
@@ -262,23 +253,19 @@ def infer_column_purpose(df: pl.DataFrame, col: str):
         inferences.append("Likely count/quantity")
     if "flag" in name_lower or "is_" in name_lower or "has_" in name_lower:
         inferences.append("Likely boolean indicator")
-    
+
     # Cardinality-based inference
-    pct_unique = n_unique / len(df) * 100
     if pct_unique > 95:
         inferences.append("High cardinality (ID? Free text?)")
-    elif pct_unique < 1:
-        inferences.append("Low cardinality (categorical)")
     elif n_unique == 2:
         inferences.append("Binary (boolean?)")
-    
-    return {
-        "column": col,
-        "dtype": str(dtype),
-        "unique_pct": round(pct_unique, 1),
-        "sample": sample,
-        "inferences": inferences
-    }
+    elif pct_unique < 1:
+        inferences.append("Low cardinality (categorical)")
+
+    print(f"\n{col} ({df[col].dtype}): {pct_unique:.1f}% unique")
+    print("  Sample:", ", ".join(str(v) for v in sample_vals))
+    if inferences:
+        print("  Inferences:", "; ".join(inferences))
 ```
 
 **R:**
@@ -300,8 +287,8 @@ for (col in names(df)) {
 
   # Cardinality-based inference
   if (pct_unique > 95) inferences <- c(inferences, "High cardinality (ID? Free text?)")
-  else if (pct_unique < 1) inferences <- c(inferences, "Low cardinality (categorical)")
   else if (n_unique == 2) inferences <- c(inferences, "Binary (boolean?)")
+  else if (pct_unique < 1) inferences <- c(inferences, "Low cardinality (categorical)")
 
   cat(sprintf("\n%s (%s): %.1f%% unique\n", col, class(df[[col]]), pct_unique))
   cat("  Sample:", paste(sample_vals, collapse = ", "), "\n")
@@ -380,10 +367,10 @@ At minimum, document:
 
 **Python:**
 ```python
-def create_documentation_template(df: pl.DataFrame, dataset_name: str):
-    """Generate a documentation template from DataFrame."""
-    
-    template = f"""# Data Dictionary: {dataset_name}
+# Generate a documentation template from the DataFrame
+dataset_name = "Customer Orders"
+
+template = f"""# Data Dictionary: {dataset_name}
 
 ## Overview
 - **Source**: [TODO: Document source]
@@ -397,26 +384,22 @@ def create_documentation_template(df: pl.DataFrame, dataset_name: str):
 | Column | Type | Nullable | Unique | Description |
 |--------|------|----------|--------|-------------|
 """
-    
-    for col in df.columns:
-        dtype = df[col].dtype
-        nullable = "Yes" if df[col].null_count().item() > 0 else "No"
-        unique_pct = round(df[col].n_unique() / len(df) * 100, 1)
-        
-        template += f"| {col} | {dtype} | {nullable} | {unique_pct}% | [TODO] |\n"
-    
-    template += """
+
+for col in df.columns:
+    dtype = df[col].dtype
+    nullable = "Yes" if df[col].null_count() > 0 else "No"
+    unique_pct = round(df[col].n_unique() / len(df) * 100, 1)
+    template += f"| {col} | {dtype} | {nullable} | {unique_pct}% | [TODO] |\n"
+
+template += """
 ## Known Issues
 - [TODO: Document known issues]
 
 ## Change Log
 - [DATE]: Documentation created
 """
-    
-    return template
 
-# Use
-print(create_documentation_template(df, "Customer Orders"))
+print(template)
 ```
 
 **R:**

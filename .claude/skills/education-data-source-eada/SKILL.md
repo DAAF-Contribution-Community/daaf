@@ -141,7 +141,7 @@ Interpretation question?
 |----|--------|-------|---------|-------|
 | `unitid` | 6-digit integer | Institution | `110635` | Same as IPEDS; primary join key |
 | `opeid` | String | Institution | `"00123400"` | OPE ID (may be null for early years) |
-| `year` | 4-digit integer | Reporting year | `2021` | Fiscal year ending |
+| `year` | 4-digit integer | Reporting year | `2021` | Start year of the 12-month reporting year (2021 = 2021-22; Portal convention) |
 | `fips` | Integer | State | `6` (California) | Federal FIPS code |
 | `inst_name` | String | Institution | `"University of..."` | Institution name |
 
@@ -172,7 +172,7 @@ Interpretation question?
 | 10 | NAIA Division II | | |
 | 11 | NAIA Division III | | |
 
-> **Note:** Code 1 was historically labeled "NCAA Division I-A" and code 2 "NCAA Division I-AA" in earlier years. The `ath_classification_name` string column reflects the label used at the time of reporting.
+> **Note:** Code 1 was historically labeled "NCAA Division I-A" and code 2 "NCAA Division I-AA" in earlier years, and code 3 has carried both "NCAA Division I-AAA" and "NCAA Division I without football" (which label came first was not probed). The `ath_classification_name` string column reflects the label used at the time of reporting. On the pinned mirror vintage (Portal v0.26.1), code 11 (NAIA Division III) occurs only 2002-2014 and is missing from the Portal codebook; codes 17-20 start in 2015 (see `./references/variable-definitions.md`).
 
 ### Missing Data Codes
 
@@ -279,9 +279,10 @@ df_clean <- df |> filter(
 EADA Data                          Title IX Compliance
 ──────────────────────────────────────────────────────────
 Self-reported                      OCR investigation
-Snapshot (Oct 15)                  Continuous obligation
+Snapshot (first scheduled contest) Continuous obligation
 Participation counts only          Participation + interest + ability
-No "laundry list" items           13+ treatment areas
+No "laundry list" items            9 treatment factors (34 CFR 106.41(c)(2)-(10))
+                                     + recruitment, support services (1979 PI)
 Public disclosure                  Enforcement mechanism
 ```
 

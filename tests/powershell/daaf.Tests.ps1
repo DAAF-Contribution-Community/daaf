@@ -189,10 +189,72 @@ Describe "daaf.ps1" {
                 '    Write-Host "    8) Restore from Backup"',
                 '    Write-Host "    9) Check for Updates"',
                 '    Write-Host "   10) Rebuild Container"',
-                '    Write-Host "   11) Stop Web Services"'
+                '    Write-Host "   11) Restart Container"',
+                '    Write-Host "   12) Stop Web Services"'
             )
             $managePattern = ($expectedManageLines | ForEach-Object { [regex]::Escape($_) }) -join '\r?\n'
             $Content | Should -Match $managePattern
+        }
+
+        It "maps manage choices 10-12 to Rebuild, Restart, and Stop Web Services" {
+            $expectedDispatchLines = @(
+                '        "10" { Invoke-DaafRebuild }',
+                '        "11" { Invoke-DaafRestart }',
+                '        "12" { Invoke-DaafServiceStop }'
+            )
+            $dispatchPattern = ($expectedDispatchLines | ForEach-Object { [regex]::Escape($_) }) -join '\r?\n'
+            $Content | Should -Match $dispatchPattern
+            $Content | Should -Match ([regex]::Escape('Please enter a number (1-12), h, or q.'))
+        }
+
+        It "documents Restart Container (11) and Stop Web Services (12) in Show-DaafHelp" {
+            $helpStart = $Content.IndexOf('function Show-DaafHelp')
+            $helpEnd = $Content.IndexOf('function Invoke-DaafQuit', $helpStart)
+            $helpBody = $Content.Substring($helpStart, $helpEnd - $helpStart)
+            $helpBody | Should -Match ([regex]::Escape('Write-Host "  11) Restart Container" -ForegroundColor Cyan'))
+            $helpBody | Should -Match ([regex]::Escape('Write-Host "  12) Stop Web Services" -ForegroundColor Cyan'))
+            $helpBody | Should -Match 'environment_settings\.txt'
+            $helpBody | Should -Match 'no image build'
+        }
+
+        It "says 'rebuild required' in the Restart help entry and indents items 11/12 descriptions by 5 spaces" {
+            $helpStart = $Content.IndexOf('function Show-DaafHelp')
+            $helpEnd = $Content.IndexOf('function Invoke-DaafQuit', $helpStart)
+            $helpLines = @($Content.Substring($helpStart, $helpEnd - $helpStart) -split '\r?\n')
+
+            # Description block = the Write-Host lines after an item heading, up to
+            # the blank `Write-Host ""` separator.
+            $descByItem = @{}
+            foreach ($heading in @('11) Restart Container', '12) Stop Web Services')) {
+                $headIdx = -1
+                for ($i = 0; $i -lt $helpLines.Count; $i++) {
+                    if ($helpLines[$i] -match ('^\s*Write-Host "  ' + [regex]::Escape($heading) + '"')) { $headIdx = $i; break }
+                }
+                $headIdx | Should -BeGreaterThan -1
+                $desc = New-Object System.Collections.Generic.List[string]
+                for ($i = $headIdx + 1; $i -lt $helpLines.Count; $i++) {
+                    if ($helpLines[$i] -match '^\s*Write-Host ""\s*$') { break }
+                    $desc.Add($helpLines[$i])
+                }
+                $desc.Count | Should -BeGreaterThan 0
+                foreach ($line in $desc) {
+                    # Exactly five spaces inside the literal, then text.
+                    $line | Should -Match '^\s*Write-Host "     [^ ]'
+                }
+                $descByItem[$heading] = $desc
+            }
+
+            # The phrase is wrapped across two lines, so join the string literals
+            # (unescaping `" to ") and collapse whitespace before comparing.
+            $flat = (@($descByItem['11) Restart Container'] | ForEach-Object {
+                [regex]::Match($_, '^\s*Write-Host "(.*)"\s*$').Groups[1].Value -replace '`"', '"'
+            }) -join ' ') -replace '\s+', ' '
+            $flat | Should -BeLike '*Settings marked "rebuild required" there*'
+            # Same examples and Rebuild list as the handler's intro text.
+            $flat | Should -BeLike '*there (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -BeLike '*provider settings including turning on the provider shim, ports*'
+            $flat | Should -BeLike '*no image build. It ends any open Claude Code session or web service. Settings marked*'
+            $flat | Should -Not -BeLike '*web service first.*'
         }
 
         It "renders the exact ordered launch headings in Show-DaafHelp" {
@@ -267,9 +329,18 @@ Describe "daaf.ps1" {
             $helpBody | Should -Match 'cancel'
         }
 
-        It "mirrors the code-server default password source" {
+        It "names where the code-server password is set, never a host-shell value" {
+            # code-server reads PASSWORD from the container environment
+            # (environment_settings.txt via env_file), not from the panel's process.
             $Content | Should -Match 'launch_code_server\.sh'
-            $Content | Should -Match '"daaf"'
+            $Content | Should -Match ([regex]::Escape('Password: the PASSWORD set in environment_settings.txt (default: daaf)'))
+            $Content | Should -Not -Match '\$env:PASSWORD'
+        }
+
+        It "qualifies the updates label and says where to report a bug (parity with daaf.sh)" {
+            $Content | Should -Match ([regex]::Escape('updates available as of the last update check)'))
+            $Content | Should -Match ([regex]::Escape('(up to date as of the last update check)'))
+            $Content | Should -Match ([regex]::Escape('https://github.com/DAAF-Contribution-Community/daaf/issues'))
         }
     }
 }
@@ -337,6 +408,10 @@ Describe "daaf_lib.ps1" {
 
     It "defines Import-DaafSettingsFile" {
         $LibContent | Should -Match 'function Import-DaafSettingsFile'
+    }
+
+    It "defines Sync-DaafSettingsFile (provenance-tracked reload)" {
+        $LibContent | Should -Match 'function Sync-DaafSettingsFile'
     }
 }
 
@@ -411,6 +486,65 @@ Describe "daaf_lib.ps1 Import-DaafSettingsFile" {
         $env:DAAF_PROJECT_NAME   | Should -Be "safe"
         $env:ANTHROPIC_API_KEY   | Should -BeNullOrEmpty
     }
+
+    Context "Sync-DaafSettingsFile (provenance-tracked reload)" {
+        # Import-DaafSettingsFile records the keys it adopted FROM THE FILE in
+        # $script:DaafKeysFromFile; Sync-DaafSettingsFile removes exactly those and
+        # imports again, so an edited file takes effect while user-set values win.
+        BeforeEach {
+            $script:DaafKeysFromFile = @()
+        }
+
+        It "picks up a value changed in the file after the first import" {
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PORT_MARIMO=3001"
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PORT_MARIMO=3002"
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            # A plain second import keeps the first value (already-set wins).
+            $env:DAAF_PORT_MARIMO | Should -Be "3001"
+            Sync-DaafSettingsFile -SettingsFile $script:SettingsFile
+            $env:DAAF_PORT_MARIMO | Should -Be "3002"
+        }
+
+        It "keeps a user-set value winning over the file after a reload" {
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=fromfile"
+            $env:DAAF_PROJECT_NAME = "fromshell"
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=edited"
+            Sync-DaafSettingsFile -SettingsFile $script:SettingsFile
+            $env:DAAF_PROJECT_NAME | Should -Be "fromshell"
+            @($script:DaafKeysFromFile).Count | Should -Be 0
+        }
+
+        It "unsets a key that was removed from the file" {
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PORT_VSCODE=3020"
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Set-Content -Path $script:SettingsFile -Value "# DAAF_PORT_VSCODE removed"
+            Sync-DaafSettingsFile -SettingsFile $script:SettingsFile
+            $env:DAAF_PORT_VSCODE | Should -BeNullOrEmpty
+        }
+
+        It "tracks only file-adopted keys, without duplicates across repeated loads" {
+            Set-Content -Path $script:SettingsFile -Value "DAAF_PROJECT_NAME=inst`nDAAF_PORT_MARIMO=`nDAAF_PORT_MARIMO=3001`nDAAF_DEV=1"
+            $env:DAAF_DEV = "0"
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Sync-DaafSettingsFile -SettingsFile $script:SettingsFile
+            Import-DaafSettingsFile -SettingsFile $script:SettingsFile
+            (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly "DAAF_PROJECT_NAME DAAF_PORT_MARIMO"
+            $env:DAAF_PORT_MARIMO | Should -Be "3001"
+            $env:DAAF_DEV | Should -Be "0"
+        }
+
+        It "only ever removes DAAF_* names (tampered tracker)" {
+            $script:DaafKeysFromFile = @('PATH', 'DAAF_PORT_MARIMO')
+            $env:DAAF_PORT_MARIMO = "1234"
+            $absentPath = Join-Path $script:TmpDir "nonexistent.txt"
+            Sync-DaafSettingsFile -SettingsFile $absentPath
+            $env:PATH | Should -Not -BeNullOrEmpty
+            $env:DAAF_PORT_MARIMO | Should -BeNullOrEmpty
+        }
+    }
 }
 
 # ============================================================================
@@ -472,6 +606,683 @@ Describe "daaf.ps1 behavioral tests" {
             $script:DaafMenuRunning = $true
             $captured = Invoke-DaafChoice "q" 6>$null
             @($captured | Where-Object { $_ -is [bool] }).Count | Should -Be 0
+        }
+    }
+
+    Context "Invoke-DaafChoice routes 11 to Restart and 12 to Stop Web Services" {
+        It "routes 11 to Invoke-DaafRestart" {
+            Mock Invoke-DaafRestart { }
+            Mock Invoke-DaafServiceStop { }
+            Invoke-DaafChoice "11"
+            Should -Invoke Invoke-DaafRestart -Times 1 -Exactly
+            Should -Invoke Invoke-DaafServiceStop -Times 0 -Exactly
+        }
+
+        It "routes 12 to Invoke-DaafServiceStop" {
+            Mock Invoke-DaafRestart { }
+            Mock Invoke-DaafServiceStop { }
+            Invoke-DaafChoice "12"
+            Should -Invoke Invoke-DaafServiceStop -Times 1 -Exactly
+            Should -Invoke Invoke-DaafRestart -Times 0 -Exactly
+        }
+    }
+
+    Context "Invoke-DaafRestart (Restart Container)" {
+        # Each test starts like a fresh panel in a folder holding (optionally) an
+        # environment_settings.txt: whitelisted DAAF_* env vars cleared, settings
+        # imported, display ports computed. Docker is mocked to record each call
+        # ("compose down", "compose up -d", ...) with exit codes driven by
+        # $script:MockDownExit / $script:MockUpExit / $script:MockReadyExit (the
+        # `exec -T daaf-docker true` readiness probe, which also writes the
+        # $script:MockReadyErrLines lines -- by default one Docker-style line -- to
+        # the error stream when failing) / $script:MockVerifyExit
+        # (the `test -f /daaf/CLAUDE.md` check); Read-DaafLine answers the
+        # confirmation prompt with $script:MockAnswer. Two `compose down` knobs
+        # model a file change WHILE `down` runs: $script:MockDownSettings is written
+        # to ./environment_settings.txt ("__DELETE__" removes it), and
+        # $script:MockDownBreaksSync arms a one-shot Sync-DaafSettingsFile mock that
+        # fails the way the real function does on an unreadable file (removes the
+        # tracked keys and clears the tracker, THEN throws). Unarmed, the real
+        # Sync-DaafSettingsFile runs (the mock's -ParameterFilter does not match).
+        #
+        # STRICT MODE: the real panel runs its handlers under Set-StrictMode 3.0
+        # (set after the DAAF_TEST_MODE guard, so dot-sourcing for tests never
+        # turns it on). This Context turns it on itself so the handler and the
+        # daaf_lib.ps1 loaders it calls are exercised the way a real run executes
+        # them; AfterAll switches it off again so the rest of the file is unaffected.
+        # Every $script: variable the mocks read is initialized in BeforeEach.
+        BeforeAll {
+            Set-StrictMode -Version 3.0
+
+            $script:RestartKeys = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
+            $script:SavedRestartEnv = @{}
+            foreach ($k in $script:RestartKeys) { $script:SavedRestartEnv[$k] = [Environment]::GetEnvironmentVariable($k, "Process") }
+
+            # Simulate the panel's startup in the current folder. (Test helper: the
+            # Start- verb's ShouldProcess rule does not apply, as for TestHelper's
+            # New-FakeComposeFile.)
+            function Start-TestPanel {
+                [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+                param()
+                $script:DaafKeysFromFile = @()
+                Import-DaafSettingsFile
+                Initialize-DaafPortDisplay
+            }
+
+            # Every DAAF_* process variable as sorted "NAME=value" lines, for
+            # before/after comparisons of the panel's environment.
+            function Get-TestDaafEnv {
+                @(Get-ChildItem -Path Env: | Where-Object { $_.Name -like 'DAAF_*' } |
+                    Sort-Object Name | ForEach-Object { $_.Name + "=" + $_.Value }) -join "`n"
+            }
+        }
+        AfterAll {
+            foreach ($k in $script:RestartKeys) { [Environment]::SetEnvironmentVariable($k, $script:SavedRestartEnv[$k], "Process") }
+            Set-StrictMode -Off
+        }
+        BeforeEach {
+            foreach ($k in $script:RestartKeys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
+            $script:RestartDir = Join-Path $TestDrive ("restart-" + [guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $script:RestartDir
+            Push-Location $script:RestartDir
+            $script:DockerCalls = New-Object System.Collections.Generic.List[string]
+            $script:MockDownExit = 0
+            $script:MockUpExit = 0
+            $script:MockReadyExit = 0
+            $script:MockReadyErrLines = @("Error response from daemon: container mock123 is restarting")
+            $script:MockReadyNative = $null
+            $script:MockVerifyExit = 0
+            $script:SyncCalls = 0
+            $script:MockAnswer = "y"
+            $script:MockDownSettings = $null
+            $script:MockDownBreaksSync = $false
+            $script:SyncArmed = $false
+            Mock docker {
+                $call = $args -join ' '
+                $script:DockerCalls.Add($call)
+                $global:LASTEXITCODE = 0
+                if ($call -like "compose down*") {
+                    if ($script:MockDownSettings -eq "__DELETE__") {
+                        Remove-Item -LiteralPath "./environment_settings.txt" -ErrorAction SilentlyContinue
+                    } elseif ($null -ne $script:MockDownSettings) {
+                        Set-Content -Path "./environment_settings.txt" -Value $script:MockDownSettings
+                    }
+                    if ($script:MockDownBreaksSync) { $script:SyncArmed = $true }
+                    $global:LASTEXITCODE = $script:MockDownExit
+                }
+                if ($call -like "compose up*") { $global:LASTEXITCODE = $script:MockUpExit }
+                if ($call -eq "compose exec -T daaf-docker true") {
+                    if ($script:MockReadyExit -ne 0) {
+                        # $script:MockReadyNative (dispatch #63): a native fake that
+                        # writes the error to stderr, instead of the Write-Error lines.
+                        if ($script:MockReadyNative) {
+                            & $script:MockReadyNative
+                        } else {
+                            foreach ($errText in @($script:MockReadyErrLines)) {
+                                Write-Error -Message $errText -ErrorAction Continue
+                            }
+                        }
+                    }
+                    $global:LASTEXITCODE = $script:MockReadyExit
+                }
+                if ($call -like "compose exec -T daaf-docker test -f*") { $global:LASTEXITCODE = $script:MockVerifyExit }
+            }
+            Mock Read-DaafLine { $script:MockAnswer }
+            Mock Start-Sleep { }
+            # Realistic unreadable-file failure, armed by `compose down` (above).
+            Mock Sync-DaafSettingsFile -ParameterFilter { $script:SyncArmed } {
+                $script:SyncArmed = $false
+                foreach ($key in @($script:DaafKeysFromFile)) {
+                    Remove-Item -Path ("Env:" + $key) -ErrorAction SilentlyContinue
+                }
+                $script:DaafKeysFromFile = @()
+                throw "Access to the path './environment_settings.txt' is denied."
+            }
+        }
+        AfterEach {
+            Pop-Location
+        }
+
+        It "answering n cancels without any docker down/up" {
+            Start-TestPanel
+            $script:MockAnswer = "n"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*Restart cancelled*"
+            @($script:DockerCalls | Where-Object { $_ -like "compose down*" -or $_ -like "compose up*" }).Count | Should -Be 0
+        }
+
+        It "an empty answer (default No) cancels without any docker down/up" {
+            Start-TestPanel
+            $script:MockAnswer = ""
+            $null = Invoke-DaafRestart 6>&1
+            @($script:DockerCalls | Where-Object { $_ -like "compose down*" -or $_ -like "compose up*" }).Count | Should -Be 0
+        }
+
+        It "confirming runs compose down BEFORE compose up -d, never -v, then reports success" {
+            Start-TestPanel
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $calls = @($script:DockerCalls)
+            $downIdx = [array]::IndexOf($calls, "compose down")
+            $upIdx = [array]::IndexOf($calls, "compose up -d")
+            $downIdx | Should -BeGreaterThan -1
+            $upIdx | Should -BeGreaterThan $downIdx
+            @($calls | Where-Object { $_ -match '^compose down.*(\s-v(\s|$)|--volumes)' }).Count | Should -Be 0
+            $calls | Should -Contain "compose exec -T daaf-docker true"
+            $calls | Should -Contain "compose exec -T daaf-docker test -f /daaf/CLAUDE.md"
+            $out | Should -BeLike "*Container restarted*"
+            Should -Invoke Start-Sleep -Times 0 -Exactly
+        }
+
+        It "a changed DAAF_PROJECT_NAME aborts before any docker command and leaves the env untouched" {
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=otherinstall"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*Restart stopped*"
+            $out | Should -BeLike "*otherinstall*"
+            $script:DockerCalls.Count | Should -Be 0
+            $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
+            @($script:DaafKeysFromFile).Count | Should -Be 0
+        }
+
+        It "a port changed in the file after startup is reflected in the panel's port variable" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3001"
+            Start-TestPanel
+            $script:DaafPortMarimo | Should -Be "3001"
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3002"
+            $null = Invoke-DaafRestart 6>&1
+            $env:DAAF_PORT_MARIMO | Should -Be "3002"
+            $script:DaafPortMarimo | Should -Be "3002"
+        }
+
+        It "a port added to the file after startup is reflected in the panel's port variable" {
+            Start-TestPanel
+            $script:DaafPortMarimo | Should -Be "2718"
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3001"
+            $null = Invoke-DaafRestart 6>&1
+            $script:DaafPortMarimo | Should -Be "3001"
+        }
+
+        It "a failed compose down returns without compose up" {
+            Start-TestPanel
+            $script:MockDownExit = 1
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*Could not stop the container*"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            $out | Should -Not -BeLike "*Container restarted*"
+        }
+
+        It "a failed compose up returns with guidance" {
+            Start-TestPanel
+            $script:MockUpExit = 1
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*could not be started again*"
+            $out | Should -Not -BeLike "*Container restarted*"
+        }
+
+        It "runs under Set-StrictMode 3.0 (reading an undefined variable throws)" {
+            # Guards the Context's own premise: if strict mode did not reach the
+            # tests, every other test here would silently run non-strict.
+            $threw = $false
+            try { $null = $strictProbeNeverDefinedVariable } catch { $threw = $true }
+            $threw | Should -BeTrue
+        }
+
+        It "EOF at the confirmation prompt (null answer) cancels without any docker call" {
+            Start-TestPanel
+            Mock Read-DaafLine { $null }
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*Restart cancelled*"
+            $script:DockerCalls.Count | Should -Be 0
+        }
+
+        It "answer <Label> confirms the restart (any case, ends trimmed)" -ForEach @(
+            @{ Label = "'YES'"; Answer = "YES" }
+            @{ Label = "' Yes '"; Answer = " Yes " }
+            @{ Label = "'yes<CR>'"; Answer = "yes`r" }
+        ) {
+            Start-TestPanel
+            $script:MockAnswer = $Answer
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+        }
+
+        It "answer <Label> cancels (only the ends are trimmed)" -ForEach @(
+            @{ Label = "'no'"; Answer = "no" }
+            @{ Label = "'nope'"; Answer = "nope" }
+            @{ Label = "'y es'"; Answer = "y es" }
+        ) {
+            Start-TestPanel
+            $script:MockAnswer = $Answer
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*Restart cancelled*"
+            $script:DockerCalls.Count | Should -Be 0
+        }
+
+        It "a readiness timeout reports 60 seconds and Docker's error text, then returns" {
+            Start-TestPanel
+            $script:MockReadyExit = 1
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*did not become ready within 60 seconds*"
+            $out | Should -BeLike "*Docker reported:*"
+            $out | Should -BeLike "*    Error response from daemon: container mock123 is restarting*"
+            $out | Should -Not -BeLikeExactly "*Container restarted*"
+            # 30 polls plus the one error-capturing attempt; a 2s sleep between polls.
+            @($script:DockerCalls | Where-Object { $_ -eq "compose exec -T daaf-docker true" }).Count | Should -Be 31
+            Should -Invoke Start-Sleep -Times 29 -Exactly -ParameterFilter { $Seconds -eq 2 }
+            @($script:DockerCalls | Where-Object { $_ -like "compose exec -T daaf-docker test -f*" }).Count | Should -Be 0
+        }
+
+        It "'Docker reported:' skips whitespace-only lines in Docker's errors, and is omitted when all are blank" {
+            # Parity with daaf.sh, which drops blank lines before the last five.
+            Start-TestPanel
+            $script:MockReadyExit = 1
+            $script:MockReadyErrLines = @(" ", "Error response from daemon: container mock123 is restarting", "`t")
+            $lines = @((Invoke-DaafRestart 6>&1 | Out-String) -split '\r?\n')
+            $head = [array]::IndexOf($lines, "  Docker reported:")
+            $head | Should -BeGreaterThan -1
+            $tail = [array]::IndexOf($lines, "  Check Docker Desktop for errors.")
+            ($lines[($head + 1)..($tail - 1)] -join '|') | Should -BeExactly "    Error response from daemon: container mock123 is restarting"
+
+            $script:DockerCalls.Clear()
+            $script:MockReadyErrLines = @(" ", "`t")
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -BeLike "*did not become ready within 60 seconds*"
+            $out | Should -Not -BeLike "*Docker reported:*"
+            $out | Should -BeLike "*Check Docker Desktop for errors.*"
+        }
+
+        It "G1 (dispatch #63): a native docker's stderr line is the 'Docker reported:' line on a readiness timeout" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+            # A bash fake (not Write-Error) so the line crosses the real native-command
+            # 2>&1 path of the $readyErr capture.
+            $fake = Join-Path $TestDrive 'ready-native-fake'
+            [System.IO.File]::WriteAllText($fake, "#!/usr/bin/env bash`necho 'Error response from daemon: native fake is restarting' >&2`nexit 1`n")
+            & chmod +x $fake
+            Start-TestPanel
+            $script:MockReadyExit = 1
+            $script:MockReadyNative = $fake
+            $lines = @((Invoke-DaafRestart 6>&1 | Out-String) -split '\r?\n')
+            $head = [array]::IndexOf($lines, "  Docker reported:")
+            $head | Should -BeGreaterThan -1
+            $lines[$head + 1] | Should -BeExactly "    Error response from daemon: native fake is restarting"
+            $lines[$head + 2] | Should -BeExactly "  Check Docker Desktop for errors."
+        }
+
+        It "a failed DAAF-files check warns 'may not be intact' and returns" {
+            Start-TestPanel
+            $script:MockVerifyExit = 1
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose exec -T daaf-docker test -f /daaf/CLAUDE.md"
+            $out | Should -BeLike "*DAAF's files may not be intact*"
+            # Case-sensitive: the warning itself reads "The container restarted, but".
+            $out | Should -Not -BeLikeExactly "*Container restarted*"
+        }
+
+        It "the guard proceeds when a user-set DAAF_PROJECT_NAME outranks the file's value" {
+            # Set before launch (user env wins over the file on load AND reload),
+            # so the project does not change and the restart must go ahead.
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=bar"
+            $env:DAAF_PROJECT_NAME = "foo"
+            Start-TestPanel
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -Be "foo"
+        }
+
+        It "the guard proceeds when the file adds DAAF_PROJECT_NAME=daaf (the default)" {
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=daaf"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+        }
+
+        # Review 51q SUGGESTION-1: the guard compares the names Docker Compose USES
+        # (Resolve-DaafProjectName). `My.Proj` -> `myproj` is the row a raw
+        # comparison refuses even with PowerShell's case-insensitive -ne.
+        It "the guard proceeds when the edit normalizes to the same project (<From> -> <To>)" -ForEach @(
+            @{ From = "Work"; To = "work" }
+            @{ From = "My.Proj"; To = "myproj" }
+        ) {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=$From"
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=$To"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $out | Should -Not -BeLike "*DIFFERENT*"
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -BeExactly $To
+        }
+
+        It "the guard still refuses work -> play before any docker command" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=work"
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=play"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $flat = $out -replace '\s+', ' '
+            $flat | Should -BeLike "*Restart stopped -- nothing was changed.*"
+            $flat | Should -BeLike '*the project name "play" (the default is "daaf" when the file does not set one) instead of "work".*'
+            $flat | Should -BeLike "*start a DIFFERENT one in its place*"
+            $script:DockerCalls.Count | Should -Be 0
+            $env:DAAF_PROJECT_NAME | Should -BeExactly "work"
+        }
+
+        It "default path unchanged: no file, and the file adding daaf, pass with no refusal text" {
+            Start-TestPanel
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $out | Should -Not -BeLike "*cannot use*"
+            $out | Should -BeLike "*Container restarted*"
+            $script:DockerCalls.Clear()
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=daaf"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $out2 | Should -Not -BeLike "*Restart stopped*"
+            $out2 | Should -Not -BeLike "*cannot use*"
+            $out2 | Should -BeLike "*Container restarted*"
+        }
+
+        It "a file name that normalizes to nothing is refused before any docker command" {
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=___"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $flat = $out -replace '\s+', ' '
+            $flat | Should -BeLike "*Restart stopped -- nothing was changed.*"
+            $flat | Should -BeLike "*With your current environment_settings.txt, the project name would be `"___`", which Docker Compose cannot use. A project name may use lowercase letters, digits, '-' and '_', and must start with a letter or digit.*"
+            $flat | Should -BeLike '*make environment_settings.txt use the project name "daaf" again*'
+            $out | Should -Not -BeLike "*DIFFERENT*"
+            $script:DockerCalls.Count | Should -Be 0
+            $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
+        }
+
+        It "the post-down re-check also compares normalized names (Work -> WORK proceeds, -> ___ stops before up)" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=Work"
+            Start-TestPanel
+            $script:MockDownSettings = "DAAF_PROJECT_NAME=WORK"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*now names a different project*"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+
+            # A fresh panel on `Work` again (clear the env the first restart adopted).
+            foreach ($k in $script:RestartKeys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=Work"
+            Start-TestPanel
+            $script:DockerCalls.Clear()
+            $script:MockDownSettings = "DAAF_PROJECT_NAME=___"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            $flat2 = $out2 -replace '\s+', ' '
+            # An unusable name gets its own header; "a different project" would be wrong.
+            $flat2 | Should -Not -BeLike "*now names a different project*"
+            $flat2 | Should -BeLike "*The container is stopped, but it was not started again -- environment_settings.txt now has a project name that cannot be used.*"
+            $flat2 | Should -BeLike '*now gives the project name "___", which Docker Compose cannot use.*'
+            $out2 | Should -Not -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -BeExactly "Work"
+        }
+
+        It "an unreadable settings file stops before any docker call and restores the environment" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3001"
+            Start-TestPanel
+            $envBefore = Get-TestDaafEnv
+            $trackerBefore = @($script:DaafKeysFromFile) -join ' '
+            # Fail part-way, after changing values, so the restore is what is tested.
+            Mock Sync-DaafSettingsFile {
+                $env:DAAF_PORT_MARIMO = "9999"
+                $env:DAAF_PROJECT_NAME = "partial"
+                $script:DaafKeysFromFile = @('DAAF_PROJECT_NAME')
+                throw "denied"
+            }
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            ($out -replace '\s+', ' ') | Should -BeLike "*Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it. Nothing was changed.*"
+            # Only the panel's message, not the exception text.
+            $out | Should -Not -BeLike "*denied*"
+            $script:DockerCalls.Count | Should -Be 0
+            Get-TestDaafEnv | Should -BeExactly $envBefore
+            (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly $trackerBefore
+            $script:DaafPortMarimo | Should -Be "3001"
+        }
+
+        It "a settings file that becomes unreadable after down stops before up" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3001"
+            Start-TestPanel
+            # First call (the guard probe) succeeds without changes; the second
+            # (the reload after `down`) fails.
+            Mock Sync-DaafSettingsFile {
+                $script:SyncCalls++
+                if ($script:SyncCalls -ge 2) { throw "denied" }
+            }
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:SyncCalls | Should -Be 2
+            $script:DockerCalls | Should -Contain "compose down"
+            ($out -replace '\s+', ' ') | Should -BeLike "*The container is stopped, but environment_settings.txt can no longer be read. Make sure it is not open in another program and that you have permission to read it, then choose Restart Container again (or Start Claude Code, which starts the container).*"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            $out | Should -Not -BeLike "*Container restarted*"
+            $script:DaafPortMarimo | Should -Be "3001"
+        }
+
+        It "a reload that fails after down (keys already removed) restores the pre-down settings, and a retry proceeds" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=myproj`nDAAF_PORT_MARIMO=3001"
+            Start-TestPanel
+            $envBefore = Get-TestDaafEnv
+            $trackerBefore = @($script:DaafKeysFromFile) -join ' '
+            $script:MockDownBreaksSync = $true
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            $out | Should -BeLike "*The container is stopped, but environment_settings.txt can no longer*"
+            $out | Should -Not -BeLike "*is denied*"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            # Exactly as before `down`: env, tracker, and the panel's port display.
+            Get-TestDaafEnv | Should -BeExactly $envBefore
+            (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly $trackerBefore
+            $env:DAAF_PROJECT_NAME | Should -Be "myproj"
+            $env:DAAF_PORT_MARIMO | Should -Be "3001"
+            $script:DaafPortMarimo | Should -Be "3001"
+
+            # The user fixes the file and chooses Restart Container again: the
+            # guard must NOT refuse it (same project), and the restart completes.
+            $script:MockDownBreaksSync = $false
+            $script:DockerCalls.Clear()
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=myproj`nDAAF_PORT_MARIMO=3003"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $out2 | Should -Not -BeLike "*Restart stopped*"
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out2 | Should -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -Be "myproj"
+            $script:DaafPortMarimo | Should -Be "3003"
+        }
+
+        It "a project name edited during down stops before up, keeps the original settings, and a retry proceeds" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=myproj`nDAAF_PORT_MARIMO=3001"
+            Start-TestPanel
+            $envBefore = Get-TestDaafEnv
+            $trackerBefore = @($script:DaafKeysFromFile) -join ' '
+            # The mid-down edit also ADDS a key the panel never had (DAAF_PORT_VSCODE),
+            # so the restore must remove what the reload adopted, not only put back
+            # the old values.
+            $script:MockDownSettings = "DAAF_PROJECT_NAME=other`nDAAF_PORT_MARIMO=3002`nDAAF_PORT_VSCODE=3999"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            $flat = $out -replace '\s+', ' '
+            $flat | Should -BeLike "*The container is stopped, but it was not started again -- environment_settings.txt now names a different project.*"
+            # A different but usable name keeps that header, not the unusable-name one.
+            $flat | Should -Not -BeLike "*now has a project name that cannot be used*"
+            $flat | Should -BeLike '*name "other" (the default is "daaf"*'
+            $flat | Should -BeLike '*name "myproj" again, then choose Restart Container again.*'
+            $out | Should -Not -BeLike "*Container restarted*"
+            Get-TestDaafEnv | Should -BeExactly $envBefore
+            (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly $trackerBefore
+            $env:DAAF_PORT_VSCODE | Should -BeNullOrEmpty
+            $script:DaafPortMarimo | Should -Be "3001"
+            $script:DaafPortVscode | Should -Be "2720"
+
+            $script:MockDownSettings = $null
+            $script:DockerCalls.Clear()
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=myproj`nDAAF_PORT_MARIMO=3003"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out2 | Should -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -Be "myproj"
+            $script:DaafPortMarimo | Should -Be "3003"
+        }
+
+        It "a settings file deleted during down stops before up (the default project would differ)" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=myproj"
+            Start-TestPanel
+            $script:MockDownSettings = "__DELETE__"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            ($out -replace '\s+', ' ') | Should -BeLike '*now names a different project.*name "daaf" (the default is "daaf"*'
+            $out | Should -Not -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -Be "myproj"
+            (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly "DAAF_PROJECT_NAME"
+        }
+
+        It "the intro says the restart turns on the shim, and names DAAF_DEV and the Dockerfile/packages/docker-compose.yml list" {
+            Start-TestPanel
+            $script:MockAnswer = "n"
+            $flat = (Invoke-DaafRestart 6>&1 | Out-String) -replace '\s+', ' '
+            $flat | Should -BeLike '*Turning on the provider shim takes effect with this restart.*'
+            $flat | Should -BeLike '*Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -Not -BeLike "*first time*"
+            $flat | Should -Not -BeLike "*Alternative Providers*"
+        }
+    }
+
+    Context "Web-service URLs use the HOST-published port" {
+        # Non-default host ports, so a URL hardcoded to the container port
+        # (2718/2719/2720) fails. The container-side probes stay on those ports.
+        BeforeAll {
+            $script:SavedPortDisplay = @($script:DaafPortMarimo, $script:DaafPortLogViewer, $script:DaafPortVscode)
+        }
+        AfterAll {
+            $script:DaafPortMarimo = $script:SavedPortDisplay[0]
+            $script:DaafPortLogViewer = $script:SavedPortDisplay[1]
+            $script:DaafPortVscode = $script:SavedPortDisplay[2]
+        }
+        BeforeEach {
+            $script:DaafPortMarimo = "3718"
+            $script:DaafPortLogViewer = "3719"
+            $script:DaafPortVscode = "3720"
+            Mock Confirm-DaafContainer { $true }
+            Mock Test-DaafPort { $true }
+            Mock Open-DaafUrl { }
+            Mock docker {
+                $global:LASTEXITCODE = 0
+                if (($args -join ' ') -like "*discover_log_sources.sh*") { "ARCHIVE|3" }
+                # launch_marimo.sh --print-token answers with the running server's token.
+                if (($args -join ' ') -like "*launch_marimo.sh --print-token*") { "feedc0de42" }
+            }
+            Mock Read-DaafLine { "1" }
+        }
+
+        It "Invoke-DaafNotebookBrowser opens the tokenized notebook URL on the DaafPortMarimo host port" {
+            Invoke-DaafNotebookBrowser 6>$null
+            Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3718/?access_token=feedc0de42" }
+        }
+
+        It "Invoke-DaafNotebookBrowser asks for the token over a TTY-less exec (-T)" {
+            Invoke-DaafNotebookBrowser 6>$null
+            Should -Invoke docker -ParameterFilter { ($args -join ' ') -eq 'compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token' }
+        }
+
+        It "Invoke-DaafNotebookBrowser refuses to open an older --no-token server (print-token exit 5)" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 5 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
+            Should -Invoke Open-DaafUrl -Times 0 -Exactly
+            $out | Should -BeLike "*without an access token*"
+            $out | Should -BeLike "*12) Stop Web Services*"
+        }
+
+        It "Invoke-DaafNotebookBrowser names an unknown token (print-token exit 6) and opens nothing" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 6 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
+            Should -Invoke Open-DaafUrl -Times 0 -Exactly
+            $out | Should -BeLike "*access token is unknown*"
+        }
+
+        It "Invoke-DaafNotebookBrowser falls back to the bare URL with a hint when no token is readable yet" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 4 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
+            Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3718" }
+            $out | Should -BeLike "*If the browser asks for an access token, choose 4 again*"
+        }
+
+        It "Invoke-DaafVSCode opens the VS Code URL on the DaafPortVscode host port" {
+            Invoke-DaafVSCode 6>$null
+            Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3720" }
+        }
+
+        It "Invoke-DaafLogViewer opens the viewer URL on the DaafPortLogViewer host port" {
+            Invoke-DaafLogViewer 6>$null
+            Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3719/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json" }
+        }
+
+        # User report 2026-10-30: with Marimo on host port 3718, option 12 listed it
+        # as "port 2718", the fixed container-side port. The probes stay on the
+        # container ports (this mock answers only those); the list shows host ports.
+        It "Invoke-DaafServiceStop lists running services on the host ports while probing the container ports" {
+            Mock Test-DaafPort { $Port -in @("2718", "2719", "2720") }
+            Mock Read-DaafLine { "0" }
+            $out = Invoke-DaafServiceStop 6>&1 | Out-String
+            $out | Should -BeLike "*Running services*"
+            $out | Should -BeLike "*Notebooks    localhost:3718*"
+            $out | Should -BeLike "*Log Viewer   localhost:3719*"
+            $out | Should -BeLike "*VS Code      localhost:3720*"
+            $out | Should -Not -BeLike "*2718*"
+            $out | Should -Not -BeLike "*2719*"
+            $out | Should -Not -BeLike "*2720*"
+            foreach ($p in @("2718", "2719", "2720")) {
+                Should -Invoke Test-DaafPort -Times 1 -Exactly -ParameterFilter { $Port -eq $p }
+            }
+            Should -Invoke docker -Times 0 -Exactly
+        }
+
+        It "Invoke-DaafServiceStop 'Stop all' sends a payload on the container ports that names each service, matching daaf.sh" {
+            Mock Test-DaafPort { $Port -eq "2718" }
+            Mock Read-DaafLine { "1" }
+            $script:DaafTestStopArgs = $null
+            Mock docker { $global:LASTEXITCODE = 0; $script:DaafTestStopArgs = @($args) }
+            try {
+                Invoke-DaafServiceStop 6>$null
+                $script:DaafTestStopArgs | Should -Not -BeNullOrEmpty
+                ($script:DaafTestStopArgs[0..5] -join ' ') | Should -Be 'compose exec -T daaf-docker bash -c'
+                $payload = [System.Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($script:DaafTestStopArgs[-1]))
+            } finally {
+                Remove-Variable -Name DaafTestStopArgs -Scope Script -ErrorAction SilentlyContinue
+            }
+            $payload | Should -BeLike '*for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do*'
+            $payload | Should -BeLike '*echo "    Stopped $name (PID $pid)"*'
+            $payload | Should -BeLike '*echo "    Could not stop $name (PID $pid)"*'
+            $payload | Should -Not -BeLike '*on port $port*'
+
+            # The payload is documented as VERBATIM from daaf.sh handle_stop_services:
+            # compare line by line (trimmed), undoing bash's '\'' quote escapes.
+            $shContent = Get-Content "$RepoRoot/scripts/host/daaf.sh" -Raw
+            $m = [regex]::Match($shContent, "(?s)local stop_script='(.*?)\r?\n        '\r?\n")
+            $m.Success | Should -BeTrue
+            $shLines = @(($m.Groups[1].Value -replace "'\\''", "'") -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            $psLines = @($payload -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            ($psLines -join "`n") | Should -BeExactly ($shLines -join "`n")
+        }
+
+        It "Show-DaafHelp names the host-published VS Code and notebook ports" {
+            $out = Show-DaafHelp 6>&1 | Out-String
+            $out | Should -BeLike "*Open code-server (port 3720)*"
+            $out | Should -BeLike "*Open the marimo notebook browser (port 3718)*"
+            $out | Should -Not -BeLike "*port 2718*"
+            $out | Should -Not -BeLike "*port 2720*"
         }
     }
 
@@ -573,6 +1384,112 @@ Describe "daaf.ps1 behavioral tests" {
             $env:DAAF_NESTED | Should -BeNullOrEmpty
         }
     }
+
+    Context "Delegates quote a spaced child path and report UNKNOWN / error / success distinctly" {
+        # F1: Start-Process joins an -ArgumentList ARRAY with bare spaces, so a
+        # child path under a spaced install folder ("C:\Users\John Smith\...") used
+        # to split into several argv entries. The delegates must hand Start-Process
+        # ONE pre-joined string with the -File path quoted as a single token.
+        # F2/F3: on Windows (PS 5.1 and pwsh 6.0-7.4.0) ExitCode can read $null (handle not
+        # cached); that is UNKNOWN and must get its own message -- never the bare
+        # "Returned to DAAF Control Panel." success path or silence.
+        # Start-Process is mocked; the mock records -ArgumentList and returns a
+        # Process-like object whose ExitCode is driven by $script:MockExitCode.
+        BeforeAll {
+            $script:OrigNested = $env:DAAF_NESTED
+            $script:OrigScriptDir = $script:DaafScriptDir
+            $script:DaafScriptDir = Join-Path $TestDrive 'John Smith dir'
+        }
+        AfterAll {
+            $script:DaafScriptDir = $script:OrigScriptDir
+            if ($null -ne $script:OrigNested) { $env:DAAF_NESTED = $script:OrigNested }
+            else { Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
+        BeforeEach {
+            $script:CapturedArgumentList = $null
+            Mock Start-Process {
+                $script:CapturedArgumentList = $ArgumentList
+                [pscustomobject]@{ ExitCode = $script:MockExitCode } |
+                    Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+        }
+
+        It "Invoke-DaafDelegate passes one string with the spaced -File path as one quoted token" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'backup_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '"')
+        }
+
+        It "Invoke-DaafDelegateInteractive passes one string: quoted spaced -File path, then the script args" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash") "Container terminal ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '" bash')
+        }
+
+        It "Invoke-DaafDelegateInteractive: a `$null ScriptArgs adds no trailing empty `"`" argument" {
+            # A $null [string[]] binds as ONE $null element; unfiltered, the helper
+            # turned it into an explicit "" argument for the child script.
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" $null "Claude Code session ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '"')
+        }
+
+        It "Invoke-DaafDelegateInteractive: a `$null element is dropped, real script args are kept" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash", $null) "Container terminal ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '" bash')
+        }
+
+        It "Invoke-DaafDelegate: a null ExitCode reports UNKNOWN, not a clean return" {
+            $script:MockExitCode = $null
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*Could not read the exit status of backup_daaf.ps1*"
+            $out | Should -Not -BeLike "*exited without completing*"
+        }
+
+        It "Invoke-DaafDelegate: ExitCode 1 reports the failure with its code" {
+            $script:MockExitCode = 1
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*backup_daaf.ps1 exited without completing (code 1).*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+
+        It "Invoke-DaafDelegate: ExitCode 0 is a plain clean return" {
+            $script:MockExitCode = 0
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*Returned to DAAF Control Panel.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+            $out | Should -Not -BeLike "*exited without completing*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: a null ExitCode reports UNKNOWN (not silence, not the failure text)" {
+            $script:MockExitCode = $null
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -BeLike "*Could not read the exit status of run_daaf.ps1*"
+            $out | Should -Not -BeLike "*Claude Code session ended with an error.*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: ExitCode 1 prints the caller's failure message" {
+            $script:MockExitCode = 1
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -BeLike "*Claude Code session ended with an error.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: ExitCode 0 prints neither the failure nor the UNKNOWN message" {
+            $script:MockExitCode = 0
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Claude Code session ended with an error.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+    }
 }
 
 # ============================================================================
@@ -613,8 +1530,245 @@ Describe "daaf.ps1 dry-run mode" {
         $output | Should -BeLike "*Goodbye!*"
     }
 
+    It "runs Restart Container (11) end to end, issuing down then up -d, and writes nothing" {
+        # Child process for the same stdin reason as above. Every docker call hits
+        # the dry-run shim, so the readiness poll succeeds on its first try.
+        $env:DAAF_DRY_RUN = "1"
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+        $before = @(Get-ChildItem -Force -Path $script:TestDir | ForEach-Object { $_.Name } | Sort-Object)
+        $psExe = (Get-Process -Id $PID).Path
+        $output = @("11", "y", "q") | & $psExe -NoProfile -File "$RepoRoot/scripts/host/daaf.ps1" 2>&1 | Out-String
+        $output | Should -BeLike "*[[]DRY-RUN] docker compose down*"
+        $output | Should -BeLike "*[[]DRY-RUN] docker compose up -d*"
+        $output.IndexOf("docker compose down") | Should -BeLessThan $output.IndexOf("docker compose up -d")
+        $output | Should -BeLike "*Container restarted*"
+        $output | Should -BeLike "*Goodbye!*"
+        # HSM5: the dry-run restart path creates nothing in the working folder.
+        $after = @(Get-ChildItem -Force -Path $script:TestDir | ForEach-Object { $_.Name } | Sort-Object)
+        ($after -join '|') | Should -BeExactly ($before -join '|')
+    }
+
+    It "lists a running service under option 12 on the host port from environment_settings.txt (end to end)" {
+        # User report 2026-10-30, the full path (twin of the daaf.bats end-to-end
+        # test): the loader reads DAAF_PORT_MARIMO, Initialize-DaafPortDisplay
+        # derives the display port, and option 12 lists the notebook server there.
+        # Dry run: Test-DaafPort answers from DAAF_MOCK_PORTS (container ports).
+        $startDir = Join-Path $TestDrive ("stop-" + [guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $startDir
+        New-FakeComposeFile -Directory $startDir
+        Set-Content -LiteralPath (Join-Path $startDir "environment_settings.txt") -Value "DAAF_PORT_MARIMO=3718"
+        $origMockPorts = $env:DAAF_MOCK_PORTS
+        $origPortMarimo = $env:DAAF_PORT_MARIMO
+        Push-Location $startDir
+        try {
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_MOCK_PORTS = "2718:yes"
+            Remove-Item Env:DAAF_PORT_MARIMO -ErrorAction SilentlyContinue
+            Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+            $psExe = (Get-Process -Id $PID).Path
+            $output = @("12", "0", "q") | & $psExe -NoProfile -File "$RepoRoot/scripts/host/daaf.ps1" 2>&1 | Out-String
+            $output | Should -BeLike "*Running services*"
+            # Assert on option 12's own list only (from "Running services:" to
+            # "1) Stop all"): the dry-run status dashboard prints the same
+            # "Notebooks    localhost:3718" text, so a whole-output match would also
+            # pass if the list itself regressed to localhost:2718.
+            $listStart = $output.IndexOf("Running services:")
+            $listEnd = $output.IndexOf("1) Stop all", $listStart)
+            $listEnd | Should -BeGreaterThan $listStart
+            $list = $output.Substring($listStart, $listEnd - $listStart)
+            $list | Should -BeLike "*Notebooks    localhost:3718*"
+            $list | Should -Not -BeLike "*2718*"
+            $output | Should -Not -BeLike "*port 2718*"
+            $output | Should -BeLike "*Goodbye!*"
+        } finally {
+            Pop-Location
+            $env:DAAF_MOCK_PORTS = $origMockPorts
+            $env:DAAF_PORT_MARIMO = $origPortMarimo
+        }
+    }
+
+    It "exits 1 with the same two-line message as daaf.sh when environment_settings.txt is unreadable at startup" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows -or ((& id -u) -eq '0')) {
+        # Child process for the same stdin reason as above (the startup load runs
+        # before the menu loop). `chmod 000` stages a real read failure, so this is
+        # skipped where chmod cannot block reads: Windows, and running as root.
+        $startDir = Join-Path $TestDrive ("startup-" + [guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $startDir
+        $settings = Join-Path $startDir "environment_settings.txt"
+        New-FakeComposeFile -Directory $startDir
+        Set-Content -LiteralPath $settings -Value "DAAF_PORT_MARIMO=3001"
+        & chmod 000 $settings
+        Push-Location $startDir
+        try {
+            $env:DAAF_DRY_RUN = "1"
+            Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+            $psExe = (Get-Process -Id $PID).Path
+            $output = "q" | & $psExe -NoProfile -File "$RepoRoot/scripts/host/daaf.ps1" 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 1
+            $output | Should -BeLike "*ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it.*"
+            $output | Should -BeLike "*Fix that (or move the file aside), then start the DAAF Control Panel again.*"
+            $output | Should -Not -BeLike "*unexpected failure*"
+            $output | Should -Not -BeLike "*denied*"
+            # The panel stopped before drawing the menu.
+            $output | Should -Not -BeLike "*Enter choice*"
+        } finally {
+            Pop-Location
+            & chmod 644 $settings
+        }
+    }
+
     It "daaf_lib.ps1 defines Read-DaafLine" {
         $libContent = Get-Content "$RepoRoot/scripts/host/daaf_lib.ps1" -Raw
         $libContent | Should -Match 'function Read-DaafLine'
+    }
+}
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G1 captures, G6 preference)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas). Each
+# capture below is shown to the user as the error detail, so it runs under
+# 'Continue'. pwsh 7 keeps the line either way, so the behavioral tests cannot
+# catch a revert on their own: the structural pin can.
+
+Describe "daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+
+        # For each docker capture into $Var: the value of the nearest
+        # $ErrorActionPreference assignment before it (the bracket's mode) and after
+        # it (the restore).
+        function Get-TestEapBracket {
+            param($Ast, [string]$Var)
+            $capName = $Var
+            $eap = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+            }, $true) | Sort-Object { $_.Extent.StartOffset })
+            $caps = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq $capName) -and ($n.Right.Extent.Text -match '\bdocker\s')
+            }, $true))
+            foreach ($c in $caps) {
+                $open = @($eap | Where-Object { $_.Extent.EndOffset -le $c.Extent.StartOffset }) | Select-Object -Last 1
+                $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $c.Extent.EndOffset }) | Select-Object -First 1
+                [pscustomobject]@{ Text = $c.Right.Extent.Text; Open = $open.Right.Extent.Text; Close = $close.Right.Extent.Text; Line = $c.Extent.StartLineNumber }
+            }
+        }
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        # daaf_lib.ps1 is dot-sourced into this script's scope, so it inherits the value.
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G1: each capture shown as an error detail merges stderr (2>&1) inside a 'Continue' bracket that restores `$savedEAP" {
+        $expected = @{ '$launchErr' = 2; '$manifestErr' = 2; '$serveErr' = 1; '$readyErr' = 1 }
+        foreach ($var in $expected.Keys) {
+            $sites = @(Get-TestEapBracket -Ast $Ast -Var $var)
+            $sites.Count | Should -Be $expected[$var] -Because "$var captures"
+            foreach ($s in $sites) {
+                $s.Text | Should -Match '2>&1' -Because "$var (line $($s.Line)) merges stderr"
+                $s.Open | Should -BeExactly '"Continue"' -Because "$var (line $($s.Line)) is shown to the user"
+                $s.Close | Should -BeExactly '$savedEAP' -Because "$var (line $($s.Line)) restores the caller's EAP"
+            }
+        }
+    }
+
+    It "G1: the archive-manifest failure no longer says the error is 'in the output above' (it was captured, not printed)" {
+        $content = Get-Content -LiteralPath $ScriptPath -Raw
+        $content | Should -Not -Match 'The specific error is in the output above'
+        $content | Should -Match ([regex]::Escape('Write-Host "  The error was:" -ForegroundColor Yellow'))
+    }
+
+    Context "a native fake docker's stderr line is the detail line (G1)" {
+        BeforeAll {
+            $script:SavedG1Env = @{}
+            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE')) { $script:SavedG1Env[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+            $env:DAAF_TEST_MODE = "1"
+            . $script:ScriptPath
+            # A bash fake on PATH (not a PowerShell function): the stderr line crosses
+            # the real native-command 2>&1 path. FAKE_SOURCES is the log-source list;
+            # FAKE_MANIFEST_FAIL=1 fails manifest generation.
+            $script:G1Bin = Join-Path $TestDrive 'g1bin'
+            $null = New-Item -ItemType Directory -Force -Path $script:G1Bin
+            $fake = @'
+#!/usr/bin/env bash
+case "$*" in
+    'compose exec -d daaf-docker bash /daaf/scripts/launch_marimo.sh --background')
+        echo 'OCI runtime exec failed: fake marimo launch error' >&2; exit 126 ;;
+    'compose exec -d daaf-docker bash /daaf/scripts/launch_code_server.sh --background')
+        echo 'OCI runtime exec failed: fake code-server launch error' >&2; exit 126 ;;
+    'compose exec -T daaf-docker bash /daaf/scripts/discover_log_sources.sh')
+        printf '%s\n' "${FAKE_SOURCES}"; exit 0 ;;
+    'compose exec -T daaf-docker bash /daaf/scripts/generate_log_viewer.sh '*' --no-serve')
+        if [ "${FAKE_MANIFEST_FAIL:-0}" = "1" ]; then echo 'Traceback: fake manifest error' >&2; exit 1; fi
+        exit 0 ;;
+    'compose exec -d daaf-docker bash /daaf/scripts/generate_log_viewer.sh '*' --background')
+        echo 'Error response from daemon: fake log viewer start error' >&2; exit 1 ;;
+    *) exit 0 ;;
+esac
+'@
+            [System.IO.File]::WriteAllText((Join-Path $script:G1Bin 'docker'), ($fake -replace "`r", ""))
+            if (-not $IsWindows) { & chmod +x (Join-Path $script:G1Bin 'docker') }
+            $env:PATH = $script:G1Bin + [System.IO.Path]::PathSeparator + $script:SavedG1Env['PATH']
+        }
+        AfterAll {
+            foreach ($k in $script:SavedG1Env.Keys) { [Environment]::SetEnvironmentVariable($k, $script:SavedG1Env[$k], 'Process') }
+            Remove-Item Env:FAKE_SOURCES, Env:FAKE_MANIFEST_FAIL -ErrorAction SilentlyContinue
+        }
+        BeforeEach {
+            Mock Confirm-DaafContainer { $true }
+            Mock Test-DaafPort { $false }
+            Mock Open-DaafUrl { }
+            Mock Start-Sleep { }
+            Mock Read-DaafLine { "1" }
+            $env:FAKE_MANIFEST_FAIL = "0"
+            $env:FAKE_SOURCES = "ARCHIVE|3"
+        }
+
+        It "<Name>: the line after '<Header>' is Docker's stderr text" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) -ForEach @(
+            @{ Name = 'marimo launch'; Header = '  Failed to start the notebook server:'; Detail = '  OCI runtime exec failed: fake marimo launch error' }
+            @{ Name = 'code-server launch'; Header = '  Failed to start VS Code (code-server):'; Detail = '  OCI runtime exec failed: fake code-server launch error' }
+            @{ Name = 'archive manifest'; Header = '  The error was:'; Detail = '  Traceback: fake manifest error' }
+            @{ Name = 'project manifest'; Header = '  Could not generate the session manifest:'; Detail = '  Traceback: fake manifest error' }
+            @{ Name = 'log viewer server'; Header = '  Could not start the log viewer server:'; Detail = '  Error response from daemon: fake log viewer start error' }
+        ) {
+            switch ($Name) {
+                'marimo launch' { $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String }
+                'code-server launch' { $out = Invoke-DaafVSCode 6>&1 | Out-String }
+                'archive manifest' {
+                    $env:FAKE_MANIFEST_FAIL = "1"
+                    $out = Invoke-DaafLogViewer 6>&1 | Out-String
+                }
+                'project manifest' {
+                    $env:FAKE_MANIFEST_FAIL = "1"
+                    $env:FAKE_SOURCES = "/daaf/research/2026-10-01_Proj|2"
+                    $out = Invoke-DaafLogViewer 6>&1 | Out-String
+                }
+                'log viewer server' { $out = Invoke-DaafLogViewer 6>&1 | Out-String }
+            }
+            $lines = @($out -split '\r?\n')
+            $i = [array]::IndexOf($lines, $Header)
+            $i | Should -BeGreaterThan -1 -Because "the output was: $out"
+            $lines[$i + 1] | Should -BeExactly $Detail
+        }
     }
 }

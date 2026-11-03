@@ -1,6 +1,6 @@
 # Evaluation: Unsupervised
 
-Metrics for evaluating cluster quality: internal metrics (silhouette, Davies-Bouldin, Calinski-Harabasz), external metrics (ARI, NMI), and gap statistic implementation. For methodology guidance on validation strategy and reporting requirements, see `exploratory-unsupervised.md` in the `data-scientist` skill.
+Metrics for evaluating cluster quality: internal metrics (silhouette, Davies-Bouldin, Calinski-Harabasz), external metrics (ARI, NMI), and gap statistic implementation. For methodology guidance on validation strategy and reporting requirements, see `exploratory-unsupervised.md` in the `data-scientist` skill; its References section gives full citations for works cited here.
 
 ## Metric Overview
 
@@ -16,7 +16,7 @@ Metrics for evaluating cluster quality: internal metrics (silhouette, Davies-Bou
 
 ### Silhouette Score
 
-Measures how similar each point is to its own cluster versus the nearest neighbor cluster. The most widely used internal metric.
+Measures how similar each point is to its own cluster versus the nearest neighbor cluster. A widely used internal metric.
 
 ```python
 from sklearn.metrics import silhouette_score, silhouette_samples
@@ -24,7 +24,10 @@ from sklearn.metrics import silhouette_score, silhouette_samples
 # --- Overall score ---
 sil_avg = silhouette_score(X_scaled, labels)
 print(f"Average silhouette score: {sil_avg:.3f}")
-# Interpretation: >0.7 strong, >0.5 reasonable, >0.25 weak, <0.25 poor
+# Subjective guide (Struyf, Hubert & Rousseeuw, 1997) for the silhouette
+# coefficient, i.e. the highest average width across k: 0.71-1.00 strong;
+# 0.51-0.70 reasonable; 0.26-0.50 weak, could be artificial (try other
+# methods); <=0.25 no substantial structure
 
 # --- Per-sample scores (for visualization by cluster) ---
 sil_samples = silhouette_samples(X_scaled, labels)

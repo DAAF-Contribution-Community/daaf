@@ -4,17 +4,25 @@ the DAAF deployment smoke-testing suite.
 This is the foundational layer of the suite. It defines the shared result
 vocabulary (Verdict, Evidence, ProbeResult) used by every tier and the pure,
 no-LLM inspection logic that reads the *live* environment to determine which of
-DAAF's four install routes is active — exactly as the user configured it.
+DAAF's five install routes is active — exactly as the user configured it.
 
-The four routes (auto-detected from the live env, per the approved design):
+The five routes (auto-detected from the live env, presence-only — no credential
+value is ever read beyond empty-vs-set; smoke v2 design 2026-10-13 §2):
 
     DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=chatgpt  -> chatgpt-subscription
     DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=openai   -> openai-api
     ANTHROPIC_BASE_URL contains "openrouter.ai"            -> openrouter
+    else, ANTHROPIC_API_KEY set (non-empty)                -> anthropic-api
     else                                                   -> anthropic-subscription
 
+Env alone cannot tell an interactive Console login from a subscription login,
+so Tier 1 confirms the credential from the stream-json init record (T1.8).
+
 This module makes NO subprocess calls and NO LLM calls — it is pure environment
-inspection so Tier 0 preflight can run for free. It is framework tooling (like
+inspection so Tier 0 preflight can run for free. Its file accesses are a
+read-only text read of the installed enforce-model-ceiling.sh (T0.2 checks which
+rule set that hook carries) and a PATH lookup of the developer tools (T0.0 image
+flavor; no process is started). It is framework tooling (like
 benchmarks/), so it uses normal engineering style with functions, NOT the
 sequential no-functions research-script style that CLAUDE.md mandates for
 pipeline analysis scripts.
@@ -25,6 +33,7 @@ the internal import DAG is route_detection <- smoke_probes <- run_deploy_smoke.
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 # --- Verdict vocabulary ---------------------------------------------------
@@ -50,29 +59,221 @@ class Verdict:
 # --- Install route constants ----------------------------------------------
 
 ROUTE_ANTHROPIC = "anthropic-subscription"
+ROUTE_ANTHROPIC_SUBSCRIPTION = ROUTE_ANTHROPIC   # explicit alias; ROUTE_ANTHROPIC kept for callers
+ROUTE_ANTHROPIC_API = "anthropic-api"
 ROUTE_OPENROUTER = "openrouter"
 ROUTE_OPENAI_API = "openai-api"
 ROUTE_CHATGPT = "chatgpt-subscription"
 
-ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_OPENROUTER, ROUTE_OPENAI_API, ROUTE_CHATGPT)
+# Five routes, in the design's table order (smoke v2 §2). run_deploy_smoke uses
+# this as the --route choice list.
+ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_ANTHROPIC_API, ROUTE_CHATGPT, ROUTE_OPENAI_API,
+              ROUTE_OPENROUTER)
+
+# The two native-Anthropic routes: same endpoint and model family, different
+# credential (subscription login/OAuth token vs Console API key).
+ANTHROPIC_ROUTES = frozenset({ROUTE_ANTHROPIC, ROUTE_ANTHROPIC_API})
 
 # Routes that place the provider shim in the request path. For these, shim
 # /health is a required Tier 0 probe and per-run env overlays (--profiles)
 # cannot change daemon-level state (SHIM_SANITIZE_TOOLS, backend_mode).
 SHIM_ROUTES = frozenset({ROUTE_OPENAI_API, ROUTE_CHATGPT})
 
-# Every selector that can make Claude Code itself or a dispatched subagent run a
-# mapped GPT model. T0.4 inspects all four rather than treating ANTHROPIC_MODEL as
-# a proxy for the effective model surface.
+# Every selector that can make Claude Code itself, a dispatched subagent, or a
+# housekeeping call run a mapped (possibly GPT) model. T0.4 inspects all
+# seven rather than treating ANTHROPIC_MODEL as a proxy for the effective model
+# surface:
+#   * ANTHROPIC_MODEL — hard session-start selector (outranks a saved `model`).
+#   * ANTHROPIC_DEFAULT_MODEL — soft session-start default (Claude Code 2.1.236+),
+#     applied only when no --model, ANTHROPIC_MODEL or settings `model` key
+#     selects one; DAAF's shipped settings.json sets it.
+#   * ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL — what each tier alias
+#     resolves to. HAIKU also drives Claude Code's housekeeping calls (naming
+#     and summarizing the session); FABLE is the fable alias + Fable recognition.
+#   * CLAUDE_CODE_SUBAGENT_MODEL — since Claude Code 2.1.251 only a FALLBACK for
+#     subagents without their own model (every DAAF agent sets `model:`); it is
+#     forced onto every subagent only with CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1.
 MODEL_SELECTOR_VARS = (
     "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "CLAUDE_CODE_SUBAGENT_MODEL",
 )
 
+# ANTHROPIC_DEFAULT_MODEL values Claude Code ignores (model-config docs,
+# fetched 2026-10-12): the session then starts on the account-type default.
+# Compared case-insensitively, the same convention as _resolve_tier_alias (the
+# docs do not say whether these values are case-sensitive).
+_IGNORED_DEFAULT_MODEL_VALUES = frozenset({"default", "inherit", "opusplan", "haiku"})
+
+
+def _subagent_force_enabled(env) -> bool:
+    """CLAUDE_CODE_SUBAGENT_MODEL_FORCE (Claude Code 2.1.257+) is documented as
+    "Set to 1". '1' and case-insensitive 'true' count as enabled, matching
+    enforce-model-ceiling.sh rule (a) (hook updated and installed 2026-10-12);
+    anything else is off."""
+    value = env.get("CLAUDE_CODE_SUBAGENT_MODEL_FORCE")
+    return isinstance(value, str) and (value == "1" or value.lower() == "true")
+
+
+def _effective_default_model(env) -> str:
+    """ANTHROPIC_DEFAULT_MODEL as Claude Code would honor it ('' when unset or
+    set to a value Claude Code ignores)."""
+    value = env.get("ANTHROPIC_DEFAULT_MODEL")
+    if (not isinstance(value, str) or not value
+            or value.lower() in _IGNORED_DEFAULT_MODEL_VALUES):
+        return ""
+    return value
+
+
+# Substrings that mark a model name as Claude-family: the four tier names that
+# enforce-model-ceiling.sh's rank_of() substring-matches (haiku, sonnet, opus,
+# fable), plus claude and mythos.
+_CLAUDE_FAMILY_KEYWORDS = ("claude", "opus", "sonnet", "haiku", "fable", "mythos")
+
+# Sentinel for "a tier alias with no ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping":
+# Claude Code then uses its built-in Claude model for that tier.
+_BUILTIN_CLAUDE = "claude"
+
+
+def _resolve_tier_alias(value, env) -> str:
+    """Resolve a selector that may be a tier alias the way Claude Code would.
+
+    "opus" / "sonnet" / "haiku" / "fable" (and "<alias>[1m]") resolve through
+    their own ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping: the mapped slug when set,
+    else _BUILTIN_CLAUDE (Claude Code's built-in Claude model for the tier). Any
+    other value is returned unchanged ('' for unset/non-string values).
+
+    Case handling: the alias match is case-insensitive ("Opus" resolves like
+    "opus"). Claude Code's model-configuration docs (fetched 2026-10-12) do not
+    say whether aliases are case-sensitive, so this is a chosen convention, not a
+    documented fact. It is the safe direction for T0.4: read case-sensitively,
+    "Opus" would count as a Claude name by keyword and could mask a non-Claude
+    OPUS mapping that needs a context-window declaration.
+    """
+    if not isinstance(value, str) or not value:
+        return ""
+    alias = value[:-len("[1m]")] if value.lower().endswith("[1m]") else value
+    alias = alias.lower()
+    if alias in _MAIN_ALIASES:
+        mapped = env.get(_MAIN_ALIASES[alias], "")
+        return mapped if isinstance(mapped, str) and mapped else _BUILTIN_CLAUDE
+    return value
+
+
+def _is_claude_family_name(model) -> bool:
+    """Keyword test on one (already resolved) model name."""
+    text = (model or "").lower()
+    return any(k in text for k in _CLAUDE_FAMILY_KEYWORDS)
+
+
+# Selector values that name no model on their own, so they are skipped rather
+# than classified as text (docs fetched 2026-10-12):
+#   * "inherit" — environment-variables docs, CLAUDE_CODE_SUBAGENT_MODEL:
+#     "Setting it to inherit is the same as leaving it unset."
+#   * "default" — model-configuration docs, "default model setting": it
+#     resolves to an organization default, an honored ANTHROPIC_DEFAULT_MODEL,
+#     the model recorded on the account, or the account-type default (a Claude
+#     model on every listed account type). The env-visible parts of that chain
+#     are inspected as selectors of their own.
+# The docs do not say what "inherit" means in ANTHROPIC_MODEL, or "default" in
+# CLAUDE_CODE_SUBAGENT_MODEL; skipping them there too is inference, chosen as
+# the non-failing direction for T0.4.
+_NO_MODEL_SELECTOR_VALUES = frozenset({"inherit", "default"})
+
+# Selector aliases that stand for one or more tier aliases:
+#   * "opusplan" — environment-variables docs: ANTHROPIC_DEFAULT_OPUS_MODEL is
+#     the model "that opusplan uses while Plan Mode is active", and
+#     ANTHROPIC_DEFAULT_SONNET_MODEL the one it uses "when Plan Mode is not
+#     active". Both mappings therefore apply.
+#   * "best" — model-configuration docs: "...except in Claude apps gateway
+#     sessions, where fable and best resolve to Fable 5." That is the docs' only
+#     mention of best. Resolving it through the FABLE mapping in other sessions
+#     is inference; it cannot add a T0.4 failure, because the FABLE mapping is
+#     inspected as a selector of its own.
+_COMPOUND_ALIASES = {"opusplan": ("opus", "sonnet"), "best": ("fable",)}
+
+
+def _expand_selector(value, env) -> tuple:
+    """Resolve one alias-capable selector value to the model names it can run.
+
+    Returns () for unset values and for _NO_MODEL_SELECTOR_VALUES, one name per
+    tier alias for _COMPOUND_ALIASES, and otherwise the single
+    _resolve_tier_alias result. Matching is case-insensitive and ignores a
+    trailing "[1m]", the same convention as _resolve_tier_alias."""
+    if not isinstance(value, str) or not value:
+        return ()
+    alias = value[:-len("[1m]")] if value.lower().endswith("[1m]") else value
+    alias = alias.lower()
+    if alias in _NO_MODEL_SELECTOR_VALUES:
+        return ()
+    if alias in _COMPOUND_ALIASES:
+        return tuple(_resolve_tier_alias(tier, env) for tier in _COMPOUND_ALIASES[alias])
+    return (_resolve_tier_alias(value, env),)
+
+
+def _resolved_selectors(env) -> list:
+    """(name, raw, resolved) for every set MODEL_SELECTOR_VARS entry.
+
+    ANTHROPIC_MODEL, an honored ANTHROPIC_DEFAULT_MODEL and
+    CLAUDE_CODE_SUBAGENT_MODEL can name an alias, so they are expanded through
+    _expand_selector: "inherit"/"default" yield no entry, "opusplan" yields one
+    entry per tier it uses, and a tier alias resolves through its mapping. The
+    four ANTHROPIC_DEFAULT_<ALIAS>_MODEL mappings are taken as written (they are
+    the alias targets)."""
+    out = []
+    for name in MODEL_SELECTOR_VARS:
+        if name == "ANTHROPIC_DEFAULT_MODEL":
+            raw = _effective_default_model(env)
+        else:
+            raw = env.get(name, "")
+            raw = raw if isinstance(raw, str) else ""
+        if not raw:
+            continue
+        if name in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            for resolved in _expand_selector(raw, env):
+                out.append((name, raw, resolved))
+        else:
+            out.append((name, raw, raw))
+    return out
+
+
+# The installed ceiling hook. T0.2 reads it (read-only) to tell the 2026-10-12
+# rule set (stands down only for CLAUDE_CODE_SUBAGENT_MODEL_FORCE or an
+# OPUS/SONNET remap) from an older install (stands down whenever
+# CLAUDE_CODE_SUBAGENT_MODEL is set, and does not know the force flag).
+CEILING_HOOK_PATH = (Path(__file__).resolve().parents[2]
+                     / ".claude" / "hooks" / "enforce-model-ceiling.sh")
+_FORCE_MARKER = "SUBAGENT_MODEL_FORCE"
+
+
+def _ceiling_hook_recognizes_force(hook_path):
+    """True when the hook text mentions CLAUDE_CODE_SUBAGENT_MODEL_FORCE (the
+    2026-10-12 rule set), False when it does not (an older hook), None when the
+    file cannot be read. Text inspection only; the hook is never executed."""
+    try:
+        text = Path(hook_path).read_text(encoding="utf-8", errors="replace")
+    except (OSError, TypeError, ValueError):
+        return None
+    return _FORCE_MARKER in text
+
 _MAX_SIGNED_64 = 9223372036854775807
 _CANONICAL_POSITIVE_DECIMAL_RE = re.compile(r"^[1-9][0-9]*$")
+
+# Closed-set GPT flagship grammar. The pattern text is byte-identical to
+# GPT_FLAGSHIP_RE in .claude/hooks/context-reporter.sh and gpt_flagship_re in
+# .claude/scripts/subagent-bar.sh and .claude/scripts/context-bar.sh; a lockstep
+# test in tests/python/test_deploy_smoke.py compares them. Apply it with
+# fullmatch (see _gpt_physical_window). The GPT-6 Sol/Luna and flagship -pro
+# members come from a USER POLICY DECISION of 2026-09-29, and the GPT-6.1 Sol
+# member (one exact alternative, no gpt-6.1-* wildcard) from one of 2026-10-12;
+# neither is a validation.
+_GPT_FLAGSHIP_RE = re.compile(
+    r"^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$"
+)
 
 
 # --- Shared result types --------------------------------------------------
@@ -111,6 +312,11 @@ class ProbeResult:
     detail: str = ""        # one-line summary of the finding
     evidence: list = field(default_factory=list)   # list[Evidence]
     profile: str = ""       # profile name this result belongs to ("" = tier-once)
+    # smoke v2 §13 contract fields (all optional; readers use getattr defaults):
+    duration_s: float = None                       # wall time of the probe, when measured
+    session_ids: list = field(default_factory=list)  # claude -p session ids this probe ran
+    cost_usd: float = None                         # CLI-reported cost of this probe's run(s)
+    hint: str = ""          # static remediation text (FAIL/WARN only; "" when none)
 
     def add_evidence(self, command: str, output: str = "", note: str = "",
                      is_inference: bool = False) -> None:
@@ -130,6 +336,10 @@ class ProbeResult:
             "detail": self.detail,
             "profile": self.profile,
             "evidence": [e.to_dict() for e in self.evidence],
+            "duration_s": self.duration_s,
+            "session_ids": list(self.session_ids),
+            "cost_usd": self.cost_usd,
+            "hint": self.hint,
         }
 
 
@@ -140,8 +350,9 @@ class RouteInfo:
     detected_route: str
     asserted_route: str = ""        # from --route, "" if not asserted
     model_family: str = "unknown"   # claude | gpt | glm | unknown
-    remap_active: bool = False      # tier-alias remap or subagent-model pin set
-    session_model: str = ""         # ANTHROPIC_MODEL as configured
+    remap_active: bool = False      # OPUS/SONNET tier remap set, or forced subagent model
+    session_model: str = ""         # env start selector: ANTHROPIC_MODEL, else an honored
+                                    # ANTHROPIC_DEFAULT_MODEL (T0.14 adds settings `model`)
     route_match: bool = True        # False when asserted_route != detected_route
     shim_control: str = ""         # raw DAAF_PROVIDER_SHIM value (no normalization)
     backend_mode_control: str = "" # raw SHIM_BACKEND_MODE value (no normalization)
@@ -169,6 +380,46 @@ class RouteInfo:
 # that must never be written to a report. Matched case-insensitively.
 _SECRET_NAME_RE = re.compile(r"(KEY|TOKEN|SECRET|AUTH)", re.IGNORECASE)
 
+# smoke v2 fingerprint fix: a *_TOKENS variable holding a plain decimal count
+# (CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000, a MAX_OUTPUT/THINKING_TOKENS budget)
+# is a size, not a credential. Matching the TOKEN name pattern used to redact it
+# in the fingerprint and rewrite "919000" anywhere in free text, while T0.4
+# printed the same value in the clear — a self-contradicting report. Only an
+# all-digit value of at most 20 characters qualifies; anything else stays
+# redacted by name.
+_NUMERIC_COUNT_RE = re.compile(r"[0-9]{1,20}")
+
+
+def _is_numeric_token_count(name: str, value) -> bool:
+    return (isinstance(name, str) and name.upper().endswith("_TOKENS")
+            and isinstance(value, str) and _NUMERIC_COUNT_RE.fullmatch(value) is not None)
+
+
+# Non-secret controls recorded in the fingerprint with a closed value set, so an
+# arbitrary value is classified rather than reflected into the report.
+_BOUNDED_FINGERPRINT_VALUES = {
+    "SHIM_PDF_MODE": ("file", "omit"),
+    "CLAUDE_CODE_AUTO_MODE_SERVER": ("0", "1", "true", "false"),
+}
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
+# The same CSI colour codes written as TEXT escapes rather than raw ESC bytes.
+# subagent-bar.sh emits one JSON line per task ({"id", "content"}), so jq encodes
+# its ESC bytes as the six characters "\u001b"; T0.7 quoted that JSON verbatim and
+# the report carried "\u001b[38;5;…m" noise even after raw ESC was stripped.
+# Covers \u001b / \u001B, \x1b / \x1B, \033 and \e, each followed by a CSI body.
+_ESCAPED_ANSI_RE = re.compile(r"\\(?:u001[bB]|x1[bB]|033|e)\[[0-9;?]*[ -/]*[@-~]")
+
+
+def strip_ansi(text):
+    """Remove ANSI CSI/OSC escape sequences (statusline colour codes) from text
+    before it is quoted as evidence; report.md used to carry them raw. Both the
+    raw ESC form and the textual escape form (JSON "\\u001b[…m", "\\x1b[", "\\033[",
+    "\\e[") are removed."""
+    if not text:
+        return text
+    return _ESCAPED_ANSI_RE.sub("", _ANSI_RE.sub("", text))
+
 
 def redact_env_value(name: str, value):
     """Return a report-safe rendering of an env var value.
@@ -188,6 +439,10 @@ def redact_env_value(name: str, value):
         return _bounded_lane_control(value, ("openai",))
     if name == "SHIM_BACKEND_MODE":
         return _bounded_lane_control(value, ("chatgpt", "openai"))
+    if name in _BOUNDED_FINGERPRINT_VALUES:
+        return _bounded_lane_control(value, _BOUNDED_FINGERPRINT_VALUES[name])
+    if _is_numeric_token_count(name, value):
+        return value
     if _SECRET_NAME_RE.search(name):
         return "<redacted:empty>" if value == "" else "<redacted:set>"
     return value
@@ -215,6 +470,8 @@ def scrub_secret_values(text, env=None):
     for name, value in env.items():
         if not value or len(value) < 6:
             continue
+        if _is_numeric_token_count(name, value):
+            continue
         if _SECRET_NAME_RE.search(name):
             scrubbed = scrubbed.replace(value, f"<redacted:{name}>")
     return scrubbed
@@ -230,14 +487,22 @@ FINGERPRINT_VARS = (
     "SHIM_SANITIZE_TOOLS",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "CLAUDE_CODE_SUBAGENT_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     "CLAUDE_CODE_EFFORT_LEVEL",
     "CLAUDE_CODE_DISABLE_FAST_MODE",
     "CODEX_HOME",
+    # smoke v2: PDF handling mode of the shim (file|omit) and the Auto-mode
+    # server opt-out (F12); both bounded to a closed value set.
+    "SHIM_PDF_MODE",
+    "CLAUDE_CODE_AUTO_MODE_SERVER",
     # Secret-bearing (values redacted by name match; empty/set state preserved):
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -300,11 +565,15 @@ def _is_canonical_positive_decimal(value) -> bool:
 def _gpt_physical_window(model_id: str):
     """Return the runtime static-map window for a supported GPT identifier.
 
-    Physical-family matching is deliberately separate from exact-Sol quality-tier
-    matching. It operates on the terminal provider-stripped slug, requires a
-    supported version at the left boundary, and accepts only end-of-slug, '-' or
-    '[' as the version boundary. The ordering mirrors the Bash consumers so mini
-    and chat variants keep their established smaller mappings.
+    Physical-family matching is deliberately separate from the runtime's GPT
+    quality-tier grammar (GPT_EXTENDED_RE / gpt_extended_re in the Bash
+    consumers); this module implements no quality-tier matching. It operates on
+    the terminal provider-stripped slug. The gpt-5.4/5.5/5.6 arm requires a
+    supported version at the left boundary and accepts end-of-slug, '-' or '['
+    as the version boundary, so mini and chat variants keep their established
+    smaller mappings. The GPT-6 flagships are matched by the closed-set flagship
+    grammar _GPT_FLAGSHIP_RE, byte-identical to the Bash consumers' flagship
+    ERE.
     """
     slug = (model_id or "").rsplit("/", 1)[-1]
     if re.match(r"^gpt-5\.(?:4|5|6)(?:$|[-\[])", slug):
@@ -312,6 +581,46 @@ def _gpt_physical_window(model_id: str):
             return 400000
         if "-chat" in slug:
             return 128000
+        return 1050000
+    # GPT-6 flagships: gpt-6-astra, gpt-6-sol, gpt-6-luna and gpt-6.1-sol, each
+    # optionally followed by '-pro' and then '[1m]', are 1,050,000-token models
+    # (gpt-6.1-sol per OpenRouter openai/gpt-6.1-sol, fetched 2026-10-12). They are
+    # matched by the closed-set flagship grammar shared verbatim with
+    # context-reporter.sh (GPT_FLAGSHIP_RE), subagent-bar.sh and context-bar.sh
+    # (gpt_flagship_re); the grammar is used unmodified so the lockstep test can
+    # compare it byte for byte. re.fullmatch reproduces the POSIX '$' (end of
+    # string only) semantics of Bash '=~', so a trailing newline does not match.
+    # One deliberate difference from the Bash consumers: everything from the
+    # first '#' onward is removed before matching, as the provider shim does
+    # (anthropic_openai_shim.py, model.partition("#")). Env selectors may carry
+    # the shim's documented reasoning-effort suffix (e.g. 'gpt-6-astra[1m]#xhigh';
+    # user_reference/01_installation_and_quickstart.md, 07_faq_technical.md), and
+    # keeping it would drop the exact-ChatGPT-lane 919000 check below for those
+    # configs without any warning. Side effect: effort-suffixed gpt-5.4/5.5/5.6
+    # ids that the arm above rejects at the version boundary (e.g. 'gpt-5.6#high')
+    # now reach this check and map to 1050000, which over-applies the cap (the
+    # safe direction). The shim echoes the stripped id in its responses, so
+    # context-reporter.sh (response .message.model) never sees the suffix;
+    # whether context-bar.sh's requested .model.id can carry it is unverified.
+    # Near misses fall through to None: bare 'gpt-6', 'gpt-6-terra' (retired),
+    # GPT-6 mini/chat ('gpt-6-sol-mini', 'gpt-6-sol-chat'), right-boundary text
+    # ('gpt-6-astra-pro-x', 'gpt-6-sol-pro[1m]x', 'gpt-6-astra[1m]x',
+    # 'gpt-6-sol[1m]-pro') and left-boundary text ('xgpt-6-sol').
+    # Returning the flagship window makes these ids take part in the exact-
+    # ChatGPT-lane 919000 ceiling (keyed on window == 1050000 below). That
+    # subscription-lane cap is MEASURED only for Astra and Sol as of 2026-09-05:
+    # gpt-6-astra accepted 919,053 and rejected 922,552, and gpt-5.6-sol accepted
+    # 910,827 and rejected 921,973 (previously 370,000, set 2026-07-16 and now
+    # stale). gpt-6-sol, gpt-6-luna and the flagship '-pro' forms are covered by
+    # USER POLICY DECISION 2026-09-29, not validation. Under that
+    # decision gpt-6-sol reads as gpt-5.6-sol, gpt-6-luna reads as gpt-5.6-luna,
+    # and every flagship '-pro' reads as its non-pro base. Their 1,050,000 window
+    # matches the OpenRouter catalogue fetched 2026-09-29. Their 919000 lane cap
+    # is INFERRED from the Sol/Astra measurements, not measured. gpt-6.1-sol
+    # (USER POLICY DECISION 2026-10-12) reads as gpt-6-sol on the same terms;
+    # its ChatGPT-lane ceiling was MEASURED 2026-10-13 (accepted 919,744, rejected
+    # 921,973; probe_context_ceiling.py), matching the 919000 lane cap.
+    if _GPT_FLAGSHIP_RE.fullmatch(slug.split("#", 1)[0]):
         return 1050000
     if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
         if "-chat" in slug:
@@ -398,38 +707,55 @@ def detect_route(env) -> str:
         return ROUTE_OPENAI_API
     if "openrouter.ai" in base_url:
         return ROUTE_OPENROUTER
+    # Presence-only: a non-empty ANTHROPIC_API_KEY is what `claude -p` bills
+    # (in print mode the key is always used when present), so it names the
+    # Console API route. Empty or unset falls through to the subscription route.
+    if _key_state(env, "ANTHROPIC_API_KEY") == "set":
+        return ROUTE_ANTHROPIC_API
     return ROUTE_ANTHROPIC
 
 
 def classify_model_family(env):
     """Classify the configured model family and whether a tier remap is active.
 
-    Returns (family, remap_active). family is one of claude|gpt|glm|unknown.
-    remap_active is True when any of the tier-alias remaps or the global
-    subagent-model pin is set — the condition under which enforce-model-ceiling
-    stands down (rules a/b of that hook). Expectations differ by family: on a
-    Claude-pure config the ceiling hook must actively rank; with remaps set it
-    must stand down.
+    Returns (family, remap_active). family is one of claude|gpt|glm|unknown and
+    is a combined posture over every MODEL_SELECTOR_VARS value (an honored
+    ANTHROPIC_DEFAULT_MODEL included); T0.14 resolves the main model separately.
+    remap_active is True when ANTHROPIC_DEFAULT_OPUS_MODEL or
+    ANTHROPIC_DEFAULT_SONNET_MODEL is set (the only tiers DAAF agents use), or
+    when CLAUDE_CODE_SUBAGENT_MODEL_FORCE is enabled — the conditions under which
+    enforce-model-ceiling.sh stands down (rules a/b; hook updated and installed
+    2026-10-12). CLAUDE_CODE_SUBAGENT_MODEL alone no longer counts: since Claude
+    Code 2.1.251 it is only a fallback for subagents without their own model, so
+    it does not override DAAF agents' `model:` frontmatter. HAIKU/FABLE remaps
+    alone do not count either: no DAAF agent dispatches on those tiers.
+    Expectations differ by family: on a Claude-pure config the ceiling hook must
+    actively rank; with an OPUS/SONNET remap or a forced subagent model it must
+    stand down. (T0.2 also reports an older installed hook's different rule set.)
+
+    Every selector that can name a tier alias — ANTHROPIC_MODEL, an honored
+    ANTHROPIC_DEFAULT_MODEL (DAAF ships "opus") and CLAUDE_CODE_SUBAGENT_MODEL,
+    each also as "<alias>[1m]", case-insensitively — is resolved through its own
+    ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping before it joins the candidates: the
+    mapped slug when the alias is remapped, or "claude" (Claude Code's built-in
+    model for that tier) only when it is unmapped (see _resolve_tier_alias).
+    Counting the raw alias text instead would classify a custom remap (e.g. OPUS
+    -> a qwen slug on OpenRouter) as claude.
     """
-    candidates = [
-        env.get("ANTHROPIC_MODEL", ""),
-        env.get("ANTHROPIC_DEFAULT_OPUS_MODEL", ""),
-        env.get("ANTHROPIC_DEFAULT_SONNET_MODEL", ""),
-        env.get("CLAUDE_CODE_SUBAGENT_MODEL", ""),
-    ]
+    candidates = [resolved for _, _, resolved in _resolved_selectors(env)]
     joined = " ".join(c for c in candidates if c).lower()
 
     remap_active = bool(
         env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
         or env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-        or env.get("CLAUDE_CODE_SUBAGENT_MODEL")
+        or _subagent_force_enabled(env)
     )
 
     if "gpt-" in joined or "openai/" in joined:
         family = "gpt"
     elif "glm" in joined:
         family = "glm"
-    elif any(k in joined for k in ("claude", "opus", "sonnet", "haiku", "fable", "mythos")):
+    elif _is_claude_family_name(joined):
         family = "claude"
     else:
         family = "unknown"
@@ -446,7 +772,7 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
         asserted_route=asserted_route or "",
         model_family=family,
         remap_active=remap,
-        session_model=env.get("ANTHROPIC_MODEL", ""),
+        session_model=env.get("ANTHROPIC_MODEL", "") or _effective_default_model(env),
         shim_control=env.get("DAAF_PROVIDER_SHIM", ""),
         backend_mode_control=env.get("SHIM_BACKEND_MODE", ""),
         lane_control_issues=_lane_control_issues(env),
@@ -456,31 +782,271 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
     return info
 
 
+# --- Main-model projection (separate from ceiling-hook family posture) -----
+
+_MAIN_ALIASES = {name: f"ANTHROPIC_DEFAULT_{name.upper()}_MODEL"
+                 for name in ("opus", "sonnet", "haiku", "fable")}
+_MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*(?:\[1m\])?(?:#[A-Za-z0-9_-]+)?")
+
+
+def main_model_family(model):
+    """Classify one explicit selector, never aliases or subagent candidates."""
+    if not isinstance(model, str) or not _MODEL_ID_RE.fullmatch(model):
+        return "unknown"
+    slug = model.rsplit("/", 1)[-1]
+    if slug.startswith("claude-"):
+        return "claude"
+    if re.match(r"gpt-[0-9]", slug):
+        return "gpt"
+    if re.match(r"glm-[0-9]", slug):
+        return "glm"
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class MainModelResolution:
+    # selector/resolved_model are internal comparison inputs, not report fields.
+    selector: str = ""
+    resolved_model: str = ""
+    source: str = "unresolved"
+    overridden: bool = False
+    family: str = "unknown"
+    compatibility: str = "unknown"
+    uncertainty: tuple = ()
+    effective_route: str = "unknown"
+    endpoint_kind: str = "unknown"
+    expected_backend: str = ""
+    normal_execution_context: bool = True
+
+    def safe_metadata(self):
+        import hashlib
+        return {
+            "source": self.source, "explicit_override": self.overridden,
+            "family": self.family, "compatibility": self.compatibility,
+            "uncertainty": list(self.uncertainty),
+            "effective_route": self.effective_route, "endpoint_kind": self.endpoint_kind,
+            "expected_backend": self.expected_backend,
+            "normal_execution_context": self.normal_execution_context,
+            "selector_sha256": hashlib.sha256(self.selector.encode()).hexdigest() if self.selector else None,
+            "resolved_sha256": hashlib.sha256(self.resolved_model.encode()).hexdigest() if self.resolved_model else None,
+            "projection_only": True,
+        }
+
+
+def resolve_main_model(env, saved_model=None, explicit_model=None,
+                       env_source="environment", saved_source="saved_model",
+                       uncertainty=(), route=None,
+                       default_source="environment_default_model"):
+    """Pure bounded projection of Claude Code's main-model precedence:
+    invocation (--model) > effective ANTHROPIC_MODEL > saved settings `model`
+    key > honored ANTHROPIC_DEFAULT_MODEL > account-type default (unresolved).
+
+    Caller supplies already-projected settings env (a settings-file `env` value
+    overwrites the same process variable). ANTHROPIC_DEFAULT_MODEL (Claude Code
+    2.1.236+) is ignored when set to default/inherit/opusplan/haiku, exactly as
+    Claude Code ignores it; its account-availability rule is not emulated. No
+    dynamic default or managed policy emulation. Only the short
+    opus/sonnet/haiku/fable aliases expand, each through its OWN
+    ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping; explicit IDs are not rewritten by
+    default aliases or subagent model pins. An alias whose mapping is unset
+    resolves to Claude Code's built-in Claude model for that tier: the family is
+    claude, but the exact ID (resolved_model) stays unknown.
+    Configuration-compatible does not establish provider availability/acceptance.
+    """
+    issues = list(uncertainty)
+    overridden = explicit_model is not None
+    default_model = _effective_default_model(env)
+    if overridden:
+        selector, source = explicit_model, "invocation"
+    elif env.get("ANTHROPIC_MODEL"):
+        selector, source = env["ANTHROPIC_MODEL"], env_source
+    elif saved_model:
+        selector, source = saved_model, saved_source
+    elif default_model:
+        selector, source = default_model, default_source
+    else:
+        selector, source = "", "unresolved"
+        issues.append("dynamic_default_unresolved")
+    if not isinstance(selector, str):
+        selector = ""
+        issues.append("invalid_selector")
+    resolved = selector
+    builtin_alias = False
+    # "<alias>[1m]" (e.g. "opus[1m]", which /model saves to user settings) is the
+    # same alias with the 1M-context hint, so it expands through the same mapping.
+    # Case-insensitive ("Opus" expands like "opus"), the same chosen convention
+    # as _resolve_tier_alias (the docs are silent on alias case).
+    alias = selector[:-len("[1m]")] if selector.lower().endswith("[1m]") else selector
+    alias = alias.lower()
+    if alias in _MAIN_ALIASES:
+        resolved = env.get(_MAIN_ALIASES[alias], "")
+        if not isinstance(resolved, str) or not resolved:
+            # Unmapped alias: Claude Code uses its built-in Claude model for the
+            # tier. Family is known (claude); the exact ID is version-dependent,
+            # so resolved_model stays "" and exact-ID consumers (normal-Auto
+            # acceptance) must treat it as unresolved.
+            resolved = ""
+            builtin_alias = True
+    family = "claude" if builtin_alias else main_model_family(resolved)
+    if family == "unknown":
+        issues.append("model_family_unresolved")
+    route = route or detect_route(env)
+    if _lane_control_issues(env):
+        issues.append("route_controls_uncertain")
+    if any(env.get(k) not in (None, "", "0", "false") for k in (
+            "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")):
+        issues.append("alternate_provider_unresolved")
+    # Auto eligibility is independent of main-route compatibility. In particular,
+    # benchmark smoke must still block a KNOWN Claude-on-GPT mismatch.
+    normal_context = not any(env.get(k) not in (None, "", "0", "false") for k in (
+        "DAAF_BENCHMARK_RUN", "CLAUDE_CODE_BYPASS_PERMISSIONS", "CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS"))
+    base = env.get("ANTHROPIC_BASE_URL")
+    endpoint = "unknown"
+    backend = ""
+    if route in SHIM_ROUTES:
+        backend = "chatgpt" if route == ROUTE_CHATGPT else "openai"
+        if base in ("http://127.0.0.1:4141", "http://127.0.0.1:4141/",
+                    "http://localhost:4141", "http://localhost:4141/"):
+            endpoint = "fixed_loopback_shim"
+    elif route in ANTHROPIC_ROUTES and base in (None, "", "https://api.anthropic.com", "https://api.anthropic.com/"):
+        endpoint = "native_anthropic"
+    elif route == ROUTE_OPENROUTER and base in ("https://openrouter.ai/api", "https://openrouter.ai/api/"):
+        endpoint = "openrouter_api"
+    if endpoint == "unknown":
+        issues.append("endpoint_provider_unresolved")
+    compatibility = "unknown"
+    if not issues:
+        if route in SHIM_ROUTES:
+            compatibility = "compatible" if family == "gpt" else "incompatible"
+        elif route in ANTHROPIC_ROUTES:
+            compatibility = "compatible" if family == "claude" else "incompatible"
+        elif route == ROUTE_OPENROUTER:
+            compatibility = "compatible"
+    return MainModelResolution(selector, resolved, source, overridden, family,
+                               compatibility, tuple(sorted(set(issues))),
+                               route if endpoint != "unknown" and not _lane_control_issues(env) else "unknown",
+                               endpoint, backend, normal_context)
+
+
+def probe_main_model(resolution, profile="", tier="0"):
+    """T0.14 safe metadata; preserve ordinary WARN/non-failing semantics."""
+    import json
+    r = ProbeResult("T0.14", "Main-model/route coherence", tier, profile=profile)
+    r.verdict = {"compatible": Verdict.PASS, "incompatible": Verdict.FAIL,
+                 "unknown": Verdict.WARN}[resolution.compatibility]
+    r.detail = {
+        "compatible": "Projected main model is configuration-compatible; provider acceptance is not established.",
+        "incompatible": "Projected main model is incompatible with the configured route; paid launch blocked. No configuration changed.",
+        "unknown": "Main model or settings precedence is unresolved; compatibility is unknown, not certified.",
+    }[resolution.compatibility]
+    r.add_evidence("bounded main-model settings projection",
+                   output=json.dumps(resolution.safe_metadata(), sort_keys=True))
+    return r
+
+
 # --- Tier 0 route/env coherence probes ------------------------------------
 
-def probe_daaf_dev(env) -> ProbeResult:
-    """Tier 0 policy gate: the deployment smoke suite is intentionally restricted
-    to DAAF_DEV=1 development images as contributor tooling. Tier D additionally
-    uses development-only deterministic/test tools. Codex ships in every image;
-    shim routing and Codex authentication are separate explicit opt-ins, and
-    neither requires a development image."""
-    r = ProbeResult(probe_id="T0.0", name="DAAF_DEV assertion", tier="0")
+# Image flavor (T0.0). The suite runs on any DAAF image; the DAAF_DEV=1 build
+# (Dockerfile "Install Codex CLI + optional developer test tooling") adds these
+# four tools, which only the developer image carries. Tier D's TD.1 (bats) and
+# TD.2 (pwsh/Pester) SKIP without them; T0.15 and T0.22 read the flavor so a
+# standard image's missing tools are INFO there, not WARN.
+FLAVOR_TOOLS = ("bats", "pwsh", "shellcheck", "gh")
+# The Tier D battery each flavor tool gates: without it the battery SKIPs.
+FLAVOR_TIER_D_BATTERIES = {"bats": "TD.1 (bats)", "pwsh": "TD.2 (Pester)"}
+# The flavor tools whose absence SKIPs no battery, and what it does change.
+# TD.1's bats suite has shellcheck lint tests that `skip` when shellcheck is
+# missing, so TD.1 still runs without them (the lint and safety-hook batteries,
+# TD.3-TD.5, mention shellcheck only in comments and test strings). No Tier D
+# battery runs gh. The shellcheck note changes when bats is missing too, since
+# TD.1 then SKIPs as a whole.
+FLAVOR_TIER_D_PARTIAL = {"shellcheck": "TD.1 still runs but skips its shellcheck lint tests",
+                         "gh": "no Tier D battery uses it"}
+FLAVOR_SHELLCHECK_WITHOUT_BATS = "only TD.1's lint tests use it"
+FLAVOR_DEVELOPER = "developer image"
+FLAVOR_STANDARD = "standard image"
+FLAVOR_PARTIAL = "partial"
+
+
+def detect_image_flavor(which=None):
+    """(flavor, {tool: present}) from a PATH lookup of FLAVOR_TOOLS: all present
+    -> developer image, none -> standard image, some -> partial. `which` is the
+    lookup seam (shutil.which by default); it is a PATH lookup only, no process
+    is started."""
+    if which is None:
+        import shutil
+        which = shutil.which
+    present = {tool: which(tool) is not None for tool in FLAVOR_TOOLS}
+    if all(present.values()):
+        return FLAVOR_DEVELOPER, present
+    if not any(present.values()):
+        return FLAVOR_STANDARD, present
+    return FLAVOR_PARTIAL, present
+
+
+def probe_image_flavor(env, which=None, detected=None) -> ProbeResult:
+    """T0.0 "Image flavor" (INFO; WARN in one case). Replaces the old DAAF_DEV=1
+    assertion (smoke coverage design D1, 2026-11-01): the suite runs on any DAAF
+    image, and the developer image only adds the shell and PowerShell test
+    batteries (Tier D TD.1/TD.2, which SKIP without their tools).
+
+    The flavor comes from the tools present (detect_image_flavor); DAAF_DEV is
+    recorded as context. WARN only when DAAF_DEV=1 but a developer tool is
+    missing: the variable was set without a rebuild. The detail names only the
+    Tier D batteries that will SKIP as a result (bats -> TD.1, pwsh -> TD.2;
+    FLAVOR_TIER_D_BATTERIES) and what a missing shellcheck or gh changes
+    instead (FLAVOR_TIER_D_PARTIAL): without shellcheck TD.1 still runs but
+    skips its shellcheck lint tests; no Tier D battery uses gh. Otherwise INFO.
+    Never FAIL, and never a gate: the
+    preflight gate before paid tiers is T0.1/T0.3/T0.16/T0.17 (design D2).
+
+    detected: an already computed detect_image_flavor() result, so run_tier0 can
+    hand the same flavor to T0.15 and T0.22."""
+    r = ProbeResult(probe_id="T0.0", name="Image flavor", tier="0")
+    flavor, present = detected if detected is not None else detect_image_flavor(which)
     val = env.get("DAAF_DEV")
-    r.add_evidence("env: DAAF_DEV", output=str(val) if val is not None else "<unset>")
-    if val == "1":
-        r.verdict = Verdict.PASS
-        r.detail = "DAAF_DEV=1 (development image active)."
+    missing = [t for t in FLAVOR_TOOLS if not present.get(t)]
+    r.add_evidence("which " + " ".join(FLAVOR_TOOLS),
+                   output="; ".join(f"{t}={'present' if present.get(t) else 'absent'}" for t in FLAVOR_TOOLS),
+                   note=f"flavor={flavor}")
+    r.add_evidence("env: DAAF_DEV", output=str(val) if val is not None else "<unset>",
+                   note="context only: the flavor is read from the tools, not from this variable")
+    if val == "1" and missing:
+        # Name only the Tier D batteries a missing tool actually gates (bats ->
+        # TD.1, pwsh -> TD.2), then what a missing shellcheck or gh changes.
+        affected = [FLAVOR_TIER_D_BATTERIES[t] for t in missing if t in FLAVOR_TIER_D_BATTERIES]
+        notes = []
+        for t in missing:
+            if t in FLAVOR_TIER_D_BATTERIES:
+                continue
+            note = (FLAVOR_SHELLCHECK_WITHOUT_BATS if t == "shellcheck" and "bats" in missing
+                    else FLAVOR_TIER_D_PARTIAL.get(t, "no Tier D battery uses it"))
+            notes.append(f"{t}: {note}")
+        r.verdict = Verdict.WARN
+        lead = (f"Image flavor: {flavor}. DAAF_DEV=1 is set but developer tool(s) are missing "
+                f"({', '.join(missing)}): the variable was set without a rebuild")
+        if affected:
+            r.detail = lead + f", so Tier D will SKIP {' and '.join(affected)}." + (
+                f" ({'; '.join(notes)}.)" if notes else "")
+        else:
+            r.detail = lead + f". No Tier D battery will SKIP ({'; '.join(notes)})."
     else:
-        r.verdict = Verdict.FAIL
-        r.detail = (
-            "DAAF_DEV is not 1. The deployment smoke suite is intentionally restricted to "
-            "DAAF_DEV=1 development images as a contributor tool, including for --tiers 0. "
-            "Tier D additionally relies on development-only deterministic/test tooling; "
-            "missing Tier-D tools can otherwise SKIP. Codex itself ships in every image. "
-            "Shim routing and codex login are separate explicit opt-ins and do not require "
-            "a development image. Rebuild with DAAF_DEV=1 or run inside the dev container."
-        )
+        r.verdict = Verdict.INFO
+        if flavor == FLAVOR_DEVELOPER:
+            r.detail = (f"Image flavor: {flavor} (bats, pwsh, shellcheck and gh present); Tier D runs "
+                        "every battery.")
+        elif flavor == FLAVOR_STANDARD:
+            r.detail = (f"Image flavor: {flavor} (no developer tools). The suite runs as usual; Tier D "
+                        "SKIPs TD.1 (bats) and TD.2 (Pester).")
+        else:
+            r.detail = (f"Image flavor: {flavor} (missing: {', '.join(missing)}). Tier D SKIPs the "
+                        "batteries whose tool is missing.")
     return r
+
+
+# Backward-compatible name for the T0.0 entry point (it asserted DAAF_DEV=1
+# before design D1).
+probe_daaf_dev = probe_image_flavor
 
 
 def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
@@ -535,23 +1101,101 @@ def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
     return r
 
 
-def probe_model_family(route_info: RouteInfo, env) -> ProbeResult:
-    """Tier 0: classify the model family and note the expected ceiling-hook posture."""
+def probe_model_family(route_info: RouteInfo, env, hook_path=None) -> ProbeResult:
+    """Tier 0: classify the model family and note the expected ceiling-hook posture.
+
+    The posture depends on which enforce-model-ceiling.sh is installed, so the
+    hook file (CEILING_HOOK_PATH unless hook_path is given) is read, never run:
+      * current hook (2026-10-12, mentions CLAUDE_CODE_SUBAGENT_MODEL_FORCE):
+        stands down only for an enabled force flag (rule a) or an OPUS/SONNET
+        remap (rule b); CLAUDE_CODE_SUBAGENT_MODEL alone does not stand it down.
+      * older hook (no force flag in its text): stands down whenever
+        CLAUDE_CODE_SUBAGENT_MODEL is set (its rule a) or for an OPUS/SONNET
+        remap, and does not recognize the force flag.
+      * unreadable hook: the current rule set is assumed and the evidence says so
+        (T0.6 checks the hook's registration).
+    """
     r = ProbeResult(probe_id="T0.2", name="Model family classification", tier="0")
+    path = CEILING_HOOK_PATH if hook_path is None else hook_path
+    force_aware = _ceiling_hook_recognizes_force(path)
+    legacy = force_aware is False
     r.add_evidence(
         "classify_model_family(os.environ)",
         output=f"family={route_info.model_family} remap_active={route_info.remap_active}",
-        note="ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL / CLAUDE_CODE_SUBAGENT_MODEL",
+        note=("family: ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_MODEL / "
+              "ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL / CLAUDE_CODE_SUBAGENT_MODEL, "
+              "tier aliases resolved through their ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping; "
+              "remap_active: ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL or "
+              "CLAUDE_CODE_SUBAGENT_MODEL_FORCE enabled (current hook's rules a/b)"),
     )
-    if route_info.model_family == "claude" and not route_info.remap_active:
-        expectation = ("Claude-pure config: enforce-model-ceiling.sh must actively RANK "
-                       "subagent dispatches (haiku<sonnet<opus<fable).")
-    elif route_info.remap_active:
-        expectation = ("Tier remap / subagent pin active: enforce-model-ceiling.sh must "
-                       "STAND DOWN (rules a/b) — it cannot rank custom slugs.")
+    r.add_evidence(
+        f"read-only text search of {path} for {_FORCE_MARKER!r}",
+        output={True: "found (current 2026-10-12 rule set)",
+                False: "not found (older hook rule set)",
+                None: "hook file unreadable"}[force_aware],
+        note=("Older hooks stand down whenever CLAUDE_CODE_SUBAGENT_MODEL is set and do "
+              "not recognize CLAUDE_CODE_SUBAGENT_MODEL_FORCE." if legacy else
+              "Expectation below assumes the current rule set; T0.6 checks hook "
+              "registration." if force_aware is None else
+              "Hook stands down only for CLAUDE_CODE_SUBAGENT_MODEL_FORCE (rule a) or "
+              "an OPUS/SONNET remap (rule b)."),
+    )
+    subagent_model = env.get("CLAUDE_CODE_SUBAGENT_MODEL")
+    force = _subagent_force_enabled(env)
+    if subagent_model and not force:
+        r.add_evidence(
+            "env: CLAUDE_CODE_SUBAGENT_MODEL / CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+            output=(f"CLAUDE_CODE_SUBAGENT_MODEL={subagent_model!r}; "
+                    f"CLAUDE_CODE_SUBAGENT_MODEL_FORCE="
+                    f"{env.get('CLAUDE_CODE_SUBAGENT_MODEL_FORCE', '<unset>')!r}"),
+            note=("Since Claude Code 2.1.251 CLAUDE_CODE_SUBAGENT_MODEL is only a fallback "
+                  "for subagents without their own model; every DAAF agent sets `model:`, "
+                  "so it does not reroute DAAF dispatches unless "
+                  "CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 is also set. "
+                  + ("The installed older hook nevertheless stands down while it is set."
+                     if legacy else
+                     "It does not stand enforce-model-ceiling.sh down on its own.")),
+        )
+    opus_sonnet_remap = bool(env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                             or env.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
+    # Each stand-down reason carries its own rationale, so the explanation names
+    # only the rules that actually apply.
+    remap_reason = ("an OPUS/SONNET tier remap is set (rule b)",
+                    "the hook cannot rank custom slugs")
+    if legacy:
+        stand_down = bool(subagent_model) or opus_sonnet_remap
+        reasons = []
+        if subagent_model:
+            reasons.append(("CLAUDE_CODE_SUBAGENT_MODEL is set (older rule a)",
+                            "the older hook assumes that variable overrides every "
+                            "subagent's model, which held only before Claude Code 2.1.251"))
+        if opus_sonnet_remap:
+            reasons.append(remap_reason)
+        prefix = ("Installed enforce-model-ceiling.sh predates the 2026-10-12 update "
+                  "(no CLAUDE_CODE_SUBAGENT_MODEL_FORCE support). ")
     else:
-        expectation = ("Non-Claude family without remap: a Claude-tier subagent request "
-                       "would be DENIED with remap guidance (ceiling-hook rule f).")
+        stand_down = route_info.remap_active
+        reasons = []
+        if force:
+            reasons.append(("CLAUDE_CODE_SUBAGENT_MODEL_FORCE is enabled (rule a)",
+                            "a forced subagent model makes the ceiling moot"))
+        if opus_sonnet_remap:
+            reasons.append(remap_reason)
+        prefix = ""
+    if stand_down:
+        expectation = (prefix + "enforce-model-ceiling.sh must STAND DOWN because "
+                       + " and ".join(reason for reason, _ in reasons) + " — "
+                       + "; ".join(why for _, why in reasons) + ".")
+    elif route_info.model_family == "claude":
+        expectation = (prefix + "Claude-pure config: enforce-model-ceiling.sh must "
+                       "actively RANK subagent dispatches (haiku<sonnet<opus<fable).")
+    else:
+        expectation = (prefix + "Non-Claude family without an OPUS/SONNET remap: a "
+                       "Claude-tier subagent request would be DENIED with tier-alias "
+                       "guidance (ceiling-hook rule f).")
+    if legacy and force:
+        expectation += (" CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set, but this older hook "
+                        "does not recognize it.")
     r.verdict = Verdict.INFO
     r.detail = expectation
     return r
@@ -568,9 +1212,22 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
     def note_var(name):
         r.add_evidence(f"env: {name}", output=redact_env_value(name, env.get(name)) if name in env else "<unset>")
 
-    if route == ROUTE_ANTHROPIC:
+    if route in ANTHROPIC_ROUTES:
+        # Both start-model selectors: DAAF's shipped settings.json sets only the
+        # soft ANTHROPIC_DEFAULT_MODEL, so ANTHROPIC_MODEL is normally <unset>.
         note_var("ANTHROPIC_MODEL")
+        note_var("ANTHROPIC_DEFAULT_MODEL")
         note_var("CLAUDE_CODE_OAUTH_TOKEN")
+        note_var("ANTHROPIC_API_KEY")
+        # anthropic-api: the Console key is the credential (detection requires it
+        # set). ANTHROPIC_AUTH_TOKEN outranks it in Claude Code's credential order
+        # (environment_settings_example.txt), so a stray one silently replaces the
+        # key on both Anthropic routes; T0.16 reports the billing consequence.
+        if _key_state(env, "ANTHROPIC_AUTH_TOKEN") == "set":
+            problems.append(
+                "ANTHROPIC_AUTH_TOKEN is set on a native Anthropic route — it outranks "
+                "ANTHROPIC_API_KEY and the subscription login, so requests use it instead."
+            )
         # Native Claude Code auth is interactive OR CLAUDE_CODE_OAUTH_TOKEN.
         # We cannot verify interactive OAuth without an LLM call, so this is INFO
         # unless ANTHROPIC_BASE_URL is unexpectedly pointed elsewhere.
@@ -578,7 +1235,7 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
         if base and "anthropic.com" not in base.lower():
             problems.append(
                 f"ANTHROPIC_BASE_URL is set to '{base}' but route detected as "
-                f"anthropic-subscription — unexpected for the native route."
+                f"{route} — unexpected for the native route."
             )
 
     elif route == ROUTE_OPENROUTER:
@@ -647,9 +1304,13 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     """Tier 0: validate the declaration used by Claude Code and DAAF accounting.
 
     Every effective model selector is inspected. On the exact ChatGPT-subscription
-    lane, any selector mapped to the runtime's anchored GPT 5.4/5.5/5.6 flagship
-    physical family makes the 370000 ceiling relevant. Numeric declarations use
-    the same canonical positive signed-64-bit contract as the Bash consumers.
+    lane, any selector mapped to the runtime's anchored GPT flagship physical
+    family makes the 919000 ceiling relevant. That family is gpt-5.4/5.5/5.6 plus
+    gpt-6-astra, and also gpt-6-sol, gpt-6-luna and the flagship -pro forms under
+    the 2026-09-29 user policy decision and gpt-6.1-sol under the 2026-10-12 one,
+    where the cap is inferred rather than measured.
+    Numeric declarations use the same canonical positive signed-64-bit contract
+    as the Bash consumers.
     """
     r = ProbeResult(probe_id="T0.4", name="Context-window declaration", tier="0")
     selectors = [(name, env.get(name, "")) for name in MODEL_SELECTOR_VARS]
@@ -677,11 +1338,29 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     # Any non-Claude family reached over a route Claude Code does not natively
     # recognize needs an explicit window declaration. Static runtime fallbacks do
     # not guarantee Claude Code's own dynamic/headless budgeting in every context.
+    # The combined family alone is not enough on OpenRouter: one Claude-looking
+    # selector (e.g. a Claude HAIKU slug) would make it "claude" and mask a
+    # non-Claude OPUS/SONNET mapping. So each selector is also checked on its own,
+    # tier aliases resolved first (_resolved_selectors; case-insensitive alias
+    # match), and ANY non-Claude one requires the declaration.
+    resolved = _resolved_selectors(env)
+    non_claude = [(name, raw, res) for name, raw, res in resolved
+                  if not _is_claude_family_name(res)]
+    r.add_evidence(
+        "resolved selectors (tier aliases expanded through ANTHROPIC_DEFAULT_<ALIAS>_MODEL)",
+        output="; ".join(f"{name}={raw!r} -> {res!r}" for name, raw, res in resolved) or "<none set>",
+        note=("non-Claude: " + ", ".join(name for name, _, _ in non_claude)
+              if non_claude else "no non-Claude selector"),
+    )
     needs_declaration = (
         route_info.detected_route in SHIM_ROUTES
         or route_info.model_family == "gpt"
         or (route_info.detected_route == ROUTE_OPENROUTER
-            and route_info.model_family != "claude")
+            and (route_info.model_family != "claude" or bool(non_claude)))
+    )
+    non_claude_text = ", ".join(
+        f"{name}={raw!r}" + (f" -> {res!r}" if res != raw else "")
+        for name, raw, res in non_claude
     )
 
     max_is_present = max_ctx is not None
@@ -715,6 +1394,7 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     )
     native_claude_1m = (
         route_info.model_family == "claude"
+        and not non_claude
         and any(_has_supported_1m_hint(value) for _, value in selectors if value)
     )
 
@@ -724,7 +1404,7 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW is set on the exact "
             "ChatGPT-subscription lane for mapped GPT flagship selector(s): "
             f"{relevant_text}. DAAF keeps automatic compaction disabled; remove "
-            "this setting and declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 "
+            "this setting and declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 "
             "(or a lower verified canonical positive value)."
         )
     elif max_is_present and not has_max:
@@ -742,23 +1422,27 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = (
             "ChatGPT-subscription/Codex mapped GPT flagship selector(s) require "
             "a canonical CLAUDE_CODE_MAX_CONTEXT_TOKENS declaration no greater "
-            f"than 370000. Relevant selector(s): {relevant_text}. A [1m] suffix "
+            f"than 919000. Relevant selector(s): {relevant_text}. A [1m] suffix "
             "and CLAUDE_CODE_AUTO_COMPACT_WINDOW do not satisfy this lane policy."
         )
-    elif exact_chatgpt_flagship and int(max_ctx) > 370000:
+    elif exact_chatgpt_flagship and int(max_ctx) > 919000:
         r.verdict = Verdict.FAIL
         r.detail = (
             f"Unsafe ChatGPT-subscription context declaration: {max_ctx} exceeds "
-            "the measured 370000-token Codex backend ceiling. The declaration is "
+            "the 919000-token Codex backend ceiling (measured for gpt-5.6-sol and "
+            "gpt-6-astra; applied to the other mapped flagships by 2026-09-29 "
+            "policy). The declaration is "
             f"relevant because of: {relevant_text}. Set "
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000, recreate the container, and "
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000, recreate the container, and "
             "restart the Claude Code session."
         )
     elif exact_chatgpt_flagship:
         r.verdict = Verdict.PASS
         r.detail = (
             f"ChatGPT-subscription declaration {max_ctx} is canonical and aligned "
-            "with the measured 370000-token backend ceiling; lower positive values "
+            "with the 919000-token backend ceiling (measured for gpt-5.6-sol and "
+            "gpt-6-astra; policy-applied to the other mapped flagships); lower "
+            "positive values "
             f"are preserved. Relevant selector(s): {relevant_text}."
         )
     elif not needs_declaration:
@@ -782,9 +1466,11 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = "Native Claude model uses its recognized [1m] context hint."
     else:
         r.verdict = Verdict.FAIL
+        selector_note = (f"; non-Claude selector(s): {non_claude_text}"
+                         if non_claude_text else "")
         r.detail = (
             f"Non-Claude/shim model ({route_info.model_family} family, "
-            f"{route_info.detected_route} route) lacks a route-supported context "
+            f"{route_info.detected_route} route{selector_note}) lacks a route-supported context "
             "declaration. Use a canonical positive CLAUDE_CODE_MAX_CONTEXT_TOKENS; "
             "for OpenRouter keep provider-prefixed bare GPT slugs and declare the "
             "route window explicitly. The [1m] suffix is supported for the direct "
@@ -792,3 +1478,137 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW is not an accepted substitute."
         )
     return r
+
+
+# --- smoke v2 Tier 0: credential overlap (T0.16) and alias completeness (T0.17)
+
+def probe_credential_overlap(route_info: RouteInfo, env) -> ProbeResult:
+    """T0.16 — presence-only credential overlap on the native Anthropic routes.
+
+    The "stated" route is --route when given, else the detected route. Claude
+    Code's credential order (environment_settings_example.txt): Bedrock/Vertex >
+    ANTHROPIC_AUTH_TOKEN > ANTHROPIC_API_KEY > CLAUDE_CODE_OAUTH_TOKEN >
+    interactive login, and in -p mode a present ANTHROPIC_API_KEY is always used
+    (scoping note 04 §1, search summary of the authentication docs — not fetched).
+      * ANTHROPIC_AUTH_TOKEN set on an Anthropic route -> FAIL (it outranks both);
+      * stated subscription with ANTHROPIC_API_KEY set -> FAIL (every -p probe
+        would silently test and bill the key);
+      * stated API with CLAUDE_CODE_OAUTH_TOKEN set -> WARN (overlap; the key wins);
+      * otherwise PASS. Non-Anthropic routes SKIP (OpenRouter's key rules are T0.3).
+    Values are never read: only unset/empty/set."""
+    r = ProbeResult(probe_id="T0.16", name="Credential overlap", tier="0")
+    stated = route_info.asserted_route or route_info.detected_route
+    states = {n: _key_state(env, n) for n in
+              ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
+    r.add_evidence("env presence (unset|empty|set): " + ", ".join(states),
+                   output="; ".join(f"{n}={s}" for n, s in states.items()),
+                   note=f"stated route={stated} (detected={route_info.detected_route})")
+    if stated not in ANTHROPIC_ROUTES:
+        r.verdict = Verdict.SKIP
+        r.detail = f"Not a native Anthropic route ({stated}); credential precedence is checked by T0.3."
+        return r
+    problems, warnings = [], []
+    if states["ANTHROPIC_AUTH_TOKEN"] == "set":
+        problems.append("ANTHROPIC_AUTH_TOKEN is set: it outranks ANTHROPIC_API_KEY and the "
+                        "subscription login, so every request uses that token instead")
+    if stated == ROUTE_ANTHROPIC and states["ANTHROPIC_API_KEY"] == "set":
+        problems.append("the stated route is anthropic-subscription but ANTHROPIC_API_KEY is set: "
+                        "in -p mode the key is always used, so the paid probes would test and "
+                        "bill the API key, not the subscription")
+    if stated == ROUTE_ANTHROPIC_API and states["CLAUDE_CODE_OAUTH_TOKEN"] == "set":
+        warnings.append("the stated route is anthropic-api but CLAUDE_CODE_OAUTH_TOKEN is also set; "
+                        "the key wins, the token is unused overlap")
+    if problems:
+        r.verdict = Verdict.FAIL
+        r.detail = "Credential overlap: " + "; ".join(problems + warnings) + "."
+    elif warnings:
+        r.verdict = Verdict.WARN
+        r.detail = "Credential overlap: " + "; ".join(warnings) + "."
+    else:
+        r.verdict = Verdict.PASS
+        r.detail = f"No credential overlap for {stated}."
+    return r
+
+
+_TIER_ALIAS_VARS = ("ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+
+
+def probe_alias_completeness(route_info: RouteInfo, env, settings_overlay=None) -> ProbeResult:
+    """T0.17 — on non-Anthropic routes every tier alias must be mapped (F2/F3:
+    an unmapped HAIKU sends Claude Code's housekeeping calls — session naming,
+    resume summaries — to a Claude model name the route cannot serve).
+
+    settings_overlay: {alias var: (value, source label)} from the settings files'
+    `env` blocks (smoke_probes.collect_alias_settings; user < project < local, the
+    observed 2.1.281 precedence). A settings value overrides the process env, as
+    in a real session. None means the settings files were not read: the verdict
+    then judges the process env alone and the detail says so.
+
+      * shim routes: all four ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL
+        set and non-Claude, else FAIL (the ChatGPT lane fast-fails claude-*
+        slugs; the API lane forwards them to a backend that rejects them);
+      * OpenRouter with a non-Claude model family: an unset alias is WARN (the
+        built-in Claude name may not resolve there); a Claude-family mapping is
+        accepted, because OpenRouter can serve Claude slugs (billed per use);
+      * Anthropic routes and Claude-family OpenRouter: SKIP.
+    Model names are not secrets and are quoted as configured."""
+    r = ProbeResult(probe_id="T0.17", name="Tier-alias completeness", tier="0")
+    route = route_info.detected_route
+    values = {n: (env.get(n) if isinstance(env.get(n), str) else "") for n in _TIER_ALIAS_VARS}
+    sources = {n: ("process env" if values[n] else "unset") for n in _TIER_ALIAS_VARS}
+    for name, entry in (settings_overlay or {}).items():
+        if name in values and isinstance(entry, tuple) and len(entry) == 2 and isinstance(entry[0], str):
+            values[name], sources[name] = entry[0], entry[1]
+    r.add_evidence("env + settings `env` (user < project < local): " + ", ".join(_TIER_ALIAS_VARS),
+                   output="; ".join(f"{n}={v or '<unset>'} ({sources[n]})" for n, v in values.items()),
+                   note=("settings files read" if settings_overlay is not None
+                         else "settings files NOT read: process env only"))
+    scope_note = ("" if settings_overlay is not None
+                  else " Settings `env` mappings were not checked (process env only).")
+    if route in ANTHROPIC_ROUTES or (route == ROUTE_OPENROUTER and route_info.model_family == "claude"):
+        r.verdict = Verdict.SKIP
+        r.detail = f"Tier aliases resolve natively on {route} (family {route_info.model_family})."
+        return r
+    unset = [n for n, v in values.items() if not v]
+    claude = [n for n, v in values.items() if v and _is_claude_family_name(v)]
+    if route in SHIM_ROUTES:
+        if unset or claude:
+            r.verdict = Verdict.FAIL
+            parts = []
+            if unset:
+                parts.append("unset: " + ", ".join(unset))
+            if claude:
+                parts.append("Claude-family: " + ", ".join(claude))
+            r.detail = ("Every tier alias must map to a GPT model on shim routes (" + "; ".join(parts)
+                        + "). Unmapped or Claude-named aliases reach the shim as claude-* requests."
+                        + scope_note)
+        else:
+            r.verdict = Verdict.PASS
+            r.detail = "All four tier aliases map to non-Claude models." + scope_note
+        return r
+    # OpenRouter, non-Claude family.
+    if unset:
+        r.verdict = Verdict.WARN
+        r.detail = ("Non-Claude OpenRouter config leaves tier alias(es) unmapped: " + ", ".join(unset)
+                    + ". Claude Code then requests its built-in Claude name for that tier." + scope_note)
+    else:
+        r.verdict = Verdict.PASS
+        r.detail = "All four tier aliases are mapped" + (
+            f" (Claude-family via OpenRouter: {', '.join(claude)})." if claude else ".") + scope_note
+    return r
+
+
+# --- Remediation hints (smoke v2 §4) ----------------------------------------
+# Static text per probe, kept beside the probe definitions so hint and check
+# change together. smoke_probes.PROBE_HINTS holds the other modules' probes and
+# merges this dict; a probe may also set ProbeResult.hint for a specific shape.
+ROUTE_PROBE_HINTS = {
+    "T0.0": "DAAF_DEV=1 is set but the developer tools are missing: rebuild the image so the build argument takes effect (bash rebuild_daaf.sh from daaf-docker), or remove DAAF_DEV=1 from environment_settings.txt if you meant the standard image.",
+    "T0.1": "Re-run with the --route that matches this container, or fix DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE / ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY in environment_settings.txt; detection is authoritative.",
+    "T0.3": "Set the route's required variables in environment_settings.txt (see the install guide for this route), recreate the container, and start a new session.",
+    "T0.4": "Declare CLAUDE_CODE_MAX_CONTEXT_TOKENS (919000 on the ChatGPT lane; the model window elsewhere) and remove CLAUDE_CODE_AUTO_COMPACT_WINDOW.",
+    "T0.14": "Remove the stale ANTHROPIC_MODEL pin, settings `model` key or /model choice so the route's GPT/Claude mapping applies; see FAQ 'main model route rejection'.",
+    "T0.16": "Keep exactly one credential per install: unset ANTHROPIC_AUTH_TOKEN on Anthropic routes; on a subscription install remove ANTHROPIC_API_KEY (it is billed per use); on an API install drop CLAUDE_CODE_OAUTH_TOKEN.",
+    "T0.17": "Map all four ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL to models this route serves (environment_settings_example.txt), recreate the container, start a new session.",
+}

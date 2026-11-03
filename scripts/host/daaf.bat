@@ -58,7 +58,8 @@ REM --- Verify the Control Panel is present before handing off ---
 if not exist "%~dp0daaf.ps1" (
     echo ERROR: daaf.ps1 was not found next to this launcher.
     echo This launcher must live in your daaf-docker folder alongside daaf.ps1.
-    echo If it is missing, re-run the installer or your update to restore it.
+    echo If daaf.ps1 is missing from that folder, open PowerShell there and run
+    echo .\update_daaf.ps1 ^(the updater restores missing DAAF files^).
     echo.
     pause
     exit /b 1

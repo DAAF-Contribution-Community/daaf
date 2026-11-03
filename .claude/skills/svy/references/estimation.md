@@ -218,7 +218,7 @@ result = sample.estimation.mean("bmxbmi", by="riagendr")
 print(result.to_polars())    # ['riagendr','est','se','lci','uci','cv'], one row per group
 ```
 
-> **Domain estimation is cross-validated against R (2026-07-15).** Domain means and SEs match R `svyby(..., svymean)` to machine precision (≤7e-16 rel), and domain confidence intervals use the **t multiplier on the full design df** — matching R's t-based CIs exactly. (Note: R's `confint.svyby` *defaults* to a normal z multiplier; svy's t-based choice is the more defensible one, not a discrepancy. Evidence: `/daaf/scripts/scratch/xval_svy_r_05_compare.py`.)
+> **Domain estimation is cross-validated against R (2026-07-15).** Domain means and SEs match R `svyby(..., svymean)` to machine precision (≤7e-16 rel), and domain confidence intervals use the **t multiplier on the full design df** — matching R's t-based CIs exactly. (Note: R's `confint.svyby` *defaults* to a normal z multiplier; svy's t-based choice is the more defensible one, not a discrepancy. Evidence: `/daaf/scripts/smoke_tests/xval_svy_survey_r/xval_svy_r_05_compare.py`.)
 
 ```python
 # Proportions by region
@@ -307,7 +307,7 @@ tab.stats
 - `chisq` = Rao-Scott–adjusted Pearson X² (matches R `svychisq(..., statistic="Chisq")`).
 - `f` = Rao-Scott **F**, which is `svychisq`'s **default** statistic (matches R `svychisq(..., statistic="F")`), with denominator df = # PSUs − # strata.
 
-Both statistics and their p-values are verified equal to R to machine precision (≤3e-15 rel). Evidence: `/daaf/scripts/scratch/xval_svy_r_03_py_svy.py`, `xval_svy_r_04_r_survey.R`, `xval_svy_r_05_compare.py`. *Scope: verified on one synthetic 2×2 design (24 PSUs); multi-level categorical predictors were not cross-validated.*
+Both statistics and their p-values are verified equal to R to machine precision (≤3e-15 rel). Evidence: `/daaf/scripts/smoke_tests/xval_svy_survey_r/` (`xval_svy_r_03_py_svy.py` builds the shared synthetic frame and fits svy, `xval_svy_r_04_r_survey.R` fits R `survey` on the same parquet, `xval_svy_r_05_compare.py` compares; each keeps its 2026-07-15 execution log, so a re-run needs a revision copy made with `scripts/create_script_revision.sh`, and the scripts write their parquets to `/daaf/scripts/scratch/`). *Scope: verified on one synthetic 2×2 design (24 PSUs); multi-level categorical predictors were not cross-validated.*
 
 ### Cell Estimates via `prop()` with `by=`
 

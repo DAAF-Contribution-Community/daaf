@@ -13,13 +13,13 @@ Participating states, coverage rates, data partners, and experimental data statu
 
 ## Coverage Overview
 
-PSEO coverage is **partner-based and release-specific**. Census release **V4.13.0 (2025Q4)** contains:
+PSEO coverage is **partner-based and release-specific**. Census release **V4.14.1 (2026Q2, posted 2026-08-25)** contains:
 
-- **952 institutions**
-- Partners in **32 states plus the District of Columbia**
+- **1,117 institution rows** (1,116 eight-digit OPEIDs plus `0033290W`, Penn State World Campus)
+- Partners in **37 states plus the District of Columbia** (Maryland, New Jersey, New Mexico, Tennessee and Vermont added since V4.13.0)
 - Western Governors University as an online-only participating institution
 
-These counts were verified from Census latest-release files on 2026-07-21. They do **not** establish a national percentage of all U.S. graduates, so this reference does not quote one.
+These counts were verified from Census latest-release files on 2026-10-19. The prior release, V4.13.0 (2025Q4), listed 952 institutions and partners in 32 states plus D.C. They do **not** establish a national percentage of all U.S. graduates, so this reference does not quote one.
 
 Coverage varies because institutions and systems enter the product through separate data partnerships. Partner composition, institution counts, cohorts, and available outcomes can change between releases.
 
@@ -123,30 +123,15 @@ When analyzing PSEO data:
 
 ### PSEO Coalition
 
-The **PSEO Coalition** coordinates partnerships between:
-- State higher education agencies
-- University systems
-- Individual institutions
-- Census Bureau LEHD program
+The **PSEO Coalition** is "a collection of state and institutional representatives" (from 27 states in its January 2024 toolkit) who are, or plan to be, partners of the Census Bureau's LEHD program. In voluntary monthly meetings members discuss sharing data with and getting data from Census, agree on a list of priorities and requests for LEHD, and share data-literacy practices; once a quarter they meet Census staff (PSEO Coalition Toolkit, Chapter 1, Troutman, January 2024). Data-sharing agreements are made with the Census Bureau (PSEO Technical Documentation).
 
 ### Partnership Process
 
-1. **Initial contact**: Institution/agency contacts Census Bureau or PSEO Coalition
-2. **Data sharing agreement**: Legal framework established
-3. **Data specification review**: Ensure transcript data meets requirements
-4. **Secure data transmission**: Transfer graduation records to Census
-5. **Processing and validation**: Census matches and validates data
-6. **Publication**: Data included in next release
+Higher education systems and individual colleges and universities join through a data-sharing agreement with the Census Bureau and transmit graduation (transcript) records (PSEO Technical Documentation). Joining steps beyond that are not published in the sources checked; contact the Census PSEO team or the PSEO Coalition.
 
 ### Data Requirements
 
-Partners must provide for each graduate:
-- Social Security Number (required for matching)
-- Date of birth
-- Graduation year
-- Degree/credential type
-- Major (CIP code)
-- Institution identifier (OPEID)
+Partners submit, for every graduate (PSEO Coalition methodology page, Wayback 2026-06-09): date of birth, graduation year, Social Security number, degree or credential earned, and major (with CIP codes, per ECS 2025). Census's technical documentation adds degree field, graduation date, institution and student demographics. Census tabulates institutions by 6-digit OPEID; how partners identify the institution in their files is not documented here.
 
 ### Contact Information
 
@@ -168,11 +153,9 @@ Partners must provide for each graduate:
 
 | Release / Year | Milestone |
 |----------------|-----------|
-| ~2014 | University of Texas System pilot |
 | 2018 | First PSEO data released |
-| 2020 | Public release, initial partners |
-| 2022 | Expansion to 29 states |
-| 2024 | State-level aggregations added |
+| R2022Q4 | Partners in 24 states (Census pseo_all_partners.txt for that release) |
 | V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+| V4.14.1 (2026Q2) | 1,117 institution rows; partners in 37 states plus D.C. |
 
-The final row is release-specific, verified on 2026-07-21 from the Census institution, partner, and version files. Recheck those files before reusing the count.
+The last two rows are release-specific, verified on 2026-10-19 from the Census institution, partner, and version files for each release (V4.13.0 was first counted on 2026-07-21). Recheck those files before reusing the count.

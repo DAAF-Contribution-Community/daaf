@@ -4,13 +4,13 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
-> **Async dispatch note.** This phase is deliberately serial: one transformation, analysis, or visualization script per subagent invocation, each followed by its mandatory code-reviewer QA before the next begins (the "NEVER batch" rule below is load-bearing). Under async dispatch, each research-executor and code-reviewer returns via a completion notification rather than a synchronous tool return. Do not begin the next script, approve the next transformation, or evaluate a stage gate until the current dispatch's return has arrived and been fully processed. Should multiple visualization scripts (Stage 8.2) ever be dispatched together, treat every mid-flight notification as status-only and wait for all wave members to return before proceeding to Stage 9.
+> **Dispatch order and returns.** Same-wave tasks run in parallel, at most 5 in flight: executors first, then one code-reviewer per script once all have returned. Each script is reviewed before any dependent script or the next wave starts. Each invocation still runs exactly one transformation, analysis or visualization script, and each review covers exactly one script (the "NEVER batch" rule below is load-bearing). See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive, and § Parallel Dispatch Guideline for the limit of 5. Treat every mid-wave return as status-only: do not start the next wave, approve a dependent transformation, or evaluate a stage gate until every dispatch in flight has returned and been processed.
 
 ---
 
 ## Stage 7: EDA & Transformation
 
-**Executor:** Subagent (general-purpose) - ITERATIVE INVOCATION REQUIRED
+**Agent:** research-executor — ITERATIVE INVOCATION REQUIRED
 **Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas` (Python) or `sf-terra` (R) (if spatial data)
 **Purpose:** Explore data and create analysis dataset through step-by-step validated transformations
 
@@ -47,7 +47,7 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
 #### Stage 7.2: Execute Transformations (Iteratively)
 
 **Executor:** Multiple subagent invocations (one per transformation)
-**Purpose:** Execute transformations ONE AT A TIME with validation
+**Purpose:** Execute one transformation per invocation, with validation (same-wave transformations may run in parallel; a transformation waits for the review of every transformation it builds on)
 
 **For EACH transformation in Plan_Tasks.md's task sequence:**
 
@@ -70,18 +70,18 @@ Stages 7, 8, 9, 10. Cross-phase orchestration guidance (invocation templates, QA
    - If FAIL: Issue description, proposed fix
 
 4. **Orchestrator reviews:**
-   - If PASS: Approve next transformation
+   - If PASS: Proceed to QA (step 5)
    - If FAIL: Request fix (max 2 attempts) or STOP
 
 5. **>>> INVOKE code-reviewer (MANDATORY, after EACH script) <<<**
    - Orchestrator MUST invoke code-reviewer after EACH transformation script
    - Do NOT batch multiple transformations before QA
    - Pass: script path, output files, Plan.md + Plan_Tasks.md locations
-   - If BLOCKER: trigger revision flow (max 2 attempts)
-   - If WARNING: log to STATE.md, proceed to next transformation
-   - If PASSED: proceed to next transformation
+   - If BLOCKER: A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). Any other BLOCKER (a bug, a stub, a validation gap) corrects a defect without changing the method and also goes through revision; a code-reviewer STOP of another Issue Category routes as `full-pipeline-mode.md` § Gate Status Translation says. A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
+   - If WARNING: log to STATE.md, proceed (a dependent transformation or the next wave may start)
+   - If PASSED: proceed (a dependent transformation or the next wave may start)
 
-6. **Repeat** for transformation #{n+1}
+6. **Repeat** for transformation #{n+1} (same-wave transformations in parallel, per the dispatch rule at the top of this file)
 
 **Special Case: Join Transformations**
 
@@ -126,8 +126,11 @@ All transformations are executed through script files, NOT interactive notebooks
 import polars as pl
 from pathlib import Path
 
+# ASSUMES: run_with_capture.sh does not change directory, so every path is built from the absolute project path.
+PROJECT_DIR = Path("{PROJECT_DIR}")
+
 # PRE-STATE CAPTURE
-df = pl.read_parquet("data/processed/2026-01-31_clean.parquet")
+df = pl.read_parquet(PROJECT_DIR / "data" / "processed" / "2026-01-31_clean.parquet")
 pre_shape = df.shape
 pre_sample_ids = df.select("id_col").sample(5, seed=42).to_series().to_list()
 
@@ -146,14 +149,34 @@ print(f"POST-STATE: {post_shape[0]:,} rows × {post_shape[1]} cols")
 print(f"ROW CHANGE: {(post_shape[0]/pre_shape[0]*100):.1f}%")
 
 # VALIDATION (CP3)
-row_loss_pct = 1 - (post_shape[0] / pre_shape[0])
-invariant_passed = row_loss_pct < 0.9  # <90% row loss
+# INTENT: count outcomes so the verdict line is derived, not asserted.
+cp3 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
 
-if invariant_passed:
-    print("CP3 STATUS: PASSED")
-    df_transformed.write_parquet("data/processed/2026-01-31_analysis.parquet")
+# ASSUMES: an empty input frame makes row loss untestable — 0 rows in is not 0% loss.
+if pre_shape[0] == 0:
+    print("[FAIL] Row loss: input frame is empty — loss untestable")
+    cp3["failed"] += 1
 else:
-    print(f"CP3 STATUS: FAILED - Row loss {row_loss_pct:.1%}")
+    row_loss_pct = 1 - (post_shape[0] / pre_shape[0])
+    if row_loss_pct < 0.9:
+        print(f"[PASS] Row loss: {row_loss_pct:.1%} ({pre_shape[0]:,} -> {post_shape[0]:,} rows, threshold 90%)")
+        cp3["passed"] += 1
+    else:
+        print(f"[FAIL] Row loss: {row_loss_pct:.1%} ({pre_shape[0]:,} -> {post_shape[0]:,} rows, threshold 90%)")
+        cp3["failed"] += 1
+
+print(f"Checks: {cp3['passed']} passed, {cp3['warning']} warnings, {cp3['failed']} failed, "
+      f"{cp3['not_verified']} not verified, {cp3['skipped']} skipped")
+# REASONING: not-verified counts as FAILED — a gate with missing evidence has not gated.
+if cp3["failed"] > 0 or cp3["not_verified"] > 0 or (cp3["passed"] + cp3["warning"] + cp3["failed"]) == 0:
+    print("CP3 VALIDATION: FAILED")
+    raise ValueError("CP3 FAILED - see details above")
+elif cp3["warning"] > 0:
+    print("CP3 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP3 VALIDATION: PASSED")
+
+df_transformed.write_parquet(PROJECT_DIR / "data" / "processed" / "2026-01-31_analysis.parquet")
 
 # EXECUTION LOG will be appended here after running:
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
@@ -169,9 +192,12 @@ else:
 library(arrow)
 library(dplyr)
 
+# ASSUMES: run_with_capture.sh does not change directory, so every path is built from the absolute project path.
+PROJECT_DIR <- "{PROJECT_DIR}"
+
 # --- Load ---
 # PRE-STATE CAPTURE
-df <- read_parquet("data/processed/2026-01-31_clean.parquet")
+df <- read_parquet(file.path(PROJECT_DIR, "data/processed/2026-01-31_clean.parquet"))
 pre_shape <- c(nrow(df), ncol(df))
 pre_sample_ids <- df |> slice_sample(n = 5) |> pull(id_col)
 
@@ -189,15 +215,43 @@ cat(sprintf("ROW CHANGE: %.1f%%\n", post_shape[1] / pre_shape[1] * 100))
 
 # --- Validate ---
 # VALIDATION (CP3)
-row_loss_pct <- 1 - (post_shape[1] / pre_shape[1])
-invariant_passed <- row_loss_pct < 0.9  # <90% row loss
+# INTENT: count outcomes so the verdict line is derived, not asserted.
+cp3 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 
-if (invariant_passed) {
-  cat("CP3 STATUS: PASSED\n")
-  write_parquet(df_transformed, "data/processed/2026-01-31_analysis.parquet")
+# ASSUMES: an empty input frame makes row loss untestable — 0 rows in is not 0% loss.
+if (pre_shape[1] == 0) {
+  cat("[FAIL] Row loss: input frame is empty — loss untestable\n")
+  cp3["failed"] <- cp3["failed"] + 1L
 } else {
-  cat(sprintf("CP3 STATUS: FAILED - Row loss %.1f%%\n", row_loss_pct * 100))
+  row_loss_pct <- 1 - (post_shape[1] / pre_shape[1])
+  if (row_loss_pct < 0.9) {
+    cat(sprintf("[PASS] Row loss: %.1f%% (%s -> %s rows, threshold 90%%)\n",
+                row_loss_pct * 100, format(pre_shape[1], big.mark = ","),
+                format(post_shape[1], big.mark = ",")))
+    cp3["passed"] <- cp3["passed"] + 1L
+  } else {
+    cat(sprintf("[FAIL] Row loss: %.1f%% (%s -> %s rows, threshold 90%%)\n",
+                row_loss_pct * 100, format(pre_shape[1], big.mark = ","),
+                format(post_shape[1], big.mark = ",")))
+    cp3["failed"] <- cp3["failed"] + 1L
+  }
 }
+
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp3[["passed"]], cp3[["warning"]], cp3[["failed"]],
+            cp3[["not_verified"]], cp3[["skipped"]]))
+# REASONING: not-verified counts as FAILED — a gate with missing evidence has not gated.
+if (cp3[["failed"]] > 0 || cp3[["not_verified"]] > 0 ||
+    (cp3[["passed"]] + cp3[["warning"]] + cp3[["failed"]]) == 0) {
+  cat("CP3 VALIDATION: FAILED\n")
+  stop("CP3 FAILED - see details above")
+} else if (cp3[["warning"]] > 0) {
+  cat("CP3 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP3 VALIDATION: PASSED\n")
+}
+
+write_parquet(df_transformed, file.path(PROJECT_DIR, "data/processed/2026-01-31_analysis.parquet"))
 
 # EXECUTION LOG will be appended here after running:
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.R
@@ -232,21 +286,30 @@ transformation_summary = pl.DataFrame([
 # Data quality checks
 new_nulls_by_col = {col: post_nulls - pre_nulls for col in ...}
 
-# CP3 Status
+# CP3 Status — the reported status, derived from the printed verdict line
 cp3_status = "PASSED" | "WARNING" | "FAILED"
 ```
 
-> **R projects:** implement the same report with `cat()` for the change summary, a `data.frame`/`tibble` for the transformation summary table, `sapply()`/`dplyr::summarise()` for per-column null deltas, and `stopifnot()`-backed status assignment. The checks and the PASSED/WARNING/FAILED contract are identical.
+> **Log line vs. reported status.** The CP3 code prints a count line and one of three verdict
+> strings: `CP3 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. The status reported back to
+> the orchestrator is the three-valued `PASSED | WARNING | FAILED` used throughout this document.
+> The mapping is fixed: `PASSED` ⇒ `PASSED`, **`PASSED WITH WARNINGS` ⇒ `WARNING`**, `FAILED` ⇒
+> `FAILED`. The verdict is derived from the counters, never hard-coded — `FAILED` when
+> `failed > 0` **or `not_verified > 0`** (a check that could not run has not gated anything) or
+> when zero checks ran; `PASSED WITH WARNINGS` when `warning > 0`; `PASSED` otherwise.
+
+> **R projects:** implement the same report with `cat()` for the change summary, a `data.frame`/`tibble` for the transformation summary table, `sapply()`/`dplyr::summarise()` for per-column null deltas, and counter-derived status assignment (`stopifnot()` for the halting conditions). The checks and the PASSED/WARNING/FAILED contract are identical.
 
 ### Invocation Template: data-scientist + polars (Python) or tidyverse (R)
 
 **Purpose:** Apply rigorous methodology to analysis
 **Stage:** 7 (EDA & Transformation)
-**Subagent:** general-purpose
+**Agent:** research-executor
 
 ```python
 # ITERATIVE INVOCATION PATTERN (Required for Stage 7)
-# Execute transformations ONE AT A TIME, not all at once
+# One transformation per invocation, never several in one call;
+# same-wave transformations may run in parallel (dispatch rule at the top of this file)
 
 # Step 1: Initial EDA (no transformations yet)
 Agent({
@@ -254,7 +317,15 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
-**DATA LOCATION:** data/processed/{processed_data_filename}
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage7_transform/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
+
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{processed_data_filename}
 
 **TASK:** Perform ONLY initial exploratory data analysis. DO NOT transform data yet.
 
@@ -282,7 +353,7 @@ Do NOT proceed to transformations. Return findings for orchestrator review.""",
     subagent_type: "research-executor"
 })
 
-# Step 2: Execute transformations iteratively (one at a time, atomically)
+# Step 2: Execute transformations iteratively (one per invocation, atomically)
 # Orchestrator provides specific transformation from Plan_Tasks.md task sequence
 # CRITICAL: Include prior transformation context for continuity
 
@@ -290,6 +361,14 @@ Agent({
     description: "Stage 7.2: Execute Transformation #{n}",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
+
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage7_transform/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
 
 **IMPORTANT:** This is script-based execution, NOT marimo/Quarto. Write transformations to script files (.py or .R) following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 If execution language is R: "Load `tidyverse` skill for data operations. If spatial data is involved, also load `sf-terra` skill."
@@ -363,41 +442,20 @@ Do NOT proceed to transformation #{n+1}. Return to orchestrator for approval."""
 })
 ```
 
-### Polars (Python) / Tidyverse (R) Skill
-
-**Purpose:** DataFrame operations
-**Stage:** 7 (EDA & Transformation)
-**Subagent:** general-purpose
-
-Typically invoked alongside `data-scientist` skill. Use for specific Polars/tidyverse syntax questions or complex operations.
-
-```python
-Agent({
-    description: "DataFrame Operation: {operation_name}",
-    prompt: """You have access to a skill tool. First, call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
-
-**OPERATION NEEDED:**
-{description_of_operation}
-
-**INPUT DATA:**
-- Location: {data_path}
-- Columns involved: {columns}
-
-**EXPECTED RESULT:**
-{expected_outcome}
-
-Return the code to accomplish this, with validation.""",
-    subagent_type: "general-purpose"
-})
-```
-
 ### QA Follow-Up (MANDATORY)
 
 **After research-executor returns from EACH Stage 7 transformation, orchestrator MUST invoke code-reviewer.**
 Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 7.
 
-**Do NOT proceed to transformation #{n+1} until QA returns PASSED or WARNING.**
+**Do NOT start a transformation that builds on this one, or the next wave, until its QA returns PASSED or WARNING.**
+
+> **QA verdict vocabulary.** A QA script prints a count line
+> (`Checks: {passed} passed, {warnings} warnings, {blockers} blockers, {not_verified} not verified, {skipped} skipped, {info} info`)
+> followed by `QA{n} RESULT: PASSED | WARNING | BLOCKER`. `BLOCKER` if `blockers > 0`; else `WARNING`
+> if `warnings > 0` **or `not_verified > 0`** or if zero checks ran; else `PASSED`. A `[NOT VERIFIED]`
+> check whose input the Plan explicitly promised escalates to BLOCKER at the reviewer's judgment.
+> `BLOCKER` does not satisfy this gate.
 
 ```python
 # Step 3: Repeat Step 2 AND QA for each transformation in sequence
@@ -410,11 +468,19 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage7_transform/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
+
 **TASK:** Perform final CP3 validation after all transformations complete.
 
 **DATA LOCATIONS:**
-- Original: data/processed/{original_filename}
-- Transformed: data/processed/{transformed_filename}
+- Original: {PROJECT_DIR}/data/processed/{original_filename}
+- Transformed: {PROJECT_DIR}/data/processed/{transformed_filename}
 
 **VALIDATION CHECKS:**
 1. Compare original vs. final shape
@@ -435,7 +501,11 @@ All relative paths in referenced files resolve from BASE_DIR.
 - New nulls: {count by column}
 - Unexpected changes: {list}
 
-**CP3 Status:** PASSED | FAILED | WARNING
+**Checkpoint tally (quote the script's count line):**
+`Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`
+
+**CP3 Status:** PASSED | WARNING | FAILED
+(Map from the printed verdict: `PASSED` ⇒ PASSED, `PASSED WITH WARNINGS` ⇒ WARNING, `FAILED` ⇒ FAILED. `not verified > 0` ⇒ FAILED.)
 
 If WARNING or FAILED, provide recommendations.""",
     subagent_type: "research-executor"
@@ -474,8 +544,8 @@ MANDATORY EXECUTION PATTERN:
 - [ ] Validation performed
 - [ ] Status reported (PASS/FAIL)
 - [ ] **Script saved to `scripts/stage7_transform/`** with standard header
-- [ ] **QA review completed IMMEDIATELY AFTER THIS SCRIPT, before the next script begins** (code-reviewer separately invoked per script, not batched)
-- [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
+- [ ] **QA review completed for THIS SCRIPT before any dependent script or the next wave starts** (one code-reviewer per script, not batched)
+- [ ] **QA status:** PASSED/WARNING (any BLOCKER handled before any dependent script or the next wave: a methodology BLOCKER, raised as a `Methodology Conflict` STOP, escalated to the user; any other BLOCKER resolved through revision)
 - [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 
 **After Stage 7.3 (G7):**
@@ -492,7 +562,7 @@ MANDATORY EXECUTION PATTERN:
 
 ## Stage 8: Analysis & Visualization
 
-**Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
+**Agent:** research-executor — ITERATIVE INVOCATION REQUIRED
 **Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels` / `igraph-r` (Stage 8.1), `great-tables` (Python) or `gt` (R) (if formatted tables needed), `plotnine` (Python) or `ggplot2` (R), `plotly` (Python) or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) (if map viz), `igraph` (Python) or `igraph-r` (R) (if network viz) (Stage 8.2)
 **Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
@@ -502,10 +572,12 @@ MANDATORY EXECUTION PATTERN:
 
 ```
 Stage 8.1.x: Statistical Analysis (one script per analysis task)
-    ↓  QA4a after each script
+    ↓  QA4a after each script (+ QA4b if it drew figures)
 Stage 8.2.x: Visualization (one script per visualization task)
     ↓  QA4b after each script
 ```
+
+**CP4 in every Stage 8 script.** Each analysis and visualization script embeds the CP4 block (`agent_reference/VALIDATION_CHECKPOINTS.md` § CP4: Post-Analysis & Visualization Validation): analysis outputs valid, no nulls in critical columns, every promised figure present, non-empty and inspected with the Read tool, and the input read from `data/processed/` (or the Plan's named input), not `data/raw/`. Write the Stage 8 input path with the literal `data/processed/` in it (Python `PROJECT_DIR / "data/processed/<file>"`, as `research-executor.md` does; R `file.path(PROJECT_DIR, "data/processed/<file>")`), not the component form `PROJECT_DIR / "data" / "processed" / …` the Stage 7 example uses: CP4.4 scans the script text for that literal and reports `[NOT VERIFIED]`, which fails CP4, when it finds none. It halts the script on FAILED, and its status is reported with its count line (`PASSED WITH WARNINGS` maps to WARNING). Deliverable completeness (report sections, Plan consistency) is not CP4: it is Pre-Output Verification at Stage 12.
 
 ### Stage 8.1: Statistical Analysis
 
@@ -521,27 +593,36 @@ Stage 8.2.x: Visualization (one script per visualization task)
 3. **Validate assumptions** — Check statistical assumptions before applying methods
 4. **Save results** — Parquet format to `output/analysis/`
 5. **>>> INVOKE code-reviewer (MANDATORY, QA4a) <<<**
-   - After EACH analysis script, orchestrator MUST invoke code-reviewer
+   - After EACH analysis script, orchestrator MUST invoke code-reviewer (QA4a, plus a separate QA4b review when the script drew figures)
    - QA4a validates: statistical methodology, assumption checks, result plausibility
-   - If BLOCKER: trigger revision flow (max 2 attempts)
+   - If BLOCKER: A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). Any other BLOCKER (a bug, a stub, a validation gap) corrects a defect without changing the method and also goes through revision; a code-reviewer STOP of another Issue Category routes as `full-pipeline-mode.md` § Gate Status Translation says. A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
    - If WARNING: log to STATE.md, proceed
-   - If PASSED: proceed to next analysis task or Stage 8.2
+   - If PASSED: proceed to the next wave of analysis tasks or Stage 8.2
 
 #### Invocation Template
 
 **Purpose:** Run statistical analyses (regression, hypothesis tests, model fitting)
 **Stage:** 8.1 (Statistical Analysis)
-**Subagent:** general-purpose
+**Agent:** research-executor
 **Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels` / `igraph-r`
 
 ```python
 # ITERATIVE INVOCATION PATTERN (Required for Stage 8.1)
-# Execute each analysis task ONE AT A TIME, not all at once
+# One analysis task per invocation, never several in one call;
+# same-wave tasks may run in parallel (dispatch rule at the top of this file)
 
 Agent({
     description: "Stage 8.1: Statistical Analysis - {analysis_name}",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
+
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage8_analysis/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
 
 Call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
 Call the skill tool with name '{modeling_library}' — Python options: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn, igraph; R options: r-stats, fixest, plm, survey-r, sf-terra, tidymodels, igraph-r — as specified in the <skill> element of Plan_Tasks.md for this task. For spatial regression tasks, geopandas (Python) or sf-terra (R) IS the modeling library. For network/graph analysis tasks, igraph (Python) or igraph-r (R) IS the modeling library. For complex survey data, svy (Python) or survey-r (R) IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
@@ -551,7 +632,7 @@ When execution language is R and user has Python/Stata background, instead inclu
 
 **IMPORTANT:** This is script-based execution, NOT marimo/Quarto. Write analysis to script files (.py or .R) following `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
-**DATA LOCATION:** data/processed/{analysis_data_filename}
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{analysis_data_filename}
 
 ## ANALYSIS SPECIFICATION (from Plan.md)
 
@@ -585,9 +666,9 @@ When execution language is R and user has Python/Stata background, instead inclu
 ---
 
 **OUTPUT LOCATIONS:**
-- Statistical results: output/analysis/{date_prefix}_{analysis_name}.parquet
-- Summary tables: output/analysis/{date_prefix}_{analysis_name}_summary.parquet
-- Figures (if produced): output/figures/{date_prefix}_{analysis_name}_{plot_type}.png
+- Statistical results: {PROJECT_DIR}/output/analysis/{date_prefix}_{analysis_name}.parquet
+- Summary tables: {PROJECT_DIR}/output/analysis/{date_prefix}_{analysis_name}_summary.parquet
+- Figures (if produced): {PROJECT_DIR}/output/figures/{date_prefix}_{analysis_name}_{plot_type}.png
 
 **RISK REGISTER ITEMS FOR THIS TASK:**
 | Risk | Likelihood | Impact | Mitigation | Watch For |
@@ -619,6 +700,7 @@ Return findings using the Research Executor Output Format
 **Emphasis for this invocation:**
 - Analysis results summary (key coefficients, effect sizes, p-values, model fit)
 - Assumption check outcomes and robustness check consistency
+- CP4 status with its count line
 - File paths created (`output/analysis/`, `output/figures/` if applicable)
 
 Do NOT proceed to next analysis task. Return to orchestrator for approval.""",
@@ -634,7 +716,7 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 
 **If the analysis script also produced figures**, invoke code-reviewer again with **QA4b** (visualization quality) for those figures.
 
-**Do NOT proceed to the next analysis task until QA4a returns PASSED or WARNING.**
+**Do NOT start a task that builds on this analysis, or the next wave, until QA4a, and QA4b if this script drew figures, return PASSED or WARNING.**
 
 ### Stage 8.2: Visualization
 
@@ -647,19 +729,19 @@ with stage-specific values for Stage 8. Use **QA4a** (statistical validity) for 
 
 1. **Create exploratory plots** — Distributions, relationships, patterns
 2. **Create final visualizations** — As specified in Plan.md and Plan_Tasks.md, striving for publication-quality
-3. **Export figures** — PNG format, appropriate dimensions, to `output/figures/`
+3. **Export figures** — static figures as PNG (plotnine / ggplot2), interactive figures as HTML (plotly / plotly-r), appropriate dimensions, to `output/figures/`
 4. **>>> INVOKE code-reviewer (MANDATORY, QA4b) <<<**
    - After EACH visualization script, orchestrator MUST invoke code-reviewer
    - QA4b validates: figure existence, data source accuracy, labeling, visual clarity
-   - If BLOCKER: trigger revision flow (max 2 attempts)
+   - If BLOCKER: A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). Any other BLOCKER (a bug, a stub, a validation gap) corrects a defect without changing the method and also goes through revision; a code-reviewer STOP of another Issue Category routes as `full-pipeline-mode.md` § Gate Status Translation says. A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
    - If WARNING: log to STATE.md, proceed
-   - If PASSED: proceed to next visualization task or Stage 9
+   - If PASSED: proceed to the next wave of visualization tasks or Stage 9
 
 #### Invocation Template: plotnine (Python) or ggplot2 (R)
 
 **Purpose:** Static visualizations (grammar of graphics)
 **Stage:** 8.2 (Visualization)
-**Subagent:** general-purpose
+**Agent:** research-executor
 **Skills:** `data-scientist`, `plotnine` (Python) or `ggplot2` (R)
 
 ```python
@@ -667,6 +749,14 @@ Agent({
     description: "Stage 8.2: Visualization - Static Plots",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
+
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage8_analysis/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
 
 Call the skill tool with name 'plotnine' (Python) or 'ggplot2' (R).
 If formatted summary tables are needed: "Load `great-tables` skill (Python) or `gt` skill (R) for publication-quality table formatting."
@@ -676,9 +766,9 @@ When execution language is R and user has Python/Stata background, instead inclu
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
 
-**DATA LOCATION:** data/processed/{analysis_data_filename}
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{analysis_data_filename}
 
-**OUTPUT LOCATION:** output/figures/
+**OUTPUT LOCATION:** {PROJECT_DIR}/output/figures/
 
 **REQUIRED PLOTS:**
 1. {plot_1_description} → {date_prefix}_{plot_1_name}.png
@@ -698,16 +788,26 @@ Return the plotting code and confirm files are saved.""",
 
 #### Invocation Template: plotly (Python) or plotly-r (R)
 
-**Purpose:** Interactive visualizations
+**Purpose:** Interactive visualizations (saved as HTML only)
 **Stage:** 8.2 (Visualization)
-**Subagent:** general-purpose
+**Agent:** research-executor
 **Skills:** `data-scientist`, `plotly` (Python) or `plotly-r` (R)
+
+Static image export from plotly (kaleido, orca) is not installed in DAAF (`plotly` and `plotly-r` skills). A figure that also needs a PNG (for the report, the executor's visual inspection, or the QA4b review) gets a separate static version from the plotnine / ggplot2 template above.
 
 ```python
 Agent({
     description: "Stage 8.2: Visualization - Interactive Plots",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
+
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage8_analysis/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
 
 Call the skill tool with name 'plotly' (Python) or 'plotly-r' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
@@ -716,19 +816,20 @@ When execution language is R and user has Python/Stata background, instead inclu
 **VISUALIZATION SPECIFICATION (from Plan.md):**
 {visualization_requirements}
 
-**DATA LOCATION:** data/processed/{analysis_data_filename}
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{analysis_data_filename}
 
-**OUTPUT LOCATION:** output/figures/
+**OUTPUT LOCATION:** {PROJECT_DIR}/output/figures/
 
 **REQUIRED PLOTS:**
 1. {plot_description} → {date_prefix}_{plot_name}.html (interactive)
-   Also export: {date_prefix}_{plot_name}.png (static)
+
+Save each figure as HTML only (`write_html` in Python, `htmlwidgets::saveWidget()` in R). Do not attempt a PNG export: kaleido and orca are not installed. Any PNG version of these figures comes from a separate plotnine / ggplot2 script.
 
 **INTERACTIVITY REQUIREMENTS:**
 - Hover information: {hover_fields}
 - Selection: {selection_type}
 
-**VISUAL INSPECTION:** After successful execution, use the **Read tool** to view each generated PNG file. Verify layout, labels, legend readability, and data representation before reporting.
+**OUTPUT CHECK:** After successful execution, confirm each HTML file exists and is non-empty. Visual inspection with the **Read tool** is done on the PNG of the figure's static version.
 
 Return the plotting code and confirm files are saved.""",
     subagent_type: "research-executor"
@@ -739,7 +840,7 @@ Return the plotting code and confirm files are saved.""",
 
 **Purpose:** Choropleth maps, spatial plots, dot-density maps
 **Stage:** 8.2 (Map Visualization)
-**Subagent:** general-purpose
+**Agent:** research-executor
 **Skills:** `data-scientist`, `geopandas` (Python) or `sf-terra` (R)
 
 ```python
@@ -748,6 +849,8 @@ Agent({
     subagent_type: "research-executor",
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
+
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
 
 ## SKILL LOADING
 Call the skill tool with name 'geopandas' (Python) or 'sf-terra' (R).
@@ -761,12 +864,12 @@ Research Question: {research_question}
 Current Stage: 8.2
 
 ## TASK
-**Script Target:** {BASE_DIR}/research/{project_folder}/scripts/stage8_analysis/{step:02d}_{task-name}.py (.py for Python, .R for R)
+**Script Target:** {PROJECT_DIR}/scripts/stage8_analysis/{step:02d}_{task-name}.py (.py for Python, .R for R)
 **Map Type:** {map_type} (e.g., choropleth, dot-density, proportional symbol, bivariate)
 **Geographic Unit:** {geographic_unit} (e.g., county, state, school district, tract)
 **Variable(s) to Map:** {variables}
 **Classification Scheme:** {scheme} (e.g., quantiles, natural breaks, equal interval)
-**Output:** {BASE_DIR}/research/{project_folder}/output/figures/{date}_{description}.png
+**Output:** {PROJECT_DIR}/output/figures/{date}_{description}.png
 **Input Data:** {input_data_path}
 **Shapefile/Geometry Source:** {geometry_source}
 
@@ -786,7 +889,7 @@ Follow the file-first execution protocol:
 Use the **code-reviewer invocation template** from `full-pipeline-mode.md`
 with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for visualization scripts.
 
-**Do NOT proceed to Stage 9 until QA4b returns PASSED or WARNING for all visualization scripts.**
+**Do NOT start a task that builds on this visualization, or the next wave, until its QA4b returns PASSED or WARNING. Do NOT proceed to Stage 9 until every Stage 8 script has passed its reviews: QA4a for each analysis script, QA4b for each visualization script and for each analysis script that drew figures.**
 
 ### Analysis Principles
 
@@ -801,6 +904,8 @@ with stage-specific values for Stage 8. Use **QA4b** (visualization quality) for
 
 ### Visualization Principles
 
+The snippets assume `PROJECT_DIR` is set in the script's Config section, as in the Stage 7 example (`PROJECT_DIR = Path("{PROJECT_DIR}")` in Python, `PROJECT_DIR <- "{PROJECT_DIR}"` in R).
+
 **Static — Python (plotnine):**
 ```python
 from plotnine import ggplot, aes, geom_point, theme_minimal
@@ -810,7 +915,7 @@ plot = (
     + geom_point()
     + theme_minimal()
 )
-plot.save(f"output/figures/{date_prefix}_plot_name.png", dpi=300)
+plot.save(f"{PROJECT_DIR}/output/figures/{date_prefix}_plot_name.png", dpi=300)
 ```
 
 **Static — R (ggplot2):**
@@ -820,7 +925,7 @@ library(ggplot2)
 p <- ggplot(df, aes(x = var1, y = var2)) +
   geom_point() +
   theme_minimal()
-ggsave(sprintf("output/figures/%s_plot_name.png", date_prefix), p, dpi = 300)
+ggsave(file.path(PROJECT_DIR, sprintf("output/figures/%s_plot_name.png", date_prefix)), p, dpi = 300)
 ```
 
 **Interactive — Python (plotly):**
@@ -828,7 +933,7 @@ ggsave(sprintf("output/figures/%s_plot_name.png", date_prefix), p, dpi = 300)
 import plotly.express as px
 
 fig = px.scatter(df, x='var1', y='var2', color='category')
-fig.write_html(f"output/figures/{date_prefix}_plot_name.html")
+fig.write_html(f"{PROJECT_DIR}/output/figures/{date_prefix}_plot_name.html")
 # Note: kaleido/write_image is not available in DAAF — use plotnine for static PNG export
 ```
 
@@ -837,7 +942,8 @@ fig.write_html(f"output/figures/{date_prefix}_plot_name.html")
 library(plotly)
 
 fig <- plot_ly(df, x = ~var1, y = ~var2, color = ~category, type = "scatter", mode = "markers")
-htmlwidgets::saveWidget(fig, sprintf("output/figures/%s_plot_name.html", date_prefix))
+htmlwidgets::saveWidget(fig, file.path(PROJECT_DIR, sprintf("output/figures/%s_plot_name.html", date_prefix)))
+# Note: orca()/kaleido() static export is not available in DAAF — use ggplot2 for static PNG export
 ```
 
 ### Context Requirements
@@ -887,8 +993,9 @@ htmlwidgets::saveWidget(fig, sprintf("output/figures/%s_plot_name.html", date_pr
 - [ ] Figures exported to `output/figures/`
 - [ ] All analysis scripts saved to `scripts/stage8_analysis/` with standard header
 - [ ] All visualization scripts saved to `scripts/stage8_analysis/` with standard header
+- [ ] CP4 PASSED (or PASSED WITH WARNINGS, reported WARNING) in every Stage 8 script, with its count line
 - [ ] QA4a completed for EACH analysis script individually (PASSED/WARNING), invoked immediately after each script
-- [ ] QA4b completed for EACH visualization script individually (PASSED/WARNING), invoked immediately after each script
+- [ ] QA4b completed for EACH visualization script, and for each analysis script that also produced figures, individually (PASSED/WARNING), invoked immediately after each script
 
 ### Gate Criteria (G8)
 
@@ -896,12 +1003,13 @@ htmlwidgets::saveWidget(fig, sprintf("output/figures/%s_plot_name.html", date_pr
 - [ ] Statistical results exported to `output/analysis/`
 - [ ] Figures exported to `output/figures/`
 - [ ] **All scripts saved to `scripts/stage8_analysis/`** with standard header
-- [ ] **QA4a review completed for EACH analysis script** (code-reviewer separately invoked IMMEDIATELY AFTER each individual script, before the next script begins — not batched)
-- [ ] **All QA4a statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA4b review completed for EACH visualization script** (code-reviewer separately invoked IMMEDIATELY AFTER each individual script, before the next script begins — not batched)
-- [ ] **All QA4b statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz) (`.R` for R projects)
-- [ ] **STATE.md updated:** Current Stage: 8, QA4a and QA4b status, analysis result paths, figure paths recorded
+- [ ] **CP4 PASSED in every Stage 8 script** (or PASSED WITH WARNINGS, reported WARNING), with its count line
+- [ ] **QA4a review completed for EACH analysis script** (one code-reviewer per script, before any dependent script or the next wave starts — not batched)
+- [ ] **All QA4a statuses:** PASSED/WARNING (any BLOCKER handled before any dependent script or the next wave: a methodology BLOCKER, raised as a `Methodology Conflict` STOP, escalated to the user; any other BLOCKER resolved through revision)
+- [ ] **QA4b review completed for EACH visualization script, and for each analysis script that also produced figures** (one code-reviewer per script, before any dependent script or the next wave starts — not batched)
+- [ ] **All QA4b statuses:** PASSED/WARNING (any BLOCKER handled before any dependent script or the next wave: a methodology BLOCKER, raised as a `Methodology Conflict` STOP, escalated to the user; any other BLOCKER resolved through revision)
+- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz, and an analysis script that also produced figures, which gets both) (`.R` for R projects)
+- [ ] **STATE.md updated:** Current Stage: 8, CP4, QA4a and QA4b status, analysis result paths, figure paths recorded
 
 ### Multi-Skill Invocation Templates
 
@@ -915,12 +1023,20 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage7_transform/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
+
 Call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
 If this task involves spatial operations (spatial join, point-in-polygon, buffer, geocoding, or working with geometry columns): also call the skill tool with name 'geopandas' (Python) or 'sf-terra' (R).
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
-**DATA LOCATION:** data/processed/{filename}
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{filename}
 
 **TASK:**
 1. Profile the data following data-scientist methodology (preloaded via frontmatter)
@@ -945,20 +1061,28 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
+
+**SCRIPT TARGET:** {PROJECT_DIR}/scripts/stage8_analysis/{step}_{task-name}.py (.R for R)
+**PLAN:** {plan_path} (absolute; or inline the relevant Plan.md sections below)
+
+**RESEARCH QUESTION (verbatim):**
+{research_question}
+
 Call the skill tool with name 'plotnine' (Python) or 'ggplot2' (R) for static publication plots.
 Call the skill tool with name 'plotly' (Python) or 'plotly-r' (R) for interactive exploration plots.
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
-**DATA LOCATION:** data/processed/{filename}
+**DATA LOCATION:** {PROJECT_DIR}/data/processed/{filename}
 
-**STATIC PLOTS (plotnine):**
+**STATIC PLOTS (plotnine / ggplot2, saved as PNG; inspect each with the Read tool):**
 {static_plot_specs}
 
-**INTERACTIVE PLOTS (plotly):**
+**INTERACTIVE PLOTS (plotly / plotly-r, saved as HTML only; kaleido and orca are not installed, so a PNG of any of these comes from the static plots above):**
 {interactive_plot_specs}
 
-**OUTPUT:** output/figures/
+**OUTPUT:** {PROJECT_DIR}/output/figures/
 
 Return all plotting code and confirm files saved.""",
     subagent_type: "research-executor"
@@ -970,7 +1094,6 @@ Return all plotting code and confirm files saved.""",
 ## Stage 9: Script Compilation (NOT Dashboard Building)
 
 **Agent:** `notebook-assembler` (see `.claude/agents/notebook-assembler.md`)
-**Executor:** Subagent (general-purpose)
 **Skill:** `marimo` (Python) or `quarto` (R) — for basic syntax only; agent provides behavioral constraints
 **Purpose:** LITERALLY COPY script file contents into notebook cells (marimo .py or Quarto .qmd)
 
@@ -984,7 +1107,7 @@ Return all plotting code and confirm files saved.""",
 ### Key Constraints (Summary)
 
 - **LITERAL COPY** — Read each script and archive its code without changing its analysis logic
-- **Marimo/Python** — Three contiguous archive cells per script (header, comment-prefixed source ending with `pass`, and immediately adjacent `mo.accordion()` log); an optional post-bundle display may use `pl.read_parquet()` + `mo.ui.table()` or show an existing figure with `mo.image()`
+- **Marimo/Python** — Three contiguous archive cells per script (header, comment-prefixed source ending with `pass`, and immediately adjacent `mo.accordion()` log held in a raw `mo.md(r'''...''')` literal, so backslashes in the log stay verbatim); an optional post-bundle display may use `pl.read_parquet()` + `mo.ui.table(..., selection=None, show_column_summaries=False)` or show an existing figure with `mo.image()`
 - **Quarto/R** — Heading + literal un-commented R archive chunk + immediately following collapsed Execution Log callout + optional display: either the non-transforming Parquet preview or an existing saved Stage 8 figure; every archive chunk has `#| code-fold: false`, `#| eval: false`, and the exact `# --- VERBATIM COPY of scripts/<path> ---` marker, while YAML sets global `execute: eval: false`
 - **Quarto figure display** — Prefer standard Markdown image syntax. The only chunk alternative is a dedicated `#| eval: true`, `#| echo: false` chunk containing only `knitr::include_graphics("existing/path.png")`; it never creates a new visualization.
 - **Execution evidence** — Every final script must have a real, non-empty execution log. A missing log or placeholder such as `No execution log found` blocks canonical Stage 9 assembly; do not archive it as evidence.
@@ -1001,6 +1124,8 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 | `mo.ui.slider()` | Not a dashboard |
 | `mo.ui.multiselect()` | Not a dashboard |
 | `mo.ui.text()` for search | Not a dashboard |
+| `mo.ui.dataframe()` | No transform editor — it filters, groups, aggregates, and pivots |
+| `mo.ui.data_editor()` | No data editing — display existing data only |
 | `.group_by()` (new) | No new aggregations |
 | `.agg()` (new) | No new aggregations |
 | `.pivot()` (new) | No new pivot tables |
@@ -1033,6 +1158,8 @@ Agent({
     prompt: """**BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; the Marimo template's `PROJECT_DIR` cell is set to it, and every display path and Step 6 command builds on it)
+
 Also call the skill tool with name 'marimo' (Python) or 'quarto' (R) for basic notebook syntax.
 
 ## CRITICAL: YOU ARE A COMPILER, NOT AN ANALYST
@@ -1041,7 +1168,7 @@ Your job is to:
 1. READ each script file from `scripts/`
 2. For Python, COPY code into the source cell of a canonical three-cell Marimo archive bundle; for R, COPY code literally and un-commented into a Quarto archive chunk with `#| code-fold: false`, `#| eval: false`, and the exact `# --- VERBATIM COPY of scripts/<path> ---` marker
 3. COPY the execution log VERBATIM into a collapsed Marimo accordion or the immediately following collapsed Quarto callout titled `Execution Log`
-4. OPTIONALLY ADD ONLY the format-specific display: `pl.read_parquet()` + `mo.ui.table()` or an existing-figure `mo.image()` (Python); for R, the canonical `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` preview or an existing saved figure (Markdown image preferred; a dedicated `knitr::include_graphics()` chunk is allowed only with `#| eval: true`, `#| echo: false`, and no other R statements)
+4. OPTIONALLY ADD ONLY the format-specific display: `pl.read_parquet()` + `mo.ui.table(..., selection=None, show_column_summaries=False)` or an existing-figure `mo.image()` (Python); for R, the canonical `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` preview or an existing saved figure (Markdown image preferred; a dedicated `knitr::include_graphics()` chunk is allowed only with `#| eval: true`, `#| echo: false`, and no other R statements)
 
 You are a COPY-PASTE MACHINE with formatting. Nothing more.
 
@@ -1063,14 +1190,21 @@ scripts/
 
 1. **Header cell (Markdown):** script name, paths, status, and version history
 2. **Code archive cell:** VERBATIM Python code copy, every line prefixed with `# `, ending with `pass`
-3. **Immediately adjacent execution-log cell:** VERBATIM log in a collapsed `mo.accordion()`
+3. **Immediately adjacent execution-log cell:** VERBATIM log in a collapsed `mo.accordion()`, held in a RAW literal: `mo.md(r'''...''')`, or the `r`-prefixed triple-double-quote form when the log contains `'''`; a log containing both delimiters is a STOP (notebook-assembler "Marimo: Format the Log Literal")
 
 After the complete three-cell bundle, an **optional inspection/display cell** may contain only:
     ```python
-    df = pl.read_parquet("path/to/output.parquet")
-    mo.ui.table(df.head(100))
+    df_5_1 = pl.read_parquet(PROJECT_DIR / "path/to/output.parquet")
+    mo.ui.table(df_5_1.head(100), selection=None, show_column_summaries=False)
     ```
-    For an existing saved figure, use `mo.image()` instead of creating a plot.
+    `selection=None` drops the row-selection checkboxes and
+    `show_column_summaries=False` the column summary charts: a plain read-only table.
+    For an existing saved figure, use `mo.image(PROJECT_DIR / "...")` instead of
+    creating a plot, passing the `Path` itself, never `str(...)` (only a `Path`
+    to a missing file fails the Step 6b check).
+    Build every display path from `PROJECT_DIR` and give each preview its own
+    name (`df_5_1`, `df_5_2`, ...); a relative path or a reused name fails the
+    Step 6 checks.
 
 ### R / Quarto: Canonical Archive-Section Pattern
 
@@ -1122,16 +1256,11 @@ pass
 ```
 (R/Quarto: this is an archive chunk, not Cell 2. It includes `#| code-fold: false`, `#| eval: false`, then `# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---` — the exact anchor `scripts/decompile_notebook.R` uses to extract scripts — followed by the literal, un-commented R code.)
 
-The Marimo Cell 3 accordion should contain EXACTLY:
-```
-# EXECUTION LOG
-# Executed: 2026-01-24
-# STDOUT: Hello
-```
+The Marimo Cell 3 accordion should contain EXACTLY the log lines below the `# EXECUTION LOG` marker with their `# ` prefix removed (here `Executed: 2026-01-24` and `STDOUT: Hello`; a real `run_with_capture.sh` log also has `=====` banner lines, which are dropped), inside one plain fence in a raw `mo.md(r'''...''')` literal. A raw literal keeps every backslash in the log as printed; never use a non-raw string. The fence is three backticks unless the log itself contains a run of three or more, in which case it is one backtick longer than the longest run, so no log line can close it early.
 
 ## OUTPUT
 
-**Notebook file:** {date_prefix}_{title}.py (Python/Marimo) or {date_prefix}_{title}.qmd (R/Quarto)
+**Notebook file:** {PROJECT_DIR}/{date_prefix}_{title}.py (Python/Marimo) or {PROJECT_DIR}/{date_prefix}_{title}.qmd (R/Quarto)
 
 ## VERIFICATION BEFORE RETURNING
 
@@ -1143,20 +1272,62 @@ For Marimo, confirm every script has one complete three-cell header/source/log a
 - `with_columns` / `mutate` in optional inspection code
 - newly generated visualizations
 
-The ONLY acceptable optional new code is `pl.read_parquet()` + `mo.ui.table()` / existing-figure display (Python), or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` / existing-figure display (R).""",
+The ONLY acceptable optional new code is `pl.read_parquet()` + `mo.ui.table(..., selection=None, show_column_summaries=False)` / existing-figure display (Python), or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` / existing-figure display (R).
+
+Before emitting each Cell 3, run the delimiter and fence searches on the script's EXECUTION LOG section (notebook-assembler "Marimo: Check the Log Before Emitting Cell 3"); never edit a log to fit a fence.
+
+Then run your Step 6 checks exactly as notebook-assembler Step 6 defines them, and quote the evidence each requires. Python: 6a `marimo check {PROJECT_DIR}/{date_prefix}_{title}.py --format json --select MB` (never `--fix`, `--unsafe-fixes` or `--strict`); 6b `marimo export html` writing to `{PROJECT_DIR}/__marimo__/stage9_check/{date_prefix}_{title}.html` (never `marimo run --headless`); 6c decompile into a new `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{date_prefix}_{title}_{n}` folder with `python3 /daaf/scripts/decompile_notebook.py` and compare with `git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts <that folder>`. 6c passes only when all four of its conditions hold: (i) a clean decompile; (ii) the `Validated {N}` count equals your Step 1 final-version inventory, built from the scripts directory; (iii) the decompiled paths are exactly those final-version paths; (iv) every numstat line is an ` => dev/null}` line or the single `MANIFEST.md` line. Judge 6c by those lines, never by the `git diff` exit code. Then run the trailing-whitespace search (`[ \t]$`) on each final script and report every match as an INFO under Issues Found (Step 6c says why). Never alter archived code or log text to pass any check: if that is the only fix, STOP and report; a failure of 6c (ii), (iii) or (iv) is always a STOP. R: `quarto render {PROJECT_DIR}/{date_prefix}_{title}.qmd`.""",
     subagent_type: "notebook-assembler"
 })
 ```
 
+**Render and export evidence for Stage 12.** Record notebook-assembler's Step 6 outcome in STATE.md § Final Review Log > Stage 9 Check Evidence (Python: the `marimo check` summary, the `marimo export html` exit code and the 6c result; R: the `quarto render` exit status and the rendered HTML path; each with the timestamp of the run, so Stage 12 can tell whether a later edit or failed re-render postdates it). data-verifier never re-runs the export, render or decompiler at Stage 12 (a read-only `marimo check` is allowed; data-verifier anti-pattern 8); it reads this evidence.
+
+### Invocation Template: integration-checker (Stage 9 wiring check)
+
+**Purpose:** Verify the new notebook is wired to the data, figures and QA scripts it claims
+**Stage:** 9, after notebook-assembler returns PASSED or WARNING
+**Agent:** integration-checker (see `.claude/agents/integration-checker.md`, Core Behavior 6 for the per-stage scope)
+**Model:** `sonnet` (frontmatter default)
+
+```python
+Agent({
+    description: "Stage 9: Integration Check (notebook wiring)",
+    prompt: """**BASE_DIR:** {BASE_DIR}
+All relative paths in referenced files resolve from BASE_DIR.
+
+**STAGE:** 9 (Report not written yet; use the Stage 9 scope in your Core Behavior 6)
+
+**CONTEXT:**
+- Plan path: {plan_path}
+- Notebook path: {notebook_path}
+- Project folder: {PROJECT_DIR}
+- Execution scripts and their output files (Stages 5-8): {script_output_list}
+- Expected figures (Plan.md / Stage 8): {figure_list}
+
+**TASK:**
+Check notebook -> data and notebook -> figure references, script -> QA-script
+coverage in scripts/cr/, stage transitions 5 -> 9, and data orphans. Read-only:
+no files written, no Python or R of your own, no render or export.
+
+Return findings using the Integration Checker Output Format, naming the
+protocol steps that were out of scope at this stage.""",
+    subagent_type: "integration-checker"
+})
+```
+
+**Handling the verdict** (`full-pipeline-mode.md` § Gate Status Translation; `ERROR_RECOVERY.md` § Error Recovery Routing, "Integration issue"): Record every verdict in the Stage 9 row of STATE.md § Final Review Log > Integration Checks. CONNECTED (INFO findings allowed) satisfies the G9 wiring checkbox. ISSUES FOUND at WARNING: log it in that row; Stage 10 reads that row and carries the WARNING into the QA Summary Report. ISSUES FOUND at BLOCKER or a STOP: the gate is not satisfied; the orchestrator routes the fix (notebook path or display fixes to notebook-assembler; a missing QA script to code-reviewer; a missing or misplaced output to research-executor or debugger), then re-dispatches integration-checker for Stage 9. Orphans are INFO and never deleted.
+
 ### Gate Criteria (G9)
 
 - [ ] All final successful script versions identified; prior versions documented
-- [ ] **Marimo:** every script has a complete three-cell header/source/log archive bundle; archived Python is comment-prefixed with trailing `pass`; any optional display follows the bundle; `marimo run` completes without errors
+- [ ] **Marimo:** every script has a complete three-cell header/source/log archive bundle; archived Python is comment-prefixed with trailing `pass`; any optional display follows the bundle; the `marimo check --select MB` structural gate passes (exit 0, `summary.errored` false, `summary.files_with_issues` 0) and the `marimo export html` execution check exits 0, and the Step 6c verbatim fidelity check passes all four conditions (clean decompile; bundle count and decompiled paths equal the Step 1 final-version inventory; every numstat line is an ` => dev/null}` line or the single `MANIFEST.md` line; notebook-assembler Step 6c), with the assembler's report quoting the evidence for each
 - [ ] **Quarto:** every script uses heading + literal archive chunk + immediately following Execution Log callout + optional inspection; archive chunks include `#| code-fold: false`, per-chunk `#| eval: false`, and the exact decompiler marker; canonical rich YAML includes global `execute: eval: false`
 - [ ] **Quarto render:** `quarto render` completes with only explicitly enabled optional previews evaluated; archived Stage 5-8 scripts are not re-run, and render success is not represented as full analysis reproduction
 - [ ] Navigation is format-appropriate (Marimo navigation/TOC cells; Quarto YAML TOC and Markdown headings)
 - [ ] Optional data and figure displays resolve existing artifacts without transformation or new visualization
-- [ ] Every final script has a real, non-placeholder execution log displayed verbatim in a collapsed Marimo accordion or immediately following collapsed Quarto callout
+- [ ] Every final script has a real, non-placeholder execution log displayed verbatim in a collapsed Marimo accordion (raw `mo.md()` literal) or immediately following collapsed Quarto callout
+- [ ] **Wiring:** integration-checker (Stage 9 scope) returned CONNECTED, or ISSUES FOUND with WARNING only (logged in STATE.md § Integration Checks); no BLOCKER open
 
 ---
 
@@ -1171,37 +1342,14 @@ The ONLY acceptable optional new code is `pl.read_parquet()` + `mo.ui.table()` /
 1. **Aggregate Continuous QA Findings**
    - Collect all WARNING items logged during Stages 5-8
    - Collect all INFO items logged during Stages 5-8
+   - Collect any WARNING carried from the Stage 9 integration check (the Stage 9 row of STATE.md § Final Review Log > Integration Checks) and list it under Outstanding WARNINGs
    - Review for patterns across multiple scripts
    - Document BLOCKER issues that were resolved (and how)
 
 2. **Generate QA Summary Report**
-   ```markdown
-   ## QA Summary Report
-
-   ### Execution Overview
-   | Stage | Scripts | QA Reviews | BLOCKERs Found | BLOCKERs Resolved |
-   |-------|---------|------------|----------------|-------------------|
-   | 5     | 2       | 2          | 0              | N/A               |
-   | 6     | 2       | 2          | 0              | N/A               |
-   | 7     | 3       | 3          | 2              | 2 (via revision)  |
-   | 8 (QA4a) | 1    | 1          | 0              | N/A               |
-   | 8 (QA4b) | 1    | 1          | 0              | N/A               |
-
-   ### Resolved BLOCKERs
-   | Script | Issue | Resolution | Revision Count |
-   |--------|-------|------------|----------------|
-   | 01_join-data.py | Fan-out join | Fixed key uniqueness | 2 |
-
-   ### Outstanding WARNINGs
-   | Script | Warning | Assessment |
-   |--------|---------|------------|
-   | 01_clean-ccd.py | 38% suppression | Acceptable, documented |
-
-   ### INFO Items
-   | Script | Observation |
-   |--------|-------------|
-   | 01_fetch-ccd.py | Could parallelize data access calls |
-   ```
+   - Use the template in `agent_reference/QA_CHECKPOINTS.md` § Integration with Stage 10 > QA Summary for Stage 10 (Execution Overview, Resolved BLOCKERs, Outstanding WARNINGs, INFO Items)
+   - In the Execution Overview, give Stage 8 two rows, `8 (QA4a)` and `8 (QA4b)`, because an analysis script that drew figures has one review of each kind
+   - List any WARNING carried from the Stage 9 integration check under Outstanding WARNINGs (step 1)
 
 3. **Review WARNING Patterns**
    - Identify systemic issues across multiple scripts
@@ -1223,13 +1371,13 @@ After each script execution:
    - `software` type --> Software & Tools table
    - `method` type --> Methodological References table
    Deduplicate: if a citation with the same Library/Method name already exists in STATE.md, skip it (first occurrence wins). Include the rationale, stage number, and script filename.
-4. **Next:** Proceed to next script in wave, or check gate if wave complete
+4. **Next:** When every script in the wave has its review recorded, dispatch the next wave, or check the stage gate after the last wave
 
 ### Gate Criteria (G10)
 
 - [ ] **QA Findings Summary written to STATE.md** (populate the `## QA Findings Summary` section with aggregated results: QA Checkpoint Summary table, BLOCKERs Resolved, WARNINGs Logged, Unresolved Issues)
 - [ ] **QA Summary Report generated** (aggregates all Stages 5-8 findings)
-- [ ] **All BLOCKERs resolved** (via revision during Stages 5-8)
+- [ ] **All BLOCKERs resolved** (during Stages 5-8: through revision, or by the user's decision for a methodology BLOCKER)
 - [ ] **All WARNINGs documented** (with assessment of impact)
 - [ ] **No missing QA reviews** (every Stage 5-8 script has a corresponding code-reviewer invocation)
 - [ ] **If unresolved issues found:** STOP, escalate
@@ -1240,23 +1388,24 @@ After each script execution:
 
 ### Phase Status Update 4 (PSU4): Analysis Complete
 
-**Trigger:** Gate G10 satisfied (QA aggregation complete, BLOCKERs resolved)
+**Trigger:** Every G10 item above the two PSU4 items is checked (QA aggregation complete, BLOCKERs resolved)
 **Blocking:** YES — Stage 11 CANNOT begin until user confirms PSU4
+**Header shown to the user:** `**Checkpoint: Analysis Complete**`
 
 **Actions:**
 1. Compile analysis summary from Stages 7-8 and QA aggregation from Stage 10
 2. Reference key visualizations by file path for user inspection
-3. Present PSU4 to user using the PSU template
+3. Present PSU4 to user using the PSU template (`full-pipeline-mode.md` § Phase Status Updates (Mandatory))
 4. WAIT for explicit user confirmation
 
-**PSU4 Content Requirements:**
+**PSU4 Content Requirements** (this is the one list for PSU4; every item lands in text the user reads, so word it per the Plain-Language Rule in `SKILL.md` § User-Facing Communication Standards):
 - Transformation summary: joins performed, derived variables created, final analysis dataset shape
 - EDA highlights: key distributions, notable patterns, surprising findings
 - Statistical analysis results: key findings with effect sizes and confidence intervals where applicable
 - Visualization inventory: file paths to all generated figures (so user can inspect them)
-- QA aggregation summary: all accumulated WARNINGs from Stages 5-8, with resolution status
+- Quality review summary: every note for your awareness from the quality reviews of all scripts, with its status, each explained in plain words (the Stage 10 aggregation of the QA1-QA4b results; no QA codes or severity labels in the user's text)
 - Any deviations from Plan.md methodology (with rationale)
-- Notebook compilation status (Stage 9): `marimo run` succeeded for Python or `quarto render` validated R/Quarto assembly and enabled previews; all scripts represented
+- Notebook status: the notebook's path, that it opens and runs, that every final script is in it with its execution record, and that each archived script matches its original file (internally, Python: the `marimo check` gate passed, `marimo export html` ran every cell, and the Step 6c fidelity check passed all four conditions; R: `quarto render` validated assembly and enabled previews)
 - Research Outcomes progress: which can be evaluated, preliminary assessment
 
 **User Response Handling:**
@@ -1266,37 +1415,20 @@ After each script execution:
 - **Flag concern about findings** → Orchestrator investigates and reports back
 - **Ask questions** → Answer, then re-present approval request
 
----
-
-## Phase Status Update 4 (PSU4): Analysis Complete
-
-After Stage 10 (QA Aggregation — performed by the orchestrator), present PSU4 to the user. Use the generic PSU template from `full-pipeline-mode.md` with the content below.
-
-### PSU4 Checkpoint Purpose
+#### PSU4 Checkpoint Purpose
 
 Include in the "Why this checkpoint" field:
 > "This is your chance to review all results and the quality review summary before they're synthesized into the final report."
 
-### PSU4 Phase Transition Bridge
+#### PSU4 Phase Transition Bridge
 
 Include in the "What Comes Next" field:
 > "All analysis is complete and quality-reviewed. I'll now compile everything into a final report and run an independent verification pass to make sure the report accurately reflects the data and methodology."
 
-### PSU4 Feedback Guidance
+#### PSU4 Feedback Guidance
 
 Include in the "What's Most Useful From You Here" field:
 > "Do the results make sense substantively? Are there additional analyses or visualizations you'd like to see? Any results that seem surprising and worth investigating further?"
-
-### PSU4 Content Requirements
-
-The PSU4 checkpoint MUST include:
-- Transformation summary: joins performed, derived variables, final analysis dataset shape
-- Statistical analysis results: key findings with effect sizes and confidence intervals
-- Key visualizations produced (reference file paths for user to inspect)
-- QA summary: QA3/QA4a/QA4b results across all scripts
-- Accumulated warnings from Stages 5-8 (the Stage 10 QA aggregation)
-- Any deviations from Plan.md methodology
-- Notebook compilation status
 
 ---
 
@@ -1309,7 +1441,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Pre-state and post-state both documented
 - [ ] Row change percentage calculated
 - [ ] Invariants checked with PASS/FAIL status
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] Overall status: PASSED/WARNING/FAILED (log verdict `PASSED WITH WARNINGS` maps to WARNING; count line shows 0 not verified)
 - [ ] If FAILED: Issue description and proposed fix present
 - [ ] For joins: Cardinality validation performed
 
@@ -1320,17 +1452,17 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Results saved to `output/analysis/` as parquet
 - [ ] Key findings documented with effect sizes and confidence intervals
 - [ ] Interpretation aligned with Research Outcomes in Plan.md
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] CP4 status stated (PASSED/WARNING/FAILED; log verdict `PASSED WITH WARNINGS` maps to WARNING) with its count line, showing 0 not verified
 
 ### Stage 8.2 (Visualization) Verification
 
 - [ ] All Plan.md-specified figures generated
-- [ ] Figures saved to `output/figures/` as PNG
+- [ ] Figures saved to `output/figures/`: static figures as PNG, interactive figures as HTML (each with a static PNG version where the report or a visual check needs one)
 - [ ] Proper labeling (title, axes, legend, source note)
 - [ ] Data source in visualization matches analysis dataset
 - [ ] Colorblind-safe palette used
 - [ ] Visual inspection performed via **Read tool** on generated PNG files
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] CP4 status stated (PASSED/WARNING/FAILED; log verdict `PASSED WITH WARNINGS` maps to WARNING) with its count line, showing 0 not verified
 
 ---
 

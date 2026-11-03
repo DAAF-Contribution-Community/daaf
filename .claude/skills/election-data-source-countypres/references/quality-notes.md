@@ -115,16 +115,34 @@ county FIPS codes (09001-09015).
 
 **Workaround:** Use 2020-vintage Census TIGER shapefiles when CT county coverage matters.
 
+### County FIPS Changes Within 2000-2024
+
+**Severity:** WARNING
+
+Some county-equivalent codes changed during the dataset's span, so a county can appear or disappear in a `county_fips` panel for administrative reasons:
+
+| Change | Effective | Codes |
+|--------|-----------|-------|
+| Broomfield County, CO created | 2001-11-15 | new 08014 (from parts of 08001, 08013, 08059, 08123) |
+| Clifton Forge city, VA joined Alleghany County | 2001-07-01 | 51560 → 51005 |
+| Bedford city, VA joined Bedford County | 2013-07-01 | 51515 → 51019 |
+| Shannon County, SD renamed Oglala Lakota County | 2015-05-01 | 46113 → 46102 |
+| Wade Hampton Census Area, AK renamed Kusilvak | 2015-07-01 | 02270 → 02158 |
+| Valdez-Cordova Census Area, AK split | 2019-01-02 | 02261 → 02063, 02066 |
+| Connecticut counties replaced by nine planning regions | 2022 Census vintage | 09001-09015 retired |
+
+Source: Census Bureau, "Substantial Changes to Counties and County Equivalent Entities: 1970-Present" (2000s and 2010s); NHGIS Geographic Crosswalks (Connecticut). Check which code MEDSL uses in each year before building cross-year panels.
+
 ### Kansas City, MO (FIPS 2938000)
 
 **Severity:** INFO
 
-Kansas City, Missouri is an independent city that spans multiple counties. It is assigned
-a non-standard FIPS code of 2938000 (standard MO county FIPS range: 29001-29510).
+Kansas City, Missouri is an incorporated city (Census place 29-38000) spanning parts of Cass, Clay, Jackson, and Platte counties; it is not an independent city (Missouri's only county-equivalent city is St. Louis city, 29510). MEDSL reports it separately under the non-standard code 2938000 (state FIPS 29 + place code 38000; standard MO county FIPS range: 29001-29510).
 
 **Impact:**
 - Will not join to standard census/education datasets
 - Only affects MO rows for Kansas City
+- Unverified against the data: if Kansas City's votes appear only under 2938000, the Cass, Clay, Jackson, and Platte rows may exclude them; check before computing county-level shares for those counties.
 
 ### Null county_fips (CT, ME, RI)
 

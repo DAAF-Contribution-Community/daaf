@@ -5,8 +5,8 @@ description: >-
 metadata:
   audience: research-coders
   domain: python-library
-  library-version: "1.x"
-  skill-last-updated: "2026-03-26"
+  library-version: "1.39.3"
+  skill-last-updated: "2026-11-01"
 ---
 
 # Polars Skill
@@ -26,7 +26,7 @@ Polars is a **fast** DataFrame library for Python (and Rust):
 
 ## Version Notes
 
-This skill targets **Polars 1.x** (tested with 1.37.1). Key changes from 0.x:
+This skill targets **Polars 1.x** (tested with 1.39.3). Key changes from 0.x:
 - `apply` renamed to `map_elements` (0.19+)
 - `groupby` renamed to `group_by` (0.19+)
 - `melt` renamed to `unpivot` (1.0+)
@@ -312,7 +312,7 @@ lf.explain()  # Show plan
 | NumPy Integration | `./references/interop.md` |
 | DuckDB Integration | `./references/interop.md` |
 | Type Errors | `./references/gotchas.md` |
-| qcut Label Gotcha | `./references/gotchas.md` |
+| qcut Categorical Output | `./references/gotchas.md` |
 | Null Handling Issues | `./references/gotchas.md` |
 | Expression Context Errors | `./references/gotchas.md` |
 | Performance Anti-Patterns | `./references/gotchas.md` |

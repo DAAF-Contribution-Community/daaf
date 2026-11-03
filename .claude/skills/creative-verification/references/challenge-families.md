@@ -2,9 +2,10 @@
 
 The 12 challenge families of creative verification, organized over the four
 **Shadish–Cook–Campbell validity types** (internal, statistical-conclusion,
-construct, external; Shadish, Cook & Campbell 2002 —
-https://pmc.ncbi.nlm.nih.gov/articles/PMC6182849/ ; graphical threat catalog:
-https://journals.lww.com/epidem/Fulltext/2020/05000/A_Graphical_Catalog_of_Threats_to_Validity_.11.aspx).
+construct, external; Shadish, Cook & Campbell 2002, *Experimental and
+Quasi-Experimental Designs for Generalized Causal Inference* — accessible overview:
+Petursdottir & Carr 2018, https://pmc.ncbi.nlm.nih.gov/articles/PMC6182849/ ;
+graphical threat catalog: Matthay & Glymour 2020, https://doi.org/10.1097/EDE.0000000000001161).
 Each family turns a *worry* into a *test* — a concrete observable that would
 discriminate the focal claim from a competing explanation. This file is the
 working reference for designing that test: per family you get a definition, its
@@ -244,7 +245,7 @@ scopes it to that definition. A proxy that diverges from its gold standard is
 *reveals data/process issue*.
 
 **Pitfalls.** Reporting only the operationalization that "works" is textbook forking
-paths (https://atticusli.com/replication-crisis/garden-of-forking-paths/). Unit-
+paths (Gelman & Loken 2013 — https://sites.stat.columbia.edu/gelman/research/unpublished/p_hacking.pdf). Unit-
 conversion errors (per-pupil vs. total dollars) masquerade as substantive effects.
 
 ---
@@ -304,8 +305,8 @@ forks; when the researcher worries "would it hold under a different model?"
 **Recipe 6a — Specification curve (executable).** The canonical multiverse summary
 (Steegen et al. 2016 —
 https://sites.stat.columbia.edu/gelman/research/published/multiverse_published.pdf ;
-Simonsohn/Simmons/Nelson spec-curve;
-https://statmodeling.stat.columbia.edu/2024/11/12/specification-curve-analysis-and-the-multiverse/).
+Simonsohn, Simmons & Nelson 2020, specification curve —
+https://doi.org/10.1038/s41562-020-0912-z).
 No package is installed — build the loop by hand; this is standard DAAF idiom.
 
 ```python
@@ -454,9 +455,11 @@ for i in range(20):
 needs a truncated axis or hidden uncertainty *weakens*. Correctly picking the real
 lineup panel *supports* the pattern claim; failing to *weakens* it.
 
-**Pitfalls.** Visual predictive/lineup checks mislead when the null model's implicit
-assumptions don't match the data (https://arxiv.org/pdf/2503.01509) — state the null
-model. Interactive dashboards multiply framing risk; they are exploratory interfaces,
+**Pitfalls.** State the null model used to generate the decoys; the lineup's validity
+depends on choosing an appropriate null and decoy-generating method (Wickham et al.
+2010, §4). Bayesian visual predictive checks carry a related caution: they can mislead
+when their implicit assumptions do not match the data
+(https://arxiv.org/pdf/2503.01509). Interactive dashboards multiply framing risk; they are exploratory interfaces,
 not evidence (`interactive-artifact-qa.md`).
 
 ---
@@ -621,11 +624,13 @@ confounder's strength *supports* the claim; a small one *weakens* it. Report the
 number *and* the benchmark it is compared against — a bare statistic is not evidence.
 
 **Pitfalls.** Oster δ=1 is *not* an automatic benchmark (δ can converge to any real
-number absent an exogeneity assumption; https://arxiv.org/html/2504.21106). Naive DiD
-pre-trend tests are low-powered and must not be read as "proof" of parallel trends
-(https://arxiv.org/pdf/2510.26470). The IV exclusion restriction is untestable —
-falsify via overidentification/placebo outcomes only
-(https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html).
+number absent an exogeneity assumption; Diegert, Masten & Poirier, arXiv:2504.21106 —
+https://arxiv.org/html/2504.21106). Naive DiD pre-trend tests are low-powered and must
+not be read as "proof" of parallel trends (Roth 2022 —
+https://doi.org/10.1257/aeri.20210236). The IV exclusion restriction is untestable —
+falsify via placebo outcomes
+(https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html);
+overidentification tests are a further check (DAAF inference, not from that source).
 Full caveats: `sensitivity-statistics.md`.
 
 ---
@@ -636,9 +641,10 @@ Full caveats: `sensitivity-statistics.md`.
 
 **Definition.** Whether the estimate transports beyond this sample, period, or
 setting. Framed formally, generalization is a trial-participation / selection-into-
-sample problem (Stuart; Pearl & Bareinboim; Degtiar & Rose 2021 —
+sample problem (Stuart; Pearl & Bareinboim; Degtiar & Rose 2023 —
+https://doi.org/10.1146/annurev-statistics-042522-103837 , preprint
 https://arxiv.org/pdf/2102.11904 ;
-https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/External-Validity-From-Do-Calculus-to-Transportability-Across-Populations/10.1214/14-STS486.full).
+Pearl & Bareinboim 2014 — https://doi.org/10.1214/14-STS486).
 
 **When to use.** Any claim intended to inform a population, period, or geography wider
 than the estimation sample; when the researcher asks "does this hold elsewhere?"
@@ -695,15 +701,16 @@ sample's covariate support is unsupported regardless of reweighting.
 
 ## References
 
-- Shadish, Cook & Campbell (2002), validity threat taxonomy — https://pmc.ncbi.nlm.nih.gov/articles/PMC6182849/ ; graphical catalog — https://journals.lww.com/epidem/Fulltext/2020/05000/A_Graphical_Catalog_of_Threats_to_Validity_.11.aspx
+- Shadish, W. R., Cook, T. D., & Campbell, D. T. (2002). *Experimental and Quasi-Experimental Designs for Generalized Causal Inference*. Houghton Mifflin. Accessible overview: Petursdottir & Carr (2018), *Behavior Analysis in Practice* 11, 228ff — https://pmc.ncbi.nlm.nih.gov/articles/PMC6182849/
+- Matthay & Glymour (2020), A Graphical Catalog of Threats to Validity, *Epidemiology* 31(3):376–384 — https://doi.org/10.1097/EDE.0000000000001161
 - Steegen, Tuerlinckx, Gelman & Vanpaemel (2016), Multiverse analysis — https://sites.stat.columbia.edu/gelman/research/published/multiverse_published.pdf
-- Simonsohn, Simmons & Nelson, specification curve (overview) — https://statmodeling.stat.columbia.edu/2024/11/12/specification-curve-analysis-and-the-multiverse/
+- Simonsohn, Simmons & Nelson (2020), "Specification curve analysis", *Nature Human Behaviour* 4(11):1208–1214 — https://doi.org/10.1038/s41562-020-0912-z
 - minP multiplicity adjustment across specifications — https://arxiv.org/pdf/2401.11537
-- Gelman & Loken (2013), Garden of Forking Paths — https://atticusli.com/replication-crisis/garden-of-forking-paths/
+- Gelman, A. & Loken, E. (2013). "The garden of forking paths: Why multiple comparisons can be a problem, even when there is no 'fishing expedition' or 'p-hacking' and the research hypothesis was posited ahead of time." Unpublished manuscript, Columbia University — https://sites.stat.columbia.edu/gelman/research/unpublished/p_hacking.pdf
 - Wickham, Cook, Hofmann & Buja (2010), Graphical Inference (lineup protocol) — https://vita.had.co.nz/papers/inference-infovis.pdf ; residual diagnostics application — https://arxiv.org/pdf/2308.05964
-- Visual predictive checks, caution — https://arxiv.org/pdf/2503.01509
-- Oster δ, benchmark caveat — https://arxiv.org/html/2504.21106
-- DiD pre-trend testing, caution — https://arxiv.org/pdf/2510.26470
-- RD McCrary density + covariate placebo — https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf
-- IV exclusion untestable — https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html
-- Degtiar & Rose (2021), generalizability/transportability review — https://arxiv.org/pdf/2102.11904 ; Pearl & Bareinboim, transportability — https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/External-Validity-From-Do-Calculus-to-Transportability-Across-Populations/10.1214/14-STS486.full
+- Bayesian visual predictive checks, caution — https://arxiv.org/pdf/2503.01509
+- Oster δ, benchmark caveat — Diegert, Masten & Poirier, *An Axiomatic Approach to Comparing Sensitivity Parameters*, arXiv:2504.21106 — https://arxiv.org/html/2504.21106
+- Roth (2022), Pretest with Caution: Event-Study Estimates after Testing for Parallel Trends, *AER: Insights* 4(3):305–322 — https://doi.org/10.1257/aeri.20210236 ; conditionally valid pre-tests — Mikhaeil & Harshaw, arXiv:2510.26470 — https://arxiv.org/pdf/2510.26470
+- RD manipulation: a passed density test does not prove no manipulation (equivalence testing) — Fitzgerald (2025) — https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf
+- IV exclusion untestable; placebo-outcome falsification (the overid point is DAAF inference) — https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html
+- Degtiar & Rose (2023), A Review of Generalizability and Transportability, *Annual Review of Statistics and Its Application* 10:501–524 — https://doi.org/10.1146/annurev-statistics-042522-103837 (preprint 2021: https://arxiv.org/pdf/2102.11904) ; Pearl, J., & Bareinboim, E. (2014). External Validity: From Do-Calculus to Transportability Across Populations. *Statistical Science*, 29(4), 579–595. https://doi.org/10.1214/14-STS486

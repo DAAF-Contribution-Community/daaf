@@ -21,7 +21,8 @@
 # BEHAVIOR
 #   1. The source must exist and be readable.
 #   2. The destination must NOT already exist (immutable versioning never
-#      overwrites — every version is preserved).
+#      overwrites — every version is preserved), and its folder must already
+#      exist (create it first with `mkdir -p`).
 #   3. The source and destination must share the same extension.
 #   4. If the source carries an execution log (a `^# EXECUTION LOG` line), only
 #      the code ABOVE the appended log block is written to the destination (the
@@ -73,6 +74,16 @@ if [ -e "$DEST" ]; then
     exit 1
 fi
 
+# --- Destination folder must exist --------------------------------------------
+# Checked here, before mktemp, which would otherwise fail on a missing folder
+# with only its own "No such file or directory" message.
+DEST_DIR=$(dirname "$DEST")
+if [ ! -d "$DEST_DIR" ]; then
+    echo "Error: The destination folder does not exist: $DEST_DIR" >&2
+    echo "Create it first (mkdir -p \"$DEST_DIR\"), then run this command again." >&2
+    exit 1
+fi
+
 # --- Source and destination must share the same extension --------------------
 SRC_EXT="${SRC##*.}"
 DEST_EXT="${DEST##*.}"
@@ -97,7 +108,6 @@ fi
 # creates it, and mv within one filesystem is atomic). The EXIT trap removes the
 # temp file on every exit path — including the marker-survival refusal below —
 # and becomes a harmless no-op once the temp file has been mv'd away.
-DEST_DIR=$(dirname "$DEST")
 TMP_DEST=$(mktemp "${DEST_DIR}/.create_script_revision.XXXXXX")
 trap 'rm -f "$TMP_DEST"' EXIT
 

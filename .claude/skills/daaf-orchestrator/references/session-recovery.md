@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default. User Support has no persistent state — sessions are fully stateless.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Literature Review uses STATE.md only (from `agent_reference/STATE_TEMPLATE_LITREVIEW.md`), with the protocol versions and the tools' MANIFEST records beside it; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default. User Support has no persistent state — sessions are fully stateless.
 
 ## When to Use
 
@@ -46,6 +46,8 @@ If the project has a `LEARNINGS.md` file, read it to recover accumulated insight
 
 > **Data Onboarding projects:** Skip Steps 3-5 entirely (there is no Plan.md or Plan_Tasks.md). Proceed directly to the "Recovery from Different Stages (Data Onboarding)" table below.
 
+> **Literature Review projects:** Skip Steps 3-5 the same way (no Plan.md or Plan_Tasks.md; the review plan is `Protocol_v{N}.md`), apart from Step 5b and the Step 5c row. Proceed to "Recovery from Literature Review Mode" below.
+
 **Do NOT read the entire Plan.md file.** Use targeted section loading to minimize context consumption and preserve capacity for execution work. Also verify that Plan_Tasks.md exists alongside Plan.md.
 
 **3a. Verify both Plan files exist:** Confirm both `Plan.md` and `Plan_Tasks.md` are present in the project folder.
@@ -57,7 +59,6 @@ If the project has a `LEARNINGS.md` file, read it to recover accumulated insight
 - `## Goal & Context` — Success criteria and background
 - `## Decisions Log` — Pre-execution methodology decisions
 - `## Risk Register` — Pre-execution risks and mitigations
-- `## Current Status & To-Do's` — Complements STATE.md position info
 - `### Transformation Sequence` (within Methodology Specification) — The wave/task summary table only
 
 **3d. Read from STATE.md (already loaded in Step 2):**
@@ -79,12 +80,11 @@ If the project has a `LEARNINGS.md` file, read it to recover accumulated insight
 
 **3f. Do NOT load these sections at recovery time (load on-demand when needed):**
 - `## Phase 1: Discovery Results` — Already consumed during planning
-- Plan_Tasks.md task blocks — Load the specific task block when dispatching (search for `### Task {step}:`)
+- Plan_Tasks.md task blocks — Load the specific task block when dispatching (search for `### Task {wave}.{n}:`, e.g. `### Task 3.1:`)
 - `## Validation Checkpoints` — Load the specific CP when executing that checkpoint
 - `## File Manifest` — Load when needed for verification
 - `## Trade-offs Accepted` — Load when referenced
 - `## Data Citations` — Load at Stage 11+
-- `## Philosophy: Plans are Prompts` — Static preamble, not needed for recovery
 
 ### Step 4: Verify File System State
 
@@ -94,7 +94,7 @@ Check which artifacts exist vs. are expected:
 expected_files = {
     "plan": f"{date_prefix}_{title}_Plan.md",
     "plan_tasks": f"{date_prefix}_{title}_Plan_Tasks.md",
-    "notebook": f"{date_prefix}_{title}.py",
+    "notebook": f"{date_prefix}_{title}.py",  # .qmd when the execution language is R
     "report": f"{date_prefix}_{title}_Report.md",
     "raw_data": "data/raw/",
     "processed_data": "data/processed/",
@@ -112,10 +112,10 @@ expected_files = {
 
 ### Step 5: Identify Resume Point
 
-From STATE.md's **Current Position** and **Next Actions**, confirmed by Plan.md's "Current Status & To-Do's":
+From STATE.md's **Current Position** and **Next Actions** (Plan.md has no status section; STATE.md is the record of position):
 - Current Phase: [1-5]
 - Current Stage: [1-12]
-- Status: [In Progress | Blocked | Complete]
+- Status: [In Progress | Awaiting Confirmation | Blocked | Complete] (Awaiting Confirmation: a user checkpoint was shown and not answered; re-present the one Next Actions > Pending User Input names)
 - Last Checkpoint: [CP# result]
 
 Determine what's complete and what remains.
@@ -124,45 +124,62 @@ Determine what's complete and what remains.
 
 The resumed session may run on a **different model than the pre-restart session**. This changes two things the recovery must account for before re-dispatching work:
 
-- **Context Quality Curve threshold profile.** The profile (Claude Fable/Mythos validated extended-horizon, exact GPT 5.6 Sol validated, or conservative-default) is selected from the *current* session model's ID per CLAUDE.md § Context & Session Health — so utilization gating may cross ELEVATED/HIGH/CRITICAL at different points than the prior session did.
+- **Context Quality Curve threshold profile.** The profile (Claude Fable/Mythos extended-horizon, GPT Sol/Astra extended-horizon, or conservative-default) is selected from the *current* session model's ID per CLAUDE.md § Context & Session Health — so utilization gating may cross ELEVATED/HIGH/CRITICAL at different points than the prior session did.
 - **Subagent dispatch ceiling.** The `enforce-model-ceiling` hook denies any dispatch on a model tier *above* the current session model. A STATE.md restart prompt or dispatch plan written under a higher-tier session may name subagent models the current session cannot dispatch — a denied dispatch should be **re-planned at the current session's tier, not retried unchanged**.
 
 Re-tier any dispatch plans carried forward in STATE.md restart prompts to the current session's model before executing them.
 
+### Step 5c: Scope Check on Resume
+
+A resume skips the Mode Confirmation Gate (the mode was confirmed in the original session), and it skips the mode's Scope Check (`SKILL.md` § Scope Check) too when the mode's record (STATE.md, SESSION_NOTES.md, the Reproduction Report, or for Full Pipeline the project folder's `{date}_preflight_scope-check.md`) shows a confirmed scope: resume from the recorded position. Re-present the Scope Check when the record shows it awaiting confirmation or it was never recorded (e.g., a Data Onboarding project at DI-2 "Awaiting Confirmation", see PSU Intermediate States below). The table lists where each hard-tier mode keeps that record.
+
+| Mode | Confirmed scope recorded in | Re-present the Scope Check when |
+|------|-----------------------------|---------------------------------|
+| Full Pipeline | The project folder's `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the user confirms the pre-flight (`full-pipeline-mode.md` § Pre-Flight Checklist > On Confirmation (Gate G1), step 3); from Stage 4, also STATE.md's Pre-Flight Scope Check section. A folder holding that record but no STATE.md means resume Phase 1 (§ Recovery from Different Stages (Full Pipeline)) | No project folder exists, or the folder has no `{date}_preflight_scope-check.md` (a confirmation interrupted before its step 3, or the `/tmp` fallback in `SKILL.md` § Scope Check > Read First, where the folder predates the pre-flight): the pre-flight was not confirmed. Re-present it (without the orientation overview), reusing anything already moved into the folder. The earlier session's staged materials may survive in its scratchpad, but nothing durable recorded them, so re-read or re-fetch them as needed |
+| Revision and Extension | STATE.md's Revision (current) section, `Scope Check status` (`revision-and-extension-mode.md` § Revision Scope Check) | The status reads "Awaiting confirmation", or the section is absent |
+| Data Onboarding | STATE.md's Current Position (PSU-DI1; PSU-DS1 when Synthetic Path Tracking is present) | Current Position is DI-2 with Status "Awaiting Confirmation" |
+| Reproducibility Verification | The Status line of the Reproduction Report's Scope Decisions (PSU-RV1) | The Status reads "Awaiting PSU-RV1", or no Status was recorded (see § Recovery from Reproducibility Verification Mode) |
+| Framework Development | SESSION_NOTES.md | The notes record the scope as awaiting confirmation, or record no confirmed scope |
+| Literature Review | STATE.md's Scope Check section: `Scope Check status`, with the `Protocol_v{N}.md` path once confirmed (`literature-review-mode.md` § Scope Check) | The status reads "awaiting confirmation", or the line is absent: re-present the review plan (see § Recovery from Literature Review Mode) |
+
 ### Step 6: Present Recovery Summary
 
+The summary is user-facing: describe each step as the activity, never as a stage, phase or checkpoint code (`SKILL.md` § User-Facing Communication Standards > Plain-Language Rule), and keep the file paths.
+
 ```markdown
-**Session Recovery: [Project Title]**
+**Picking up where we left off: [Project Title]**
 
 I found your in-progress analysis:
 - Plan: research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md
 - Tasks: research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan_Tasks.md
-- Current Stage: [N] - [Stage Name]
-- Status: [status]
-- Last Checkpoint: [CP#] - [PASSED/FAILED]
+- Where we are: [the activity, e.g. combining the two data sources] ([n] of [m] steps done)
+- Status: [in progress / stopped on an issue / complete]
+- Last automated check: [what it checked, in plain words] — [passed / did not pass]
 
-**Completed:**
-- [✓] Phase 1: Discovery complete
-- [✓] Phase 2: Plan created
-- [✓] Stage 5: Data retrieved
-- [✓] Stage 6: Data cleaned (CP2 passed)
+**Done so far:**
+- [✓] Exploring the available data
+- [✓] The research plan
+- [✓] Downloading the data
+- [✓] Cleaning the data (its automated checks passed)
 
-**Remaining:**
-- [ ] Stage 7: Transformations (3 of 5 complete)
-- [ ] Stage 8-12: Analysis, notebook, QA, report, final review
+**Still to do:**
+- [ ] Combining and transforming the data (3 of 5 steps done)
+- [ ] The analysis and figures, the notebook, the quality review summary, the report and the final review
 
-**Files Present:**
-- Raw data: ✓ (data/raw/YYYY-MM-DD_*.parquet)
-- Processed data: ✓ (data/processed/YYYY-MM-DD_*.parquet)
+**Files present:**
+- Downloaded data: ✓ (data/raw/YYYY-MM-DD_*.parquet)
+- Cleaned data: ✓ (data/processed/YYYY-MM-DD_*.parquet)
 - Notebook: ✗ (not yet created)
 
-Ready to continue from Stage 7, Transformation #4?
+Ready to continue with the fourth of those five steps?
 ```
 
 ## Recovery from Different Stages (Full Pipeline)
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
+| Pre-flight (no project folder) | The pre-flight was never confirmed (Step 5c), so there is no project to recover: re-present the pre-flight, re-reading or re-fetching the referenced materials as needed | — |
+| Phase 1 before Stage 4 (project folder holds `{date}_preflight_scope-check.md`, no STATE.md) | The record exists only after the pre-flight was confirmed (a folder without it: re-present the pre-flight, Step 5c). Skip Steps 2-5: read the confirmed scope and materials, then resume at the first Phase 1 stage whose notes are missing (Stage 2, then each Stage 3 source, then 3.5) | `output/preliminary_notes/{date}_preflight_scope-check.md`; any `{date}_stage2_*`, `{date}_stage3_*` notes |
 | 1-3 (Discovery) | Re-read findings, continue from incomplete stage | Plan.md `Phase 1: Discovery Results` |
 | 4 (Planning) | Check if Plan.md + Plan_Tasks.md are complete, update if needed | Full Plan.md + Plan_Tasks.md (revision context) |
 | 5 (Data Retrieval) | Check if data files exist; re-fetch if missing | Current task block from Plan_Tasks.md |
@@ -178,10 +195,10 @@ Ready to continue from Stage 7, Transformation #4?
 Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-0 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, Skill Authoring Status, and optionally API Access Info, Multi-File Structure, and Synthetic Path Tracking (synthetic path only) sections.
 
 **Identification:** A Data Onboarding project can be recognized by:
-- STATE.md contains `Phase DI-` stage references instead of numbered Stages 1-12
+- STATE.md's Current Position names a `DO-` phase and a `DI-` stage (`DS-` on the synthetic path) instead of numbered Phases 1-5 and Stages 1-12
 - STATE.md contains a `Profiling Progress` table with script-level tracking
 - STATE.md contains `User Request` and `Data Source Info` sections (no separate Plan.md in Data Onboarding mode)
-- **Synthetic (privacy-preserving) path:** STATE.md contains a **`Synthetic Path Tracking`** section (with a `DS-` stage sequence and `QAS-A/B/C` status). Its presence means the sensitivity gate (DI-1) routed this onboarding to the synthetic path — the raw data never entered the container and the profile report is the source of truth. When detected, **load `WORKFLOW_PHASE_DO_SYNTHETIC.md`** and recover using the synthetic-path table below instead of the DI-3 to DI-6 rows.
+- **Synthetic (privacy-preserving) path:** STATE.md contains a **`Synthetic Path Tracking`** section (with a `DS-` stage sequence and a `Synthetic QA Status` table carrying QAS-A/B/C and CPS-INTAKE/CPS-GEN rows). Its presence means the sensitivity gate (DI-1) routed this onboarding to the synthetic path — the raw data never entered the container and the profile report is the source of truth. When detected, **load `WORKFLOW_PHASE_DO_SYNTHETIC.md`** and recover using the synthetic-path table below instead of the DI-3 to DI-6 rows.
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
@@ -201,17 +218,17 @@ When the Synthetic Path Tracking section is present (see Identification above), 
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
-| DS-1 (Script Preparation) | Check for the customized profiling script in `scripts/local_profiling/`; check QAS-A result in Synthetic Path Tracking. If QAS-A not yet PASSED, re-dispatch the DS-1 → QAS-A cycle | STATE.md Synthetic Path Tracking + Synthetic QA Status |
-| **DS-2 (User Local Run — wait state)** | **Common suspension boundary:** the session typically pauses while the user runs the profiling script on their own machine. On resume, check whether the returned report has arrived at `data/profile_report/{dataset_slug}_profile_report.json`. If present and non-empty, proceed to DS-3; if absent, re-issue the DS-2 handoff instructions and remain in the wait state | STATE.md Synthetic Path Tracking (Wait-State Status, expected Report Path) |
-| DS-3 (Report Intake & Validation) | Check for `scripts/profile_report_intake/01_validate-report.R` and QAS-B result; if the report is present but not yet validated, run the DS-3 → QAS-B cycle | STATE.md Synthetic Path Tracking + Synthetic QA Status |
-| DS-4 (Interpretation) | Check the Interpretation Tracking table; if past PSU-DS2, user decisions must be preserved (same rule as DI-6). If interpretations exist but PSU-DS2 not yet collected, present findings before proceeding | STATE.md Interpretation Tracking + Synthetic Path Tracking |
-| DS-5 (Synthetic Generation & Validation) | Check for the synthetic parquet in `data/synthetic/`, the recorded generation seed, and QAS-C result; if generation incomplete, run the DS-5 → QAS-C cycle. After DS-5 passes, rejoin DI-7/DI-8 | STATE.md Synthetic Path Tracking (Generation Seed, Report Path) + Synthetic QA Status |
+| DS-1 (Script Preparation) | Check for the customized profiling script in `scripts/local_profiling/`; read the QAS-A row in Synthetic QA Status — verdict **and** counts. Anything other than `PASSED` with `0 blockers, 0 not verified, 0 skipped` (the GDS-1 criterion) means re-dispatch the DS-1 → QAS-A cycle (a `PASSED` recorded without counts is not evidence the checks ran) | STATE.md Synthetic Path Tracking + Synthetic QA Status |
+| **DS-2 (User Local Run — wait state)** | **Common suspension boundary:** the session typically pauses while the user runs the profiling script on their own machine. On resume, check whether the returned report has arrived at `data/profile_report/{dataset_slug}_profile_report.json`. If present and non-empty, proceed to DS-3; if absent, re-issue the DS-2 handoff instructions and remain in the wait state. **At T4** the user ran the synthesizer, so wait instead for the synthetic data file and its generation log in `data/profile_report/` (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § DS-2 > User-Facing Handoff, Level 4 names them), plus the JSON report only if STATE.md records a T4 Companion Profile Tier | STATE.md Synthetic Path Tracking (Wait-State Status, expected Report Path) |
+| DS-3 (Report Intake & Validation) | Check for `scripts/profile_report_intake/01_validate-report.py` or `01_validate-report.R` (whichever matches the project's language) and read both DS-3 rows in Synthetic QA Status: the **CPS-INTAKE** verdict (`PASSED` / `PASSED WITH WARNINGS` — a `FAILED` or a missing verdict means the script did not complete) and the **QAS-B** verdict, each with its counts. If the report is present but either row is PENDING, run the DS-3 → CPS-INTAKE → QAS-B cycle. **At T4** both rows recorded `EXEMPT (T4, no profile report)` with their reason are a completed state only when tier = 4 and no profile report is in `data/profile_report/` (if a report is there, DS-3 must have run) | STATE.md Synthetic Path Tracking + Synthetic QA Status |
+| DS-4 (Interpretation) | Check the Interpretation Tracking table; if past PSU-DS2, user decisions must be preserved (same rule as DI-6). If interpretations exist but PSU-DS2 not yet collected, present findings before proceeding. **At T4 with no profile report**, DS-4 reads the Parquet that `scripts/synth_generate/01_import-synthetic.{py,R}` wrote to `data/synthetic/`; if that file is missing, run the import before re-dispatching DS-4 (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant) | STATE.md Interpretation Tracking + Synthetic Path Tracking |
+| DS-5 (Synthetic Generation & Validation) | Check for the synthetic parquet in `data/synthetic/`, the recorded generation seed, and both DS-5 rows in Synthetic QA Status: the **CPS-GEN** verdict (`PASSED` / `PASSED WITH WARNINGS`) and the **QAS-C** verdict, each with its counts. If generation is incomplete or either row is PENDING, run the DS-5 → CPS-GEN → QAS-C cycle. **At T4** the host script is `scripts/synth_generate/01_import-synthetic.{py,R}` (import, not generation): a CPS-GEN row of `EXEMPT (T4, no profile report)` with its reason is a completed state only when tier = 4 and no profile report crossed (if a report is in `data/profile_report/`, CPS-GEN must have run). With no profile report the import already ran before DS-4: if its Parquet is in `data/synthetic/`, do not re-run the import, and a PENDING QAS-C row means run QAS-C only. A CPS-GEN `PASSED WITH WARNINGS` carrying `[WARNING] seed_recorded` is the researcher-authorized T4 missing-seed exception — confirm the authorization is recorded in T4 Missing-Seed Exception before accepting it. After DS-5 passes, rejoin DI-7/DI-8 | STATE.md Synthetic Path Tracking (Generation Seed, Report Path, T4 Missing-Seed Exception) + Synthetic QA Status |
 
 **HIERARCHICAL partial-recovery:** For HIERARCHICAL projects with per-file suffixed scripts, the Profiling Progress table tracks each suffixed script independently (e.g., `01a` DONE, `01b` PENDING). When resuming mid-part, re-invoke data-ingest for the full part with a note in the prompt indicating which per-file scripts are already complete. The agent should check existing scripts in the project directory and resume from the first incomplete per-file script rather than re-running the entire part.
 
 **PSU Intermediate States:**
 - **DI-0 script written but not executed:** Check if acquisition script exists in `scripts/stage5_fetch/` but no data file in `data/raw/`. Re-present the script to the user for approval and execute.
-- **Between DI-2 and DI-3 (PSU-DI1 pending):** Check if PSU-DI1 was presented but not yet confirmed. Look at Current Position — if stage is DI-2 and status is "Awaiting Confirmation," re-present PSU-DI1 to the user.
+- **Between DI-2 and DI-3 (PSU-DI1 pending):** Check if PSU-DI1 was presented but not yet confirmed. Look at Current Position — if stage is DI-2 and status is "Awaiting Confirmation," re-present PSU-DI1 to the user. On the synthetic path (Synthetic Path Tracking present) the checkpoint pending at DI-2 is PSU-DS1: re-present it (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § PSU-DS1: Tier Selection & Setup Confirmation).
 - **Between DI-6 and DI-7 (PSU-DI2 pending):** Check the Interpretation Tracking table. If the "User Decision" column is empty for all rows, PSU-DI2 has not been collected yet — present findings to user before proceeding to DI-7.
 - **Between PSU-DI2 and DI-7 (Pre-Authoring Research Offer in play):** Check the Key Decisions Made table in STATE.md for the recorded pre-authoring research decision. If no decision is recorded, the offer may never have been presented — present it (do not assume it was declined). If the decision is skipped/declined, proceed directly to DI-7. If the decision is accepted, check whether `output/preliminary_notes/{date}_preDI7_research_{source}.md` exists on disk: if it exists, proceed to DI-7 with the research notes as an additional input; if it does not, re-dispatch the pre-authoring research per `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional) using the recorded scope, source mix, and focus areas, then persist its return before dispatching DI-7.
 
@@ -221,7 +238,7 @@ After recovery, load additional Plan.md or Plan_Tasks.md sections as needed duri
 
 | Action | Section to Load | Source File | How to Find It |
 |--------|----------------|-------------|----------------|
-| Dispatching a Stage 5-8 task | The specific task block (e.g., `### Task 3:`) | Plan_Tasks.md | Search for the task heading, read to next `### Task` heading |
+| Dispatching a Stage 5-8 task | The specific task block (e.g., `### Task 3.1:`) | Plan_Tasks.md | Search for the task heading, read to next `### Task` heading |
 | Constructing CP validation | The relevant CP subsection from `## Validation Checkpoints` | Plan.md | Search for the CP heading (e.g., `### CP3`) |
 | Reviewing prior discovery | `## Phase 1: Discovery Results` | Plan.md | Search for heading, read to next `## ` heading |
 | Checking file inventory | `## File Manifest` | Plan.md | Search for heading, read to end of file |
@@ -229,7 +246,7 @@ After recovery, load additional Plan.md or Plan_Tasks.md sections as needed duri
 | Final review (Stage 12) | QA Findings Summary, Final Review Log | STATE.md | Already loaded from Step 2 |
 | Debugging or re-running | Relevant task block | Plan_Tasks.md | Search for the task heading |
 
-**Procedure:** Search for the target heading in the appropriate file (e.g., `### Task 3:` in Plan_Tasks.md), note the line number, then read from that line to the next same-level heading. This costs one search + one targeted read per section, and avoids loading full files into context.
+**Procedure:** Search for the target heading in the appropriate file (e.g., `### Task 3.1:` in Plan_Tasks.md), note the line number, then read from that line to the next same-level heading. This costs one search + one targeted read per section, and avoids loading full files into context.
 
 ## Blocked/Failed Recovery
 
@@ -240,13 +257,13 @@ If the analysis is marked as "Blocked" or has failed checkpoints:
 
 **Example:**
 ```markdown
-**Recovery Issue: Analysis Blocked**
+**This analysis stopped on an issue**
 
-This analysis is currently blocked at Stage 6 (Context Application).
+It stopped while the data was being cleaned: 52% of the values are suppressed
+(hidden by the data provider), above the 50% limit, so the automated check
+on the cleaned data did not pass.
 
-**Issue:** Suppression rate of 52% exceeds 50% threshold (CP2 failed)
-
-**Options documented in Plan:**
+**Options in the plan:**
 1. Aggregate to district level (reduces suppression)
 2. Exclude suppressed variable from analysis
 3. Proceed with caveat and document limitation
@@ -258,10 +275,10 @@ Which approach would you like to take?
 
 Before resuming work:
 - [ ] STATE.md read and understood (current position, checkpoints, blockers, runtime risks, QA findings, next actions)
-- [ ] Plan.md recovery sections read (Original Request, Goal & Context, Decisions Log, Risk Register, Current Status)
+- [ ] Plan.md recovery sections read (Original Request, Goal & Context, Decisions Log, Risk Register, Transformation Sequence)
 - [ ] Plan_Tasks.md existence verified
 - [ ] Stage-conditional sections loaded if applicable (per Step 3e table)
-- [ ] Current stage/status identified and consistent between STATE.md and Plan.md
+- [ ] Current stage/status identified from STATE.md (Current Position, Next Actions)
 - [ ] File system state verified
 - [ ] Resume point identified
 - [ ] LEARNINGS.md reviewed (if present) and key signals noted
@@ -270,16 +287,16 @@ Before resuming work:
 
 ## Recovery from Interrupted Revision and Extension Sessions
 
-Revision and Extension projects are identified by the presence of a `## Revision History` section in STATE.md and multiple version-suffixed Plan files in the same project folder.
+Revision and Extension projects are identified by the presence of a `## Revision (current)` or `## Revision History` section in STATE.md and multiple version-suffixed Plan files in the same project folder (a revision still at its Scope Check has the first but not yet a new Plan version).
 
 **Recovery steps:** Follow the standard Steps 1-6 above, with these Revision-specific additions:
-- **Step 2:** Additionally read the Revision History table and the Revision section of STATE.md to identify which revision is in progress, its type, affected stages, and re-entry point
+- **Step 2:** Additionally read the Revision History table and the Revision (current) section of STATE.md to identify which revision is in progress, its type, affected stages, re-entry point and Scope Check status. The section describes the latest revision only (it is reset when a new one starts, `revision-and-extension-mode.md` § Revision and Extension Session Management); if the revision it describes already has its completed Revision History row and the user has asked for another, the new revision has not reached its Scope Check yet: re-present it
 - **Step 3:** Read both the prior version and current version Plan.md files. The prior version establishes original intent; the current version documents the revision rationale
-- **Step 5:** Resume point is determined by the re-entry stage from the Revision section, cross-referenced with Transformation Progress for per-script status
+- **Step 5:** Resume point is determined by the re-entry stage from the Revision (current) section, cross-referenced with Transformation Progress for per-script status
 
 | Stage Interrupted | Recovery Action | Additional Context |
 |-------------------|-----------------|-------------------|
-| Revision classification | Re-read existing Plan.md + STATE.md, re-classify with user | Prior version Plan.md |
+| Revision classification | Re-read existing Plan.md + STATE.md (and anything the user cited). If the Revision (current) section's Scope Check status does not read "Confirmed YYYY-MM-DD", re-present the Revision Scope Check (Step 5c); if it does, resume at the recorded re-entry stage | Prior version Plan.md |
 | Re-execution (Stages 5-8) | Check which revised scripts completed via Transformation Progress | Current version Plan.md + Plan_Tasks.md |
 | Re-execution QA | Check QA status per script in Transformation Progress | QA Findings Summary |
 | Stage 9-12 (downstream) | Resume as in Full Pipeline recovery | Standard Full Pipeline guidance |
@@ -287,7 +304,7 @@ Revision and Extension projects are identified by the presence of a `## Revision
 ### Revision and Extension Recovery Verification Checklist
 
 Before resuming a Revision and Extension session:
-- [ ] STATE.md read, including Revision History and Revision section
+- [ ] STATE.md read, including Revision History and Revision (current) section
 - [ ] Both prior and current version Plan.md files read
 - [ ] Revision type, affected stages, and re-entry point identified
 - [ ] Transformation Progress reviewed for per-script completion status
@@ -306,14 +323,17 @@ Before resuming a Revision and Extension session:
 2. Check the Session Continuity section for last completed script and current stage
 3. Verify `original_files/` contains the decompiled scripts and original artifacts
 4. Verify `scripts/repro/` contains re-executed scripts up to the last completed point
-5. Resume from the next unprocessed script in the inventory
+5. Check the Status line of the Scope Decisions section: if it reads "Awaiting PSU-RV1", or no Status was recorded, the PSU-RV1 decisions (data strategy, review depth, exact exclusions) are not confirmed, so re-present PSU-RV1 before any RV-2 dispatch; a preference the user voiced at mode confirmation is shown as the current setting, never treated as the decision
+6. Resume from the next unprocessed script in the inventory
 
 **Recovery stages:**
 
 | Current Stage | Resume Action |
 |---------------|---------------|
-| RV-1 (Setup) | Verify decompilation completed; check Script Inventory populated |
-| RV-2 (Re-execution) | Find last PENDING script in inventory; resume from there |
+| RV-1 (Setup) | Verify decompilation completed; check Script Inventory populated; leave `data/raw/` empty (seeding waits for the PSU-RV1 decision) |
+| PSU-RV1 (presented, not confirmed) | Re-present PSU-RV1 from the recorded inventory; do not start RV-2 |
+| PSU-RV1 confirmed, before RV-2 | Frozen data recorded but no pre-RV-2 hash inventory: seeding has not finished, so seed `data/raw/` from `original_files/data/raw/` and hash it before the first RV-2 dispatch (`reproducibility-verification-mode.md` § RV-2: Sequential Re-execution & Comparison > "Frozen raw-data branch"). If the exclusions changed at PSU-RV1 and no re-run path audit is recorded, re-run it with the final `--exclude` list first. Re-fetch recorded: start RV-2 at Stage 5 |
+| RV-2 (Re-execution) | Find the first PENDING script in the inventory; resume from there |
 | RV-3 (Report Verification) | Re-read reproduced outputs; resume cross-referencing |
 | RV-4 (Synthesis) | Re-read Reproduction Report; resume writing synthesis sections |
 
@@ -324,11 +344,34 @@ Before resuming a Revision and Extension session:
 - [ ] Script Inventory status column is current
 - [ ] No partially written Per-Script Results sections
 
+### Recovery from Literature Review Mode
+
+**Identification:** the project folder name holds `_LitReview_` (`research/YYYY-MM-DD_LitReview_{Short_Topic}/`), and its STATE.md has a Reader Table and a `Scope Check status` line (`agent_reference/STATE_TEMPLATE_LITREVIEW.md`).
+
+**Recovery procedure:**
+1. Read STATE.md in full (Step 2) and LEARNINGS.md (Step 2b). Skip Steps 3-5; apply Step 5b (re-tier any carried dispatch plan) and Step 5c (the Literature Review row).
+2. Check `Scope Check status`: "awaiting confirmation" or absent means re-present the review plan (CP-1) from the latest `Protocol_v{N}.md` and the round-0 scoping notes, before any full search; "confirmed YYYY-MM-DD" means resume from Current Position.
+3. Apply the recovery rules in order, as `STATE_TEMPLATE_LITREVIEW.md` § Integration with Session Recovery lists them (the mode file's § State, Recovery and LEARNINGS.md > Session recovery holds the same rules in short form). The ones that most often apply: a Reader Table dispatch with no card is dispatched again with an unused card path; a card with no audit record is audited (`lit_verify audit`, with every recorded agent ID for that card, one per chunk) before anything else; a glance sheet shown with no reply recorded is shown again; a packed but un-ingested adjudication batch is dispatched again with the same bundle, never packed again.
+4. If a tool record on disk is newer than STATE.md (a card, audit, settlement or report check no row names; a MANIFEST row after Last Updated), rebuild the rows from `papers/MANIFEST.jsonl`, `data/MANIFEST.jsonl` and the files, tag each `[reconstructed]`, and tell the user. A researcher's words that are in neither STATE.md nor a tool's MANIFEST row were never recorded: ask again, never reconstruct them.
+
+**Verification checklist:**
+- [ ] STATE.md read: Current Position, Scope Check status, Route record, Round Table, Reader Table, Adjudication and Glance Batches, Spend Ledger, Open Review Items
+- [ ] The protocol version in force (`Protocol_v{N}.md`) located
+- [ ] Every Reader Table row checked against `papers/{key}/` (card, `card_check`, `vision_audit`)
+- [ ] Any check-in awaiting a reply (scope check, key-paper list, round check-in, reference check) identified for re-presentation
+- [ ] User confirmed ready to proceed
+
 ### Recovery from Framework Development Mode
 
-**Identification:** SESSION_NOTES.md exists in project root, or project context indicates framework component authoring.
+**Identification:** the workspace folder name holds `_FrameworkDev_` (`research/YYYY-MM-DD_FrameworkDev_{Topic}/`, `framework-development-mode.md` § Workspace Setup), with SESSION_NOTES.md in its root. A SESSION_NOTES.md alone does not identify the mode: Ad Hoc Collaboration workspaces keep one too.
 
 **Recovery procedure:** For Framework Development: read SESSION_NOTES.md to reconstruct completed items and remaining integration checklist items.
+
+### Recovery from Ad Hoc Collaboration Mode
+
+**Identification:** the workspace folder name holds `_AdHoc_` (`research/YYYY-MM-DD_AdHoc_{Topic}/`, `ad-hoc-collaboration-mode.md` § Workspace Setup), with SESSION_NOTES.md in its root once the session reached its first milestone.
+
+**Recovery procedure:** read SESSION_NOTES.md to reconstruct what was accomplished, the decisions made, what was in progress and the open questions, as `ad-hoc-collaboration-mode.md` § Context Recovery describes. A purely conversational Ad Hoc session left no notes, and there is nothing to recover.
 
 ### Recovery from User Support Mode
 

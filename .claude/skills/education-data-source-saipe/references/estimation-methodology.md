@@ -145,11 +145,10 @@ After shrinkage estimation:
 
 | Month | Activity |
 |-------|----------|
-| August | ACS 1-year estimates released |
-| September-October | Administrative data processing |
-| October-November | Model fitting and estimation |
-| November | Quality review and disclosure |
-| December | Public release |
+| September (2024 ACS: September 11, 2025; one release checked) | Public ACS 1-year estimates released |
+| Not generalized here (2024 estimates: January 27, 2026) | SAIPE public release |
+
+No Census page found (checked 2026-10-28) gives an internal production calendar; the steps between these two dates (administrative-data processing, model fitting, review) are not dated here.
 
 ### Quality Checks
 
