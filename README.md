@@ -138,7 +138,7 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *Example:* What are all the socioeconomic status related variables we have access to across the Urban Institute Education Portal datasets?
 
 **Literature Review (experimental):** Find out what the published research says, with every reference and quote checked
-- *Experimental:* it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong.
+- *Experimental:* it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong. Send reports to [support@openaugments.org](mailto:support@openaugments.org).
 - *What you do:* Ask what the research literature says about a question, and choose how deep to go: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review that you lead
 - *What DAAF does:* Agrees a search plan with you, searches the scholarly databases, picks out the relevant papers with you, reads them, and writes up what the evidence shows. It checks every reference against a database record (you glance at the reference list before the final write-up), checks every quote and number against the page it came from, and never averages results from different studies into one number
 - *What you get:* A short memo of pointers (quick scan) or a written review with a note on each key paper and how sure we can be about each conclusion, plus a checked reference list, a list of open gaps, and a project folder with the full search and reading record

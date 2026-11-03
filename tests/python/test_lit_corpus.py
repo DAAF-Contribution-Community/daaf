@@ -43,7 +43,7 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.8.0-daaf", "0.5.0"))
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.8.1-daaf", "0.5.0"))
         # The certainty phrase table and its lockstep copy carry the contract version.
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
@@ -185,7 +185,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 35/35", out.getvalue())
+            self.assertIn("SELFTEST PASS: 36/36", out.getvalue())
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -1616,6 +1616,8 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertEqual((led["claude_md_sha256"], led["claude_md_sha256_at_ingest"], led["citation_status"]),
                          (packed, lc.sha256_bytes(cm.read_bytes()), "model_confirmed"))
         self.assertEqual(lc.ADJUDICATOR_EVALUATED_CLAUDE_MD, {lc.ADJUDICATOR_LIST_VERSION: None})
+        # every evaluated-list version has its CLAUDE.md record (the mode's identity check reads it by list version)
+        self.assertEqual(set(lc.ADJUDICATOR_EVALUATED_CLAUDE_MD), set(lc.ADJUDICATOR_EVALUATED_LISTS))
         # a forged bundle naming another CLAUDE.md than its pack log printed is an integrity stop, as for the identity
         self.attach((0, {}))
         paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t2", keys=[self.P1], ingest=False)
@@ -1771,6 +1773,54 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("WARNING: CLAUDE.md was not recorded at the pack", out)
         self.assertNotIn("CLAUDE.md changed", out)
+
+    # 1.8.1: pack takes --model-id only in the form ingest compares (lit_verify.norm_model). Every model ID below is
+    #   invented.
+    def test_pack_refuses_a_model_id_not_in_the_form_ingest_compares(self):
+        # each form norm_model would change is refused (exit 1), the message names the form to pass, nothing is packed
+        #   and the value is never rewritten into a bundle
+        self.attach((0, {}))
+        paths = lc.demo_adj_paths(str(self.pd))
+        bdir = self.pd / "data" / "adjudication_bundles"
+        bare = "claude-invented-9-9"
+        for name, given, norm in (("a trailing [1m]", bare + "[1m]", bare),
+                                  ("a dotted Claude ID", "claude-invented-9.9", bare),
+                                  ("a dotted Claude ID with [1m]", "claude-invented-9.9[1m]", bare),
+                                  ("leading whitespace", " " + bare, bare),
+                                  ("trailing whitespace", bare + " ", bare),
+                                  ("a trailing newline", bare + "\n", bare),
+                                  ("a provider-prefixed dotted ID", "anthropic/claude-invented-9.9",
+                                   "anthropic/" + bare)):
+            with self.subTest(name):
+                data_before = sorted(p.name for p in (self.pd / "data").iterdir() if p.name != "MANIFEST.jsonl")
+                bundles_before = sorted(p.name for p in bdir.iterdir())
+                code, out = self.run_lc("adjudications", "pack", self.pd, "--batch", "t1", "--model-id", given,
+                                        paths=paths)
+                self.assertEqual(code, 1, out)
+                self.assertIn(f"pass --model-id {norm} instead", out)
+                self.assertNotIn("ADJUDICATION_PACK", out)
+                self.assertEqual(sorted(p.name for p in bdir.iterdir()), bundles_before)        # nothing packed
+                self.assertEqual(sorted(p.name for p in (self.pd / "data").iterdir() if p.name != "MANIFEST.jsonl"),
+                                 data_before)                                                  # no table version
+                row = self.last_row()
+                self.assertEqual((row["command"], row["exit_code"], row["parameters"]["model_id"]),
+                                 ("adjudications pack", 1, given))
+                self.assertNotIn("bundle_sha256", row)
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+
+    def test_pack_takes_a_model_id_already_in_that_form_unchanged(self):
+        # a bare ID packs and is recorded byte for byte; a provider-prefixed ID that norm_model leaves unchanged packs
+        #   too (it is not stripped: ingest then needs the transcript to record that same spelling)
+        self.attach((0, {}), (1, {}))
+        paths = lc.demo_adj_paths(str(self.pd))
+        for batch, key, given in (("t1", self.P1, "claude-invented-9-9"), ("t2", self.P2, "anthropic/claude-invented-9-9")):
+            with self.subTest(given):
+                code, out = self.run_lc("adjudications", "pack", self.pd, "--batch", batch, "--model-id", given,
+                                        "--keys", key, paths=paths)
+                self.assertEqual(code, 0, out)
+                self.assertIn(f" model_id={given} ", out)
+                self.assertEqual((self.last_row()["exit_code"], self.last_row()["model_id"]), (0, given))
+                self.assertTrue((self.pd / "data" / "adjudication_bundles" / f"{batch}.json").exists())
 
     def test_attach_verify_refuses_a_row_with_no_verdict(self):
         # review cycle 3 C1: a verify call that failed before grading writes a row with no verdict, which

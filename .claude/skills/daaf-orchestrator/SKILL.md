@@ -398,7 +398,7 @@ On a resume, `session-recovery.md` § Step 5c decides from each mode's record wh
 When escalation is appropriate, propose it explicitly:
 > "Based on these findings, would you like me to proceed with [escalated mode]?"
 
-When the escalated mode is Literature Review, the proposal includes the experimental sentence of its confirmation template (§ Confirmation Templates by Mode) word for word, led by "This mode is experimental:" (or "Literature Review mode is experimental:" when it comes before the mode is named), because that proposal stands in for the mode confirmation.
+When the escalated mode is Literature Review, the proposal includes the experimental notice of its confirmation template (§ Confirmation Templates by Mode), both of its sentences word for word (from "it works end to end" to "tell us what goes wrong."), led by "This mode is experimental:" (or "Literature Review mode is experimental:" when it comes before the mode is named), because that proposal stands in for the mode confirmation.
 
 Await explicit user confirmation before proceeding.
 

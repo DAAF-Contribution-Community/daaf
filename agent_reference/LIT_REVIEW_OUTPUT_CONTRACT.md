@@ -236,8 +236,9 @@ recorded by the user as a new dated list version naming the identities evaluated
 
 Three columns sit beside the identity without being part of it. `model_id_observed` lists the
 model IDs the adjudicator's own transcript recorded (comma-separated in the ledger; a list in the
-`adjudications ingest` MANIFEST row); `adjudications ingest` refuses a batch unless each is the
-packed `model_id`, so from contract 0.5.0 on, a ledger row's `model_id` is a model the
+`adjudications ingest` MANIFEST row); `adjudications ingest` refuses a batch unless the transcript
+records at least one model and each is the packed `model_id`, so from contract 0.5.0 on, a ledger
+row's `model_id` is a model the
 adjudicator's transcript recorded (evidence, not proof: a file at that place could be written by a
 script). `claude_md_sha256` (as packed) and `claude_md_sha256_at_ingest` record CLAUDE.md, as
 `ADJUDICATOR_EVALUATED_CLAUDE_MD` does per list version; `evaluated_identity()` never reads them,

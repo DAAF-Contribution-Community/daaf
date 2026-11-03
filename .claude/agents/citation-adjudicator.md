@@ -103,7 +103,7 @@ conflict as a WARNING (§ Output Format).
 
 **Context the orchestrator MUST provide:**
 - [ ] The prompt exactly as `pack` rendered it: nothing added before or after it, nothing removed or reworded
-- [ ] The dispatch's `model` set to `"opus"`: the Agent tool takes tier aliases, not model IDs. `pack --model-id` records the exact model ID that alias resolves to, and the ledger takes its model ID from the pack log. `ingest` refuses the batch unless every model the adjudicator's own Claude Code transcript records is that packed model ID (`adj-model-check-v1`)
+- [ ] The dispatch's `model` set to `"opus"`: the Agent tool takes tier aliases, not model IDs. `pack --model-id` records the exact model ID that alias resolves to (in the form `ingest` compares: no trailing `[1m]`, a dotted Claude ID hyphenated; `pack` refuses another form), and the ledger takes its model ID from the pack log. `ingest` refuses the batch unless the adjudicator's own Claude Code transcript records at least one model and every model it records is that packed model ID (`adj-model-check-v1`)
 - [ ] One bundle per dispatch
 
 **Context the orchestrator must NOT provide**, because any of it would let the

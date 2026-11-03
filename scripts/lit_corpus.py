@@ -139,20 +139,23 @@
 #   every row reaches a person until an evaluation passes. No status clears a
 #   retraction. CLAUDE.md's sha256 is recorded beside the identity (pack log,
 #   bundle, MANIFEST rows, ledger) and, per list version, in
-#   ADJUDICATOR_EVALUATED_CLAUDE_MD, but never compared: CLAUDE.md is general
-#   guidance outside the adjudicator's read-only task and changes often.
+#   ADJUDICATOR_EVALUATED_CLAUDE_MD, but it never decides whether a judgment
+#   counts: CLAUDE.md is general guidance outside the adjudicator's read-only
+#   task and changes often.
 #   `adjudications pack` writes data/adjudication_bundles/{batch}.json and the
 #   rendered fixed prompt; it is run by a captured script
 #   scripts/lr_adjudication/NN_pack_batch_{batch}.py (run_with_capture.sh), so
-#   the hashes it prints land in an immutable log. `ingest` reads that log,
-#   the pack MANIFEST row, the bundle, the audit log, the adjudicator's own
-#   Claude Code transcript (adj-model-check-v1: every model it records must be
-#   the packed model ID, else the batch is refused) and
-#   data/adjudication_raw/{batch}.jsonl; `release` marks a packed batch that
-#   was not ingested as released, so its rows can be packed again (the bundle
-#   stays on disk; an ingested batch is never released); `record-human`
-#   records a person's reply (their words are a command-line argument);
-#   `glance-sheet` writes
+#   the hashes it prints land in an immutable log. Its --model-id must be the
+#   form ingest compares, the one lit_verify.norm_model leaves unchanged
+#   (otherwise exit 1, naming that form). `ingest` reads that log, the pack
+#   MANIFEST row, the bundle, the audit log, the adjudicator's own Claude Code
+#   transcript (adj-model-check-v1: it must record at least one model, and
+#   every model it records must be the packed model ID, else the batch is
+#   refused) and data/adjudication_raw/{batch}.jsonl; `release` marks a packed
+#   batch that was not ingested as released, so its rows can be packed again
+#   (the bundle stays on disk; an ingested batch is never released);
+#   `record-human` records a person's reply (their words are a command-line
+#   argument); `glance-sheet` writes
 #   the plain-language list output/reference_glance_v{N}.md the researcher
 #   reads before replying: the deliverable's references (--deliverable), the
 #   papers named (--keys), or both (the deliverable's first, then each named
@@ -196,7 +199,10 @@
 #       records file, failed calls); key and selftest success
 #   1   usage error (also PROJECT_DIR not a directory, no row; a missing
 #       --agent-id, or one outside the context-reporter hook's id allowlist,
-#       at ingest; a missing --reason at release)
+#       at ingest; a --model-id at pack that is missing, or not in the form
+#       ingest compares (a trailing [1m], a dotted Claude ID, surrounding
+#       whitespace: the message names the form to pass); a missing --reason
+#       at release)
 #   2   refused by a guard (PROJECT_DIR or SCRATCH_DIR outside the DAAF root
 #       or forbidden; an input path outside PROJECT_DIR; a secret value in an
 #       argument; a named restricted-licence search row)
@@ -222,7 +228,8 @@
 #       row outside the bundle, an adjudicator tool call outside the bundle, a
 #       transcript that records a model other than the packed one (or none,
 #       or two transcripts for one agent ID), a released batch at ingest, a
-#       release of a batch never packed, ingested or released before, a
+#       release of a batch never packed, ingested or released before, or
+#       with an empty --reason, a
 #       person's decision on a row no reply can decide (reply_can_decide:
 #       EXISTS, NOT FOUND, no record of the paper, a verify row with no
 #       verdict a reply can decide), a verify row with no verdict, or with one
@@ -365,7 +372,12 @@ sc = _load_common()
 # rows again and `ingest` refuses it; an ingested or already released batch is refused. The reference check sheet no
 # longer says "None of these references can be confirmed as they stand." on a sheet that also lists decided references
 # ("One reference below is" / "Some references below are already decided", glance-words-v3). Contract 0.5.0.
-TOOL_VERSION = "1.8.0-daaf"
+# 1.8.1 (2026-11-03, the orchestrator's decision before the adjudicator evaluation): `adjudications pack` refuses
+# (exit 1, nothing packed) a --model-id that lit_verify.norm_model would change (a trailing [1m], a dotted Claude ID,
+# surrounding whitespace), and its message names the normalized form to pass. The value is never rewritten: it is an
+# identity field, and evaluated_identity() compares it unnormalized with the evaluated list. An ID already in that
+# form is accepted and recorded unchanged. No row field, artifact or rule version changes. Contract 0.5.0.
+TOOL_VERSION = "1.8.1-daaf"
 # Output contract semver (pre-1.0; additive changes bump the minor version).
 # 0.1.0 (S4 D3): the first contract. 0.2.0 (S4 review-fix E, 2026-10-31,
 # additive): claims from a paper's stored abstract (claim_id {paper_key}-aNN,
@@ -391,7 +403,8 @@ TOOL_VERSION = "1.8.0-daaf"
 CONTRACT_VERSION = "0.5.0"
 EXIT_CODES = {
     0: "written (also with counted skips); key and selftest success",
-    1: "usage (also PROJECT_DIR not a directory; ingest without a valid --agent-id; release without --reason)",
+    1: "usage (also PROJECT_DIR not a directory; ingest without a valid --agent-id; pack without a --model-id in the "
+       "form ingest compares; release without --reason)",
     2: "refused by a guard (PROJECT_DIR or SCRATCH_DIR, an input path outside PROJECT_DIR, a secret value, a named "
        "restricted-licence search row)",
     8: "input cannot be parsed (JSONL, MANIFEST line, records file, raw log, card, card_check) or is larger than "
@@ -400,8 +413,9 @@ EXIT_CODES = {
     9: "integrity mismatch, nothing written (bytes differ from their recorded sha256)",
     10: "required dependency (polars or pyarrow) or required input missing (no corpus; a search without a records "
         "file; an adjudicator transcript)",
-    11: "input rejected by validation, no version written (reasons in the MANIFEST row); selftest: an expectation "
-        "did not hold",
+    11: "input rejected by validation, no version written (reasons in the MANIFEST row; e.g. a transcript recording "
+        "another model than the packed one, a released batch at ingest, a release of an ingested batch or with an "
+        "empty --reason); selftest: an expectation did not hold",
     12: "internal error",
 }
 SCHEMAS = {"corpus": "lit-corpus-v1", "paper_aliases": "lit-aliases-v1", "search_log": "lit-search-log-v1",
@@ -507,7 +521,8 @@ CITABLE = CITABLE_DRAFT
 ADJUDICATOR_EVALUATED_LISTS = {"adjudicator-list-none": ()}
 ADJUDICATOR_LIST_VERSION = "adjudicator-list-none"
 # INTENT: per evaluated-list version, the sha256 of CLAUDE.md the evaluation behind it ran under (None: no evaluation).
-#   Recorded, never compared: evaluated_identity() does not read it, so a changed CLAUDE.md never closes the gate.
+#   Recorded, never compared with today's CLAUDE.md to decide anything: evaluated_identity() does not read it, so a
+#   changed CLAUDE.md never closes the gate.
 # REASONING: CLAUDE.md is general guidance outside the adjudicator's read-only task and changes often; tying the
 #   identity to it would void an evaluation at every edit. The mode's identity check prints today's sha256 beside this
 #   one and a WARNING when they differ, so a person can weigh a small re-check.
@@ -523,6 +538,8 @@ CLAUDE_MD_REL = "CLAUDE.md"
 #   subagent's (observed 2026-11-02: a sonnet subagent's records carried the opus session's model).
 # ASSUMES: Claude Code keeps transcripts for cleanupPeriodDays (30 by default), so ingest runs within that time. A file
 #   at that place could also be written by a script: the check is evidence, not proof, as the audit-log scan is.
+#   Claude Code's config folder is <home>/.claude; with CLAUDE_CONFIG_DIR pointing elsewhere no transcript is found
+#   here and ingest exits 10 (fails closed).
 ADJ_TRANSCRIPT_PATTERN = os.path.join("*", "*", "subagents", "agent-{agent_id}.jsonl")
 # INTENT (hardening (c)): the oldest verify rules a CONFIDENT row may be graded under to enter the second check.
 # REASONING: 2026-11-01d is the verify rule set shipped with the second check (the word and mark checks of the
@@ -2714,8 +2731,8 @@ def ledger_columns():
             "title_floor_applied", "rationale", "model_id", "model_id_source", "model_id_observed", "agent_name",
             "evaluated_model_list_version", "template_sha256", "agent_file_sha256", "agent_file_sha256_at_ingest",
             "claude_md_sha256", "claude_md_sha256_at_ingest", "dispatch_id", "adjudicated_at", "human_decision",
-            "human_decider", "human_decided_at", "human_rationale", "human_instruction_verbatim", "human_binding", "human_binding_basis", "override_record_json",
-            "citation_status", "superseded_by", "recorded_version"]
+            "human_decider", "human_decided_at", "human_rationale", "human_instruction_verbatim", "human_binding",
+            "human_binding_basis", "override_record_json", "citation_status", "superseded_by", "recorded_version"]
 
 
 def current_ledger(ctx):
@@ -3043,8 +3060,18 @@ def transcript_models(ctx, agent_id):
 
 def cmd_adj_pack(ctx, a, state):
     # `adjudications pack` (hardening (b), (c), (i)): the deterministic selector, the bundle and the rendered prompt.
-    if not MODEL_ID_RE.match(str(a.model_id or "")):
+    # INTENT: --model-id is an identity field: the evaluated list is matched on it unnormalized (evaluated_identity()),
+    #   while ingest's model check compares through lit_verify.norm_model. A value norm_model would change (a trailing
+    #   [1m], a dotted Claude ID, surrounding whitespace) is refused, naming the normalized form, and never rewritten.
+    # REASONING: such a value passes ingest's model check but never matches a bare evaluated-list entry, so an
+    #   evaluation recorded under it could not be matched by later packs; refusing at pack writes nothing (fail closed).
+    model_id = str(a.model_id or "")
+    norm = lv.norm_model(model_id)
+    if not MODEL_ID_RE.fullmatch(norm):
         raise CorpusError(1, "pack needs --model-id: the exact model ID the orchestrator will dispatch")
+    if model_id != norm:
+        raise CorpusError(1, f"--model-id {safe(repr(model_id), 140)} is not in the form ingest compares (a trailing "
+                             f"[1m], a dotted Claude ID or surrounding whitespace); pass --model-id {norm} instead")
     body, pver, rver, tsha = adj_template(ctx)
     asha = adj_agent_file(ctx)
     corpus = state["corpus"]
@@ -3141,7 +3168,7 @@ def cmd_adj_pack(ctx, a, state):
                       template_sha256=tsha, agent_file_sha256=asha, claude_md_sha256=cmd, skipped=skipped)
     # INTENT (hardening (b)): these lines are what ingest reads back from the captured pack script's own log; the
     #   PACK line names the whole identity the evaluated list is matched on (model, template, rubric, agent file),
-    #   then CLAUDE.md's sha256, recorded beside it and never compared.
+    #   then CLAUDE.md's sha256, recorded beside it and never part of it.
     ctx["out"].append(f"ADJUDICATION_PACK batch_id={a.batch} rows={len(rows)} model_id={a.model_id} "
                       f"agent_name={ADJ_AGENT_NAME} prompt_version={pver} rubric_version={rver} "
                       f"template_sha256={tsha} agent_file_sha256={asha} claude_md_sha256={cmd or 'none'}")
@@ -3214,9 +3241,10 @@ def cmd_adj_ingest(ctx, a, state):
         raise CorpusError(11, f"batch {a.batch} refused: the audit log does not show the adjudicator ({a.agent_id}) "
                               "reading only its bundle (evidence, not proof)",
                           stray[:30] or [f"{n} record(s) of the dispatch, {reads} read(s) of the bundle"])
-    # INTENT (adj-model-check-v1): the judgments count only if the model that gave them is the one packed: every model
-    #   the adjudicator's own transcript records must normalize (lit_verify's norm_model: [1m] dropped, dotted Claude
-    #   IDs hyphenated) to the pack log's model ID, else the whole batch is refused. The row records what was seen.
+    # INTENT (adj-model-check-v1): the judgments count only if the model that gave them is the one packed: the
+    #   adjudicator's own transcript must record at least one model, and every model it records must normalize
+    #   (lit_verify's norm_model: [1m] dropped, dotted Claude IDs hyphenated) to the pack log's model ID, else the whole
+    #   batch is refused. The row records what was seen.
     # REASONING: a refusal writes nothing, so the ledger's model_id stays the packed ID that ran and lit_verify report
     #   re-derives every row as before; the batch's rows are freed with `adjudications release` and packed again.
     tx = transcript_models(ctx, a.agent_id.strip())
@@ -3532,7 +3560,7 @@ def glance_cell(text, limit=300):
 
 
 def glance_words(row, verdict, row_verdict, led):
-    # The "Where it stands" cell for one corpus row (glance-words-v2).
+    # The "Where it stands" cell for one corpus row (glance-words-v3).
     left_out = glance_left_out(row, row_verdict)
     if not row.get("verify_row_sha256"):
         return "not checked yet" + (f"; {GLANCE_LEFT_OUT}" if left_out else "")
@@ -4376,6 +4404,15 @@ def run_selftest(scratch, row):
         neg("pack refuses a CONFIDENT row under rules older than MIN_RULES_VERSION (exit 11)",
             ["adjudications", "pack", pd, "--batch", "b03", "--model-id", DEMO_ADJ_MODEL, "--keys",
              DEMO_PAPERS[1]["key"]], 11, paths=paths)
+        # 1.8.1: pack refuses a --model-id that ingest's comparison would normalize, names the form to pass and packs
+        #   nothing
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as perr:
+            pcode = run(["adjudications", "pack", pd, "--batch", "b04", "--model-id", DEMO_ADJ_MODEL + "[1m]"],
+                        paths=paths)
+        selftest_expect(results, "pack refuses a --model-id not in the form ingest compares (exit 1)",
+                        pcode == 1 and f"pass --model-id {DEMO_ADJ_MODEL} instead" in perr.getvalue() and
+                        not os.path.exists(os.path.join(pd, "data", "adjudication_bundles", "b04.json")),
+                        {"exit": pcode, "names the form": f"--model-id {DEMO_ADJ_MODEL} " in perr.getvalue()})
         rows_file = os.path.join(pd, "inputs", "override_rows.txt")
         write_new(rows_file, (next(r["verify_row_sha256"] for r in corp if r["paper_key"] == DEMO_PAPERS[0]["key"])
                               + "\n").encode("utf-8"))

@@ -8,7 +8,7 @@ writes as JSONL. It computes what an agent must never type: paper keys and
 citekeys, the descriptive summary of three or more estimates, the sign test,
 the evidence of absence behind a gap. Source of truth: the header,
 `EXIT_CODES`, `SCHEMAS`, `RULE_VERSIONS` and `build_parser()` of
-`scripts/lit_corpus.py` (`TOOL_VERSION = "1.8.0-daaf"`;
+`scripts/lit_corpus.py` (`TOOL_VERSION = "1.8.1-daaf"`;
 `CONTRACT_VERSION = "0.5.0"`). If this page and the code disagree, the code
 wins: report the drift. `lit_verify report` (`lit-verify-report.md`) reads
 these tables to check a deliverable.
@@ -116,12 +116,12 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `edges ingest` | Citation links from `cites` / `refs` records files (`citation_edges_v{N}`), with the reader's quoted relation from `citation_use` claims | — |
 | `export-bib` / `export-ris` | `output/references_v{N}.bib` / `.ris`: included papers whose status is in `CITABLE_DRAFT` (the final line, `CITABLE_FINAL`, is held by `lit_verify report --kind final`), metadata from the check's own response, escaped; `daaf_citation_status` carries the status as read (`verified_rule` prints as `pending_adjudication`) | — |
 | `manifest` | `output/manifests/LIT_REVIEW_MANIFEST_v{N}.json` and the one pointer file `output/LIT_REVIEW_MANIFEST.json` (the tool's only overwrite, atomic) | `--round` |
-| `adjudications pack` | Selects the rows for the second check, writes the bundle and the rendered fixed prompt, prints the hashes and the adjudicator's identity (§ Citation second check) | `--batch`, `--model-id` (the exact model ID to be dispatched) |
+| `adjudications pack` | Selects the rows for the second check, writes the bundle and the rendered fixed prompt, prints the hashes and the adjudicator's identity (§ Citation second check) | `--batch`, `--model-id` (the exact model ID to be dispatched, in the form `ingest` compares: no trailing `[1m]`, a dotted Claude ID hyphenated; another form is refused, exit 1) |
 | `adjudications ingest` | Binds the adjudicator's return to the audited pack, checks in the adjudicator's own transcript that the packed model ran, writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
 | `adjudications release` | Marks a packed batch that will not be ingested as released, so its rows can be packed again in a new batch; writes only its MANIFEST row and keeps the bundle | `--batch`, `--reason` (why the batch will not be ingested) |
 | `adjudications record-human` | Records a person's reply for one or more verify rows | `--rows FILE` (one verify row sha256 per line, `#` comments), `--decision`, `--user-words`, `--rationale` (required except with `defer`) |
 | `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--deliverable` (its `@citekey`s), `--keys`, both (one list: the deliverable's references, then each named paper it does not cite), or every included paper |
-| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (35 expectations) | — |
+| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (36 expectations) | — |
 
 ## Tables
 
@@ -186,9 +186,11 @@ unevaluated identity, so every row reaches a person until an evaluation of
 that identity passes and the user adds a dated list version. A malformed
 entry (a bare model ID, say) never matches.
 
-**CLAUDE.md is recorded, never compared.** Its sha256 is recorded beside the
-identity wherever the identity is recorded: the `ADJUDICATION_PACK` line, the
-bundle and the pack row, and at ingest the ingest row and every ledger row
+**CLAUDE.md is recorded, never part of the identity.** Its sha256 is
+recorded beside the identity wherever the identity is recorded: the
+`ADJUDICATION_PACK` line, the bundle and the pack row (each compared with the
+pack log at ingest, as an integrity check), and at ingest the ingest row and
+every ledger row
 (`claude_md_sha256` as packed, `claude_md_sha256_at_ingest` as hashed then;
 ingest prints a WARNING when they differ). `ADJUDICATOR_EVALUATED_CLAUDE_MD`
 records, per evaluated-list version, the CLAUDE.md sha256 its evaluation ran
@@ -218,7 +220,18 @@ ingested nor released (re-dispatch that bundle, or release the batch; never
 re-pack). It refuses the batch (exit 11) when
 a selected CONFIDENT row was graded under verify rules older than
 `MIN_RULES_VERSION` (`2026-11-01d`; versions compare by date, then suffix
-length, then suffix): re-verify it first. It writes
+length, then suffix): re-verify it first. Before it selects anything, it
+refuses a `--model-id` that the model comparison of `ingest` would change (a
+trailing `[1m]`, a dotted Claude ID such as `claude-opus-5.5`, surrounding
+whitespace): exit 1, no bundle or prompt written (the MANIFEST row records the
+refusal), and the message names the normalized form to pass. The value is
+never rewritten, because it is an identity field: `evaluated_identity()`
+matches it unnormalized against the evaluated list, while `ingest` compares
+models through that normalization, so an ID in another form would pass the
+model check and never match a list entry. A provider-prefixed ID such as
+`anthropic/claude-opus-5-5` passes as given (the normalization keeps the
+prefix), and `ingest` then needs the transcript's models to normalize to that
+same spelling. It writes
 `data/adjudication_bundles/{batch}.json` (`lit-adjudication-bundle-v1`) and
 `{batch}_prompt.txt` (the fixed template with `{BUNDLE_PATH}` replaced by
 the bundle's absolute path, plus a newline) and prints (the first line is one
@@ -332,9 +345,11 @@ so a later edit of the log shows.
    dotted Claude ID such as `claude-opus-5.5` read as `claude-opus-5-5`). No
    transcript is exit 10 (Claude Code keeps transcripts for
    `cleanupPeriodDays`, 30 days by default, so ingest soon after the
-   dispatch); two transcripts for one agent ID are exit 11. A transcript
-   that is a symlink, a pipe or a device is not read (exit 8, as an
-   unreadable one), and neither is one larger than 512 MiB. The ingest row
+   dispatch; and with `CLAUDE_CONFIG_DIR` pointing outside `<home>/.claude`
+   no transcript is found there, so ingest exits 10); two transcripts for one
+   agent ID are exit 11. A transcript that is a symlink, a pipe or a device is
+   not read (exit 8, as an unreadable one; a symlinked folder above it is
+   followed), and neither is one larger than 512 MiB. The ingest row
    records `model_id_observed`, `model_transcript` (its path under the
    projects folder) and `model_transcript_sha256`, also on a refusal. The
    transcript, not the hook's cache or the audit log, because it records the
@@ -364,7 +379,7 @@ so a later edit of the log shows.
    when it changed since the pack (or is gone) the batch counts as unevaluated,
    with a WARNING. CLAUDE.md is hashed again too
    (`claude_md_sha256_at_ingest`); a change is a WARNING only (§ Evaluated
-   identities, "CLAUDE.md is recorded, never compared").
+   identities, "CLAUDE.md is recorded, never part of the identity").
 
 **`release`**. A packed batch that will not be ingested (never dispatched, a
 captured pack script that failed so no completed pack log exists, or a batch
@@ -393,8 +408,8 @@ is not behind an Ask-First rule.
 adjudicator's transcript recorded, comma-separated), `agent_name`,
 `evaluated_model_list_version`, `template_sha256`, `agent_file_sha256`,
 `agent_file_sha256_at_ingest` (the identity the effective verdict was matched
-on), `claude_md_sha256`, `claude_md_sha256_at_ingest` (recorded, never
-compared), `dispatch_id` (the agent ID),
+on), `claude_md_sha256`, `claude_md_sha256_at_ingest` (recorded; they never
+decide whether a judgment counts), `dispatch_id` (the agent ID),
 `adjudicated_at`, `human_decision`, `human_decider`, `human_decided_at`,
 `human_rationale`, `human_instruction_verbatim`, `human_binding`,
 `human_binding_basis`, `override_record_json` (the record an
@@ -443,9 +458,10 @@ environment), so `human_binding_basis` says the binding was not detected and
 for the researcher: a table of number, reference (citekey), title as cited,
 title on record, authors as cited and on record, year cited and on record,
 where published (venue and record type in words), and where it stands in
-plain words (the rule version `glance-words-v3` covers this column's words and
-the request sentences above the table: "matches the record; not yet confirmed", "partly matches; please
-decide", "does not match the record", "no record found", "the identifier
+plain words. The rule version `glance-words-v3` covers this column's words,
+listed here, and the request sentences above the table, described below. The
+column's words: "matches the record; not yet confirmed", "partly matches;
+please decide", "does not match the record", "no record found", "the identifier
 exists, but its title was not compared", "not checked yet", "you confirmed
 it", "accepted by you despite the automatic reference check", "confirmed by
 DAAF's second check (an AI judgment)", "partly matches; confirmed by DAAF's
@@ -602,9 +618,13 @@ sha256}]` (a table read lists `{what, path, sha256}`), `artifacts [{table,
 version, name, path, bytes, sha256, rows, schema, parent_sha256}]` (an output
 file has `table`, `rows`, `schema` and `parent_sha256` null),
 `rule_versions`, `counts` (null except on `counts`), `refusals` (the reasons
-on exit 11), `redaction_count`, `secret_redactions`, `exit_code`, `note`. A
-usage error, or a `PROJECT_DIR` that is refused or not a directory, writes no
-row. `key` writes no row; `selftest` writes one to
+on exit 11), `redaction_count`, `secret_redactions`, `exit_code`, `note`. An
+argument error the parser catches (an unknown argument, or a missing one the
+parser requires, such as a positional argument; a missing `--model-id`,
+`--agent-id` or `--reason` is the subcommand's own refusal), or a
+`PROJECT_DIR` that is refused or not a directory, writes no row; a usage
+refusal a subcommand makes (exit 1, such as `pack`'s `--model-id` check)
+writes its row. `key` writes no row; `selftest` writes one to
 `SCRATCH_DIR/MANIFEST.jsonl`.
 
 Per-command extras on a successful row:
@@ -640,22 +660,22 @@ a `pack` row's list the prompt template, the agent file and CLAUDE.md.
 | Code | Meaning |
 |------|---------|
 | 0 | Written (also with counted skips); `key` and `selftest` success |
-| 1 | Usage (also a `PROJECT_DIR` that is not a directory, or `claims abstract` without a file; no row for the former; `ingest` without an `--agent-id` that passes the hook's id allowlist; `release` without `--reason`) |
+| 1 | Usage (also a `PROJECT_DIR` that is not a directory, or `claims abstract` without a file; no row for the former; `ingest` without an `--agent-id` that passes the hook's id allowlist; `pack` without a `--model-id` in the form `ingest` compares, the message naming that form; `release` without `--reason`) |
 | 2 | Refused by a guard (`PROJECT_DIR` or `SCRATCH_DIR`, an input outside `PROJECT_DIR`, a secret value, a named restricted-licence search row) |
 | 8 | An input cannot be parsed (JSONL, MANIFEST line, records file, raw log, card, card_check, an attach map line without `row_sha256` and `paper_key`, the prompt template block, a bundle, a rows file line) or is larger than 50 MiB; an adjudicator transcript that cannot be read (a symlink, pipe or device included) or is larger than 512 MiB |
 | 9 | Integrity mismatch, nothing written (bytes differ from their recorded sha256, or a table version no MANIFEST row wrote; an adjudication bundle, prompt or bundle row that differs from its pack log; a pack log and pack row that disagree; a bundle whose identity is not the one its pack log printed, or whose `template_sha256` is not the dispatched prompt's) |
 | 10 | Polars or pyarrow missing, or a required input missing (an input file; no corpus or other required table yet; a search without a records file; a `--rows` or `--web-fetch-row` sha256 in no MANIFEST of the project; nothing new to ingest; the prompt template, the adjudicator's agent file at `pack`, a completed pack log, the bundle, the adjudicator return, the audit log or the adjudicator's transcript) |
-| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; `attach verify` of a verify row with no verdict, or with one `verify` never gives; the second-check refusals in § Citation second check, among them a transcript that records a model other than the packed one, a released batch at `ingest`, and a `release` of a batch never packed, ingested or already released); `selftest`: an expectation did not hold |
+| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; `attach verify` of a verify row with no verdict, or with one `verify` never gives; the second-check refusals in § Citation second check, among them a transcript that records a model other than the packed one, a released batch at `ingest`, and a `release` of a batch never packed, ingested or already released, or with an empty `--reason`); `selftest`: an expectation did not hold |
 | 12 | Internal error |
 
 3 is reserved by `run_with_capture.sh` and never used.
 
 ## Tests and fixtures
 
-`tests/python/test_lit_corpus.py` (99 tests; the parquet and
+`tests/python/test_lit_corpus.py` (101 tests; the parquet and
 round-trip tests need polars or pyarrow, and rapidfuzz for the selftest and
 the second-check command tests, and are skipped without them; all
-three are pinned in the bare CI unit job, so they run there) and `lit_corpus.sh selftest` (35 expectations). The P3 contract
+three are pinned in the bare CI unit job, so they run there) and `lit_corpus.sh selftest` (36 expectations). The P3 contract
 bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.5.0:
 four invented papers with checked v3 cards, findings F01 and F02, two gaps
 (G02 left unclassified), one citation link, the second check of the four

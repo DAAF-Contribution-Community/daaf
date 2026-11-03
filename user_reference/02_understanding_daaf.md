@@ -314,7 +314,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 ### Literature Review Mode
 
-**Experimental:** it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong.
+**Experimental:** it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong. Send reports to [support@openaugments.org](mailto:support@openaugments.org).
 
 **Trigger words:** "literature review," "lit review," "what does the research say," "what has research found about," "related work," "state of the research," "find papers on," "systematic review"
 
