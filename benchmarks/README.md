@@ -92,13 +92,12 @@ categories are catalogued in the Design Backlog (§ 12).
 ### Related suite: DAAFBench Analytics
 
 This suite measures **behavioral conformance to orchestrator protocol**. A sibling
-suite, **DAAFBench Analytics** (`analytics/`), measures an orthogonal construct:
-whether the analytical *work* is correct, whether the model notices when the data or
-code is deliberately wrong, and whether it discloses that to its caller — graded with
-and without the DAAF agent layer (a DAAF-vs-bare arm comparison). The two share harness
-machinery (executor, model pinning, fixture staging, viewer) but do not overlap in what
-they score. DAAFBench Analytics is at the specification stage; see
-[`analytics/SPEC.md`](analytics/SPEC.md) and [`analytics/README.md`](analytics/README.md).
+suite, **DAAFBench Analytics**, is in development and does not ship with DAAF yet. It
+measures an orthogonal construct: whether the analytical *work* is correct, whether
+the model notices when the data or code is deliberately wrong, and whether it
+discloses that to its caller — graded with and without the DAAF agent layer (a
+DAAF-vs-bare arm comparison). The two share harness machinery (executor, model
+pinning, fixture staging, viewer) but do not overlap in what they score.
 
 ## 2. The Four Phases
 
@@ -1613,8 +1612,8 @@ within 300s.
    therefore three pin bumps removed from the whole existing corpus, across harness changes to dispatch, resume, and
    stream handling. Do not pool or compare result sets across
    `claude_code_version` values without annotating the version split; the
-   viewer does not yet surface the field. The analytics pilot's own manifest
-   (`analytics/scripts/run_analytics_pilot.py`) does not record it.
+   viewer does not yet surface the field. The DAAFBench Analytics pilot (not
+   shipped) does not record it either.
 11. **Runs where no model answered can be scored as model behaviour.** Only
    `run_dispatch_compliance.py` applies a validity gate, and that gate rejects
    a run only on *failed* child-model purity. A run whose transcript holds
