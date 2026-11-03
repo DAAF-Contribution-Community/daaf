@@ -264,7 +264,7 @@ The details come in a second step. In the larger modes (Full Pipeline, Revision 
 |------|-------------|--------------|
 | Data Lookup | Quick variable/dataset question | Direct answer with supporting context |
 | Data Discovery | Scoping what data exists | Feasibility assessment, available sources |
-| Literature Review | What the published research says | Memo or written review, checked reference list, list of gaps |
+| Literature Review (experimental) | What the published research says | Memo or written review, checked reference list, list of gaps |
 | Ad Hoc Collaboration | Flexible working session | Thought partner for code, debugging, planning |
 | Full Pipeline | Complete research analysis | Plan, scripts, notebook, report, all artifacts |
 | Revision and Extension | Modify an existing analysis | New versioned artifacts, full QA |
@@ -313,6 +313,8 @@ And here's what each of them do in more detail, and how the workflow works so yo
 **Escalation:** If Data Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
 
 ### Literature Review Mode
+
+**Experimental:** it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong.
 
 **Trigger words:** "literature review," "lit review," "what does the research say," "what has research found about," "related work," "state of the research," "find papers on," "systematic review"
 
@@ -548,7 +550,7 @@ I know there are a couple of different ways of measuring school poverty. Can you
 
 ### Alongside Any Level: A Literature Quick Scan (Literature Review Mode)
 
-Ask DAAF for a quick scan of the research on a topic you know well. A quick scan reads titles and abstracts only, so it is a light way to see how DAAF searches and how it checks references.
+Ask DAAF for a quick scan of the research on a topic you know well. A quick scan reads titles and abstracts only, so it is a light way to see how DAAF searches and how it checks references. Literature Review mode is experimental, so a topic you know well is also the best way to see where it falls short.
 
 ```
 Can you do a quick scan of the research literature on how class size

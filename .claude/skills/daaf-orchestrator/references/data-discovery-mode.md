@@ -124,7 +124,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The 
 ## Literature Review Handoffs
 
 Both directions need the user's explicit confirmation (`SKILL.md` § Mode Escalation Paths):
-- **To Literature Review:** when the user wants to know what published research has found ("what's known about …") before choosing data, propose it: "It sounds like you'd like to see what published research has found before choosing data. Want me to switch to Literature Review mode?" The conversation so far is the handoff (`literature-review-mode.md` § Escalation Triggers).
+- **To Literature Review:** when the user wants to know what published research has found ("what's known about …") before choosing data, propose it: "It sounds like you'd like to see what published research has found before choosing data. Literature Review mode is experimental: it works end to end and every reference and quote is still checked, but it has had limited real-world testing. Review its output more closely, and tell us what goes wrong. Want me to switch to Literature Review mode?" The conversation so far is the handoff (`literature-review-mode.md` § Escalation Triggers).
 - **From Literature Review:** a review that finds a gap answerable with data hands over `output/LitReview_Handoff_v{N}.md` in its project folder: the question, the final deliverable's path, the gaps marked answerable with data, the reference list and the manifest pointer. Treat it as a user-referenced material (§ Scope Check) and explore the data for the gaps it lists. Take any fact about the literature only from the files `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` § Files Consumers May Read lists, never from the papers.
 
 ## Escalation to Full Pipeline
