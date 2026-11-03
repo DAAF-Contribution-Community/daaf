@@ -23,7 +23,7 @@ the block · The fixed prompt
 | 2 | Orchestrator | Dispatches `citation-adjudicator` with `model: "opus"` (the Agent tool takes tier aliases, not model IDs; `pack --model-id` recorded the exact model ID the alias resolves to), with the content of `{batch}_prompt.txt` as the whole prompt: nothing added, removed or reworded |
 | 3 | citation-adjudicator | Reads the bundle (and no other file), judges every row, and returns one fenced `jsonl` block with one JSON line per row |
 | 4 | Orchestrator | Persists the lines of that block verbatim to `data/adjudication_raw/{batch}.jsonl` |
-| 5 | Orchestrator | `bash /daaf/scripts/lit_corpus.sh adjudications ingest PROJECT_DIR --batch ID --agent-id AGENT_ID` checks the hashes against the pack log, scans `.claude/logs/audit.jsonl` for any tool call of that dispatch that is not a Read of the bundle, validates every line, and writes the ledger and the citation statuses |
+| 5 | Orchestrator | `bash /daaf/scripts/lit_corpus.sh adjudications ingest PROJECT_DIR --batch ID --agent-id AGENT_ID` checks the hashes against the pack log, scans `.claude/logs/audit.jsonl` for any tool call of that dispatch that is not a Read of the bundle, checks in the adjudicator's own Claude Code transcript that every model it records is the packed model ID, validates every line, and writes the ledger and the citation statuses |
 
 The full contract of steps 1 and 5 (bundle fields, every refusal, the
 statuses, the ledger columns) is in
@@ -62,13 +62,18 @@ every dispatch, so it is part of the evaluated configuration: any edit to it,
 even outside its Protocol, Boundaries or Output Format sections, changes
 `agent_file_sha256` and makes a new, unevaluated identity.
 
-Two parts of what the judge receives are outside that identity. CLAUDE.md and
+One part of what the judge receives is outside that identity. CLAUDE.md and
 the harness's other system reminders reach every dispatch, because no DAAF
 agent sets `omitClaudeMd`; an edit to CLAUDE.md changes what the judge reads
-without voiding an evaluation, and whether the identity should bind it is
-decided while preparing the evaluation. And `ingest` takes the model ID from
-the pack log without checking which model actually ran; that check is part of
-the same preparation, because the dispatch names a tier alias, not a model ID.
+without voiding an evaluation. The identity does not bind CLAUDE.md (user
+decision, 2026-11-02): its sha256 is recorded beside the identity (per list
+version in `ADJUDICATOR_EVALUATED_CLAUDE_MD`, in every bundle and ledger row)
+and never decides whether a judgment counts; the mode's gate check prints a
+WARNING when it differs from the evaluated value. The model that ran is
+checked apart from the identity, because the dispatch names a tier alias, not
+a model ID: `ingest` refuses the batch unless every model the adjudicator's
+own Claude Code transcript records is the packed model ID
+(`adj-model-check-v1`; evidence, not proof, as the audit-log scan is).
 
 Each entry of `ADJUDICATOR_EVALUATED_LISTS` in `scripts/lit_corpus.py` is the
 whole evaluated identity, `(model_id, template_sha256, rubric_version,

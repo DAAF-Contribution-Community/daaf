@@ -366,7 +366,7 @@ The "In plain words" column uses the mode's wording: CONFIDENT "matches the reco
 
 ### Never Do
 - Change, reinterpret or extend the protocol; propose changes under Recommendations instead
-- Record a `researcher` screening pass, an `attach decision`, or any `adjudications` subcommand (pack, ingest, record-human, glance-sheet are the orchestrator's)
+- Record a `researcher` screening pass, an `attach decision`, or any `adjudications` subcommand (pack, ingest, release, record-human, glance-sheet are the orchestrator's)
 - Re-grade, accept or "confirm" a reference, or call a CONFIDENT confirmed
 - Read a full text for claims, open a page render, or write an evidence card, a memo, a synthesis or any other deliverable
 - Run a paid call that the `SPEND APPROVED:` line does not name

@@ -170,10 +170,13 @@ review is not using.
 
 > Only after an adjudicator identity is on an evaluated list. Pack runs from a captured script;
 > a packed batch that was not ingested is re-dispatched with the same bundle, never re-packed.
+> One that will not be ingested (never dispatched, no completed pack log, or refused by
+> `ingest`) is released with `adjudications release` and a reason, and its rows are packed in a
+> new batch (the next row).
 
 | Batch | Pack script | Bundle sha256 | Prompt sha256 | Model tier (dispatch) | Model ID (packed) | Dispatch agent ID | Return saved | Ingest |
 |-------|-------------|---------------|---------------|-----------------------|-------------------|-------------------|--------------|--------|
-| [b01] | `scripts/lr_adjudication/[NN]_pack_batch_[b01].py` | [first 12 hex] | [first 12 hex] | [opus] | [the `--model-id` given to pack] | [agent ID or "not dispatched"] | `data/adjudication_raw/[b01].jsonl` or "no" | [not ingested / ingested (MANIFEST timestamp) / refused: exit [n], reason] |
+| [b01] | `scripts/lr_adjudication/[NN]_pack_batch_[b01].py` | [first 12 hex] | [first 12 hex] | [opus] | [the `--model-id` given to pack] | [agent ID or "not dispatched"] | `data/adjudication_raw/[b01].jsonl` or "no" | [not ingested / ingested (MANIFEST timestamp) / refused: exit [n], reason / released (MANIFEST timestamp): reason] |
 
 ### Reading Items for a Person
 
@@ -364,7 +367,7 @@ and the per-round flow counts in `output/counts_v{N}.json`.
 | A settlement is recorded | Settlement column; the item's row |
 | A checklist review is answered (formal) | Formal Level Only: the appraisal log path and the researcher's words |
 | A glance sheet is shown, and when the reply is recorded | Glance Records |
-| An adjudicator batch is packed, dispatched, saved or ingested | Adjudicator Batches, at each step |
+| An adjudicator batch is packed, dispatched, saved, ingested or released | Adjudicator Batches, at each step |
 | A paid call is approved or run | Spend Ledger |
 | A synthesizer returns and `lit_verify report` runs | Round Table (read, cited); Deliverables; Open Review Items |
 | A round check-in is answered | Round Table check-in decision; formal ratings, verbatim |

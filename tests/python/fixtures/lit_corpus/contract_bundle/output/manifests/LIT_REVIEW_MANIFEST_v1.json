@@ -1,17 +1,17 @@
 {
   "schema_version": "lit-review-manifest-v1",
-  "contract_version": "0.4.0",
+  "contract_version": "0.5.0",
   "round": 1,
-  "created_at": "2026-11-01T22:55:45Z",
+  "created_at": "2026-11-02T23:39:32Z",
   "protocol": {
     "file": "Protocol.md",
     "sha256": "cc6b9f6ef2d1057227f293946e331867db58bcffaf94c5338c02e3a68791a75c"
   },
   "tool_versions": {
-    "lit_corpus": "1.4.0-daaf",
+    "lit_corpus": "1.8.0-daaf",
     "lit_verify": "1.15.0-daaf",
     "pdf_ingest": "1.2.2-daaf",
-    "scholar_search": "1.9.0-daaf"
+    "scholar_search": "1.10.0-daaf"
   },
   "rule_versions": {
     "paperkey": "paperkey-v1",
@@ -32,15 +32,16 @@
     "abstract_fill": "abstract-fill-v1",
     "adjudication": "adjudication-v1",
     "adj_selector": "adj-selector-v1",
-    "glance_words": "glance-words-v1"
+    "glance_words": "glance-words-v3",
+    "adj_model_check": "adj-model-check-v1"
   },
   "artifacts": [
     {
       "kind": "corpus",
       "path": "data/corpus_v9.parquet",
       "version": 9,
-      "sha256": "09def229bc288c04221f835a2b64ef3bf1f2f879d17f9268772465710f7c5eb6",
-      "bytes": 18902,
+      "sha256": "fb5417a1e06a70bbd126f56c282651aa0c82d9d2491c9769451006bb64ffe7c8",
+      "bytes": 18898,
       "schema": "lit-corpus-v1",
       "rows": 5
     },
@@ -48,8 +49,8 @@
       "kind": "paper_aliases",
       "path": "data/paper_aliases_v9.parquet",
       "version": 9,
-      "sha256": "04d7f2fcef8bfce914f915e96431fa5b2e3f1660a4090318806c9c8fe0fe5bb1",
-      "bytes": 3096,
+      "sha256": "8ca598d966a6afae0de04bb6c0b8944bbacf8dcfeda6891e389840bc327589c9",
+      "bytes": 3095,
       "schema": "lit-aliases-v1",
       "rows": 14
     },
@@ -57,8 +58,8 @@
       "kind": "search_log",
       "path": "data/search_log_v1.parquet",
       "version": 1,
-      "sha256": "2b1055aff8ed675b3378f43ca88bd90ea2141aa143071337bc7466913c24f443",
-      "bytes": 8935,
+      "sha256": "a754885b7196477f6327a4866f21713130e06a6004d205e57b66683dc97495af",
+      "bytes": 8934,
       "schema": "lit-search-log-v1",
       "rows": 4
     },
@@ -75,8 +76,8 @@
       "kind": "claims",
       "path": "data/claims_v2.parquet",
       "version": 2,
-      "sha256": "8aded332c7a59223f29f29139f6cdf7dd80e68fe82d4aa8b0d3d68130a78f3c1",
-      "bytes": 20266,
+      "sha256": "462f67497531f80919720b8aec286f338ec0932561e6b084b2675f1ba3046193",
+      "bytes": 20267,
       "schema": "lit-claims-v1",
       "rows": 12
     },
@@ -84,8 +85,8 @@
       "kind": "paper_notes",
       "path": "data/paper_notes_v2.parquet",
       "version": 2,
-      "sha256": "0fd67d25b18961ff30d820bcbec075aa49d0ae9dd56f0d7be0996cc5251d11be",
-      "bytes": 10662,
+      "sha256": "a3f3289389eb77daaa543827520fbdc9b98cb4f03fd26538cce52f2c2a5779a1",
+      "bytes": 10660,
       "schema": "lit-paper-notes-v1",
       "rows": 4
     },
@@ -102,7 +103,7 @@
       "kind": "gap_register",
       "path": "data/gap_register_v1.parquet",
       "version": 1,
-      "sha256": "eb1e7fc402de1e7ae25f80c7558eb1f16cfdbb26c6fa699d2db94ec54173ff7e",
+      "sha256": "aff73681d5325140dde34a4b216e9b65c594e39351dcd77a81d87f5e8991d464",
       "bytes": 7805,
       "schema": "lit-gaps-v1",
       "rows": 2
@@ -111,8 +112,8 @@
       "kind": "citation_edges",
       "path": "data/citation_edges_v1.parquet",
       "version": 1,
-      "sha256": "6673aad04d3ddf03797e2559b104ee04cfd3cc762b888e175bd887459244aeca",
-      "bytes": 7960,
+      "sha256": "a0cb963f8dd73af2e223253006691a50f508af2ce610c3628482aac6cfa9b810",
+      "bytes": 7958,
       "schema": "lit-edges-v1",
       "rows": 1
     },
@@ -120,8 +121,8 @@
       "kind": "citation_adjudications",
       "path": "data/citation_adjudications_v2.parquet",
       "version": 2,
-      "sha256": "c9e4d5d3c5e56803eb436088a4c9335f9a2d928b5a9222c512ff886bda56910f",
-      "bytes": 28525,
+      "sha256": "aa67601da57cc9b5b9058c00ba5e59cf3239df55e64d83e1a5d2f9445ba3e75f",
+      "bytes": 30914,
       "schema": "lit-adjudications-v1",
       "rows": 8
     },
@@ -129,7 +130,7 @@
       "kind": "references_bib",
       "path": "output/references_v1.bib",
       "version": 1,
-      "sha256": "b1b30a29fc48c10e42364a78420170dca76045f937fad60ad0f22257a07cb633",
+      "sha256": "702fe2213308e8a78649192118875034b85d73302b4b1f3923e38cd88e705647",
       "bytes": 2114,
       "schema": null
     },
@@ -137,7 +138,7 @@
       "kind": "references_ris",
       "path": "output/references_v1.ris",
       "version": 1,
-      "sha256": "fe888d9c13fe79104e96de5706a46ca8d0c41e0c1043aa1f3a453196da7d0075",
+      "sha256": "fa9a527cd4f401b1bf839f04fb9027f30e03631499bcf520ea98029d3440df12",
       "bytes": 1774,
       "schema": null
     },

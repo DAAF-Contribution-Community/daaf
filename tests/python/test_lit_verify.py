@@ -4485,7 +4485,7 @@ class ReportRulesTests(unittest.TestCase):
                           "sentences-v1", "report-lint-v5"))
         self.assertEqual(lv.TOOL_VERSION, "1.15.0-daaf")
         self.assertEqual((lrr.CERTAINTY_LANGUAGE["table_version"], lrr.CERTAINTY_LANGUAGE["contract_version"]),
-                         ("2026-11-01c", "0.4.0"))
+                         ("2026-11-02", "0.5.0"))
         self.assertEqual(len(lrr.REPORT_SEVERITY), 82)                # report-rules-v6: + 10 (S5 W1-c)
         self.assertIn("citation_adjudications", lv.REPORT_TABLES)
         # a report item keeps 600 characters of its fix (report_body): every fixed remedy text fits whole

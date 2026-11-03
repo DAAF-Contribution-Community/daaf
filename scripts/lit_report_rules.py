@@ -129,6 +129,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 #   person's check is the check the audit asked for, as a reference the researcher confirmed carries none); a reading
 #   a person recorded as not matching keeps VISION_AUDIT_NOT_CONFIRMED(_DRAFT) with its own reason and fix
 #   (AUDIT_FIX_DOES_NOT_MATCH); the fixes name `settle` first. No status added.
+# Phrase table 2026-11-02: contract_version 0.5.0 only (lit_corpus 1.8.0 adds second-check record fields).
 REPORT_RULES_VERSION = "report-rules-v6"       # this module as a whole
 CITATION_PARSE_VERSION = "citations-v2"        # Pandoc 3.10 citation syntax, stdlib regex
 SENTENCE_SPLIT_VERSION = "sentences-v1"
@@ -137,8 +138,8 @@ REPORT_LINT_VERSION = "report-lint-v5"
 # §§ CERTAINTY LANGUAGE (lockstep copy of certainty-language.yaml; see header)
 CERTAINTY_LANGUAGE = {
     "schema_version": "certainty-language-v1",
-    "table_version": "2026-11-01c",
-    "contract_version": "0.4.0",
+    "table_version": "2026-11-02",
+    "contract_version": "0.5.0",
     "axis": "body_of_evidence_certainty",
     "keys_are": ["high", "moderate", "low", "very_low"],
     "stated_by": ("At the standard level the synthesizer states the level with a written reason; at the formal level "

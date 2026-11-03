@@ -10,7 +10,7 @@
    "contexts_licence": "cc-by-nc",
    "edge_id": "E001",
    "first_seen_version": 1,
-   "found_by_json": "[{\"command\":\"cites\",\"row_sha256\":\"0a075335c5b75ef668a7c421901b1d8c1da3721a9102e3e32c5b9a78e65439c5\",\"sidecar_sha256\":\"774b0def19f47da5c481483f7a0295bd0e3b62da5fd0b3396c62554c5e7e6337\"}]",
+   "found_by_json": "[{\"command\":\"cites\",\"row_sha256\":\"7a6236d223230f1a9cf1629578fc627feb8bf0e0df3c1bd785f004ded0c6de38\",\"sidecar_sha256\":\"79799afc55126e5ec36b05fd4028dd1266a8f49f0e6df6c308bd21cd8a40898e\"}]",
    "intents_json": "[\"methodology\"]",
    "is_influential": true,
    "reader_claim_id": "user_f1c70004-c02",

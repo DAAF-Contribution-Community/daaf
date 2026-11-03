@@ -43,14 +43,15 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.7.0-daaf", "0.4.0"))
-        # The certainty phrase table and its lockstep copy carry the contract version (0.4.0 from S5 W1-c).
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.8.0-daaf", "0.5.0"))
+        # The certainty phrase table and its lockstep copy carry the contract version.
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
         self.assertEqual(lc.SCHEMAS["citation_adjudications"], "lit-adjudications-v1")
         self.assertEqual(lc.RULE_VERSIONS["paperkey"], "paperkey-v1")
         self.assertEqual(lc.RULE_VERSIONS["verify_regrade"], "verify-regrade-v3")
-        self.assertEqual(lc.RULE_VERSIONS["glance_words"], "glance-words-v2")
+        self.assertEqual(lc.RULE_VERSIONS["glance_words"], "glance-words-v3")
+        self.assertEqual(lc.RULE_VERSIONS["adj_model_check"], "adj-model-check-v1")
         self.assertIn("exec python3 \"$TOOL\" \"$@\"", (_SCRIPTS / "lit_corpus.sh").read_text())
 
     def test_usage_exits_1_and_guards_exit_2(self):
@@ -184,7 +185,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 32/32", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0-1.7.0: 1 each
+            self.assertIn("SELFTEST PASS: 35/35", out.getvalue())
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -839,8 +840,9 @@ class SecondCheckCommandTests(unittest.TestCase):
             with self.subTest(name):
                 agent = f"x{uuid.uuid4().hex[:6]}"
                 log = lc.demo_audit_log(str(self.pd), agent, targets, **kw)
+                lc.demo_transcript(str(self.pd), agent, [lc.DEMO_ADJ_MODEL])       # the packed model ran
                 code, out = self.run_lc("adjudications", "ingest", self.pd, "--batch", "t1", "--agent-id", agent,
-                                        paths={"audit_log": log})
+                                        paths=dict(lc.demo_adj_paths(str(self.pd)), audit_log=log))
                 self.assertEqual(code, 0 if name == "clean control" else 11, out)
 
     def test_b_bundle_forged_with_its_manifest_row_is_caught_by_the_pack_log(self):
@@ -1031,7 +1033,8 @@ class SecondCheckCommandTests(unittest.TestCase):
         out = (f"ADJUDICATION_PACK batch_id={batch} rows={len(shas)} model_id={lc.DEMO_ADJ_MODEL} "
                f"agent_name=citation-adjudicator prompt_version={p['prompt_version']} "
                f"rubric_version={p['rubric_version']} template_sha256={p['template_sha256']} "
-               f"agent_file_sha256={p['agent_file_sha256']}\n" + "".join(f"ADJUDICATION_ROW {s}\n" for s in shas)
+               f"agent_file_sha256={p['agent_file_sha256']} claude_md_sha256={p.get('claude_md_sha256') or 'none'}\n"
+               + "".join(f"ADJUDICATION_ROW {s}\n" for s in shas)
                + f"ADJUDICATION_BUNDLE_SHA256 {lc.sha256_bytes(data)} x\nADJUDICATION_PROMPT_SHA256 {psha} y\n")
         for old in (self.pd / "scripts" / "lr_adjudication").glob(f"*{batch}.py"):
             os.chmod(old, 0o644)
@@ -1044,7 +1047,8 @@ class SecondCheckCommandTests(unittest.TestCase):
             if r.get("command") == "adjudications pack" and r.get("batch_id") == batch:
                 lines[i] = lc.json.dumps(dict(r, bundle_sha256=lc.sha256_bytes(data), row_sha256s=shas,
                                               template_sha256=p["template_sha256"],
-                                              agent_file_sha256=p["agent_file_sha256"]))
+                                              agent_file_sha256=p["agent_file_sha256"],
+                                              claude_md_sha256=p.get("claude_md_sha256")))
         os.chmod(man, 0o644)
         man.write_text("\n".join(lines) + "\n")
 
@@ -1097,7 +1101,7 @@ class SecondCheckCommandTests(unittest.TestCase):
                 self.assertEqual(code, 11, out)
         raw.unlink()
         self.assertEqual(self.run_lc("adjudications", "ingest", self.pd, "--batch", "t2", "--agent-id",
-                                     f"{lc.DEMO_ADJ_AGENT}-t2", paths={"audit_log": audit})[0], 10)  # no return
+                                     f"{lc.DEMO_ADJ_AGENT}-t2", paths=dict(b, audit_log=audit))[0], 10)  # no return
         self.assertEqual(self.run_lc("adjudications", "ingest", self.pd, "--batch", "t9", "--agent-id", "a",
                                      paths={"audit_log": audit})[0], 10)                              # no pack log
 
@@ -1516,6 +1520,257 @@ class SecondCheckCommandTests(unittest.TestCase):
                       "does not match, say so with your reason. Number 2 could not be confirmed against a database "
                       "record, so it will be left out of the reference list unless an automatic check matches it. To "
                       "keep it, ask for it to be checked again.\n", text)
+
+    # 1.8.0: preparing the adjudicator evaluation. Every word and model ID below is invented.
+    def test_glance_sheet_with_decided_references_never_says_none_can_be_confirmed(self):
+        # the bundle's papers are decided (confirmed by the researcher); a MISMATCH one beside them: the request says
+        #   some are decided and speaks of the others (glance-words-v3)
+        miss = dict(lc.demo_work_json(lc.DEMO_PAPERS[2]), display_name="A Completely Different Invented Dentistry Study")
+        self.attach((2, {"work": miss}))
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{self.P3}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "One reference below is already decided. None of the others can be confirmed as "
+                      "they stand. To keep one whose record does not match, say so with your reason.\n", text)
+        self.assertNotIn("None of these references", text)
+        self.assertEqual(self.sheet_row(text, self.paper(self.P1)["citekey"])[8], "you confirmed it |")
+        # two decided references: the plural words
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{self.P2},{self.P3}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "Some references below are already decided. None of the others can be confirmed as "
+                      "they stand. To keep one whose record does not match, say so with your reason.\n", text)
+
+    def ingest_with_transcript(self, batch, ran, **kw):
+        # pack + return + audit log, a transcript recording `ran`, then ingest: (exit, output, the ingest MANIFEST row)
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), batch, keys=[self.P1], ingest=False, ran=ran,
+                                   **kw)
+        code, out = self.ingest_again(batch, paths)
+        row = [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()][-1]
+        return code, out, row
+
+    def test_model_check_refuses_a_transcript_naming_another_model(self):
+        self.attach((0, {}))
+        for name, ran in (("another model", ["claude-invented-9"]), ("a change mid-run", [lc.DEMO_ADJ_MODEL, "other"]),
+                          ("no model in it", [])):
+            with self.subTest(name):
+                n = len(self.table("citation_adjudications"))
+                batch = f"m{uuid.uuid4().hex[:6]}"
+                code, out, row = self.ingest_with_transcript(batch, ran)
+                self.assertEqual(code, 11, out)
+                self.assertIn("not the packed model", out)
+                self.assertEqual((row["command"], row["model_id_observed"]), ("adjudications ingest", ran))
+                self.assertTrue(lc.SHA_RE.match(row["model_transcript_sha256"]))
+                self.assertEqual(len(self.table("citation_adjudications")), n)                 # nothing written
+                self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+                self.assertEqual(self.run_lc("adjudications", "release", self.pd, "--batch", batch, "--reason",
+                                             "Invented: the transcript names another model.")[0], 0)
+
+    def test_model_check_accepts_the_packed_model_in_another_spelling(self):
+        # pack names claude-opus-5-5; the transcript's provider-dotted [1m] spelling is the same model (norm_model)
+        self.attach((0, {}))
+        code, out, row = self.ingest_with_transcript("t1", ["claude-opus-5.5[1m]", "claude-opus-5-5"],
+                                                     model_id="claude-opus-5-5")
+        self.assertEqual(code, 0, out)
+        led = [r for r in self.table("citation_adjudications") if r["batch_id"] == "t1"][0]
+        self.assertEqual((led["model_id"], led["model_id_observed"]),
+                         ("claude-opus-5-5", "claude-opus-5.5[1m], claude-opus-5-5"))
+        self.assertEqual(row["model_transcript"], os.path.join("-fixture", "fixture-session", "subagents",
+                                                               f"agent-{lc.DEMO_ADJ_AGENT}-t1.jsonl"))
+
+    def test_model_check_missing_ambiguous_or_malformed(self):
+        self.attach((0, {}))
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        agent = f"{lc.DEMO_ADJ_AGENT}-t1"
+        tx = next(Path(paths["transcripts_root"]).rglob(f"agent-{agent}.jsonl"))
+        twin = Path(paths["transcripts_root"]) / "-other" / "s2" / "subagents" / tx.name
+        twin.parent.mkdir(parents=True)
+        shutil.copy(tx, twin)
+        self.assertEqual(self.ingest_again("t1", paths)[0], 11)                       # two transcripts for one ID
+        twin.unlink()
+        os.chmod(tx, 0o644)
+        tx.unlink()
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 10, out)                                              # no transcript
+        self.assertIn("no Claude Code transcript", out)
+        code, out = self.run_lc("adjudications", "ingest", self.pd, "--batch", "t1", "--agent-id", "../x*", paths=paths)
+        self.assertEqual(code, 1, out)                                               # outside the id allowlist
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+
+    def test_claude_md_is_recorded_and_never_gates(self):
+        # the exact identity is evaluated; CLAUDE.md changes between pack and ingest: a WARNING, both hashes kept, and
+        #   the judgment still counts (model_confirmed)
+        self.attach((0, {}))
+        e = lc.demo_evaluated_entry()
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        packed = lc.sha256_bytes(lc.DEMO_CLAUDE_MD.encode())
+        b = lc.json.loads((self.pd / "data" / "adjudication_bundles" / "t1.json").read_text())
+        self.assertEqual(b["claude_md_sha256"], packed)
+        self.assertIn(f"agent_file_sha256={e[3]} claude_md_sha256={packed}", self.steps[0][2])
+        cm = Path(paths["claude_md"])
+        os.chmod(cm, 0o644)
+        cm.write_text(lc.DEMO_CLAUDE_MD + "An edited line.\n")
+        with mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-none": (e,)}):
+            code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARNING: CLAUDE.md changed", out)
+        led = [r for r in self.table("citation_adjudications") if r["batch_id"] == "t1"][0]
+        self.assertEqual((led["claude_md_sha256"], led["claude_md_sha256_at_ingest"], led["citation_status"]),
+                         (packed, lc.sha256_bytes(cm.read_bytes()), "model_confirmed"))
+        self.assertEqual(lc.ADJUDICATOR_EVALUATED_CLAUDE_MD, {lc.ADJUDICATOR_LIST_VERSION: None})
+        # a forged bundle naming another CLAUDE.md than its pack log printed is an integrity stop, as for the identity
+        self.attach((0, {}))
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t2", keys=[self.P1], ingest=False)
+        b2 = lc.json.loads((self.pd / "data" / "adjudication_bundles" / "t2.json").read_text())
+        self.rewrite_pack("t2", dict(b2, claude_md_sha256="0" * 64), printed=b2)
+        code, out = self.ingest_again("t2", paths)
+        self.assertEqual(code, 9, out)
+
+    def test_release_frees_an_uningested_batch_and_never_an_ingested_one(self):
+        self.attach((0, {}))
+        lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        paths = lc.demo_adj_paths(str(self.pd))
+        pack = ["adjudications", "pack", self.pd, "--model-id", lc.DEMO_ADJ_MODEL, "--keys", self.P1]
+        self.assertEqual(self.run_lc(*pack[:3], "--batch", "t2", *pack[3:], paths=paths)[0], 11)   # held in t1
+        release = ["adjudications", "release", self.pd, "--batch"]
+        self.assertEqual(self.run_lc(*release, "t1")[0], 1)                                       # no --reason
+        self.assertEqual(self.run_lc(*release, "t1", "--reason", "  ")[0], 11)                    # empty reason
+        self.assertEqual(self.run_lc(*release, "t9", "--reason", "Invented.")[0], 11)             # never packed
+        code, out = self.run_lc(*release, "t1", "--reason", "Invented: never dispatched.")
+        self.assertEqual(code, 0, out)
+        row = [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()][-1]
+        self.assertEqual((row["command"], row["batch_id"], row["row_sha256s"], row["reason"]),
+                         ("adjudications release", "t1", [self.paper(self.P1)["verify_row_sha256"]],
+                          "Invented: never dispatched."))
+        self.assertEqual(row["files_kept"], ["data/adjudication_bundles/t1.json",
+                                             "data/adjudication_bundles/t1_prompt.txt"])
+        self.assertTrue((self.pd / "data" / "adjudication_bundles" / "t1.json").exists())         # the trail stays
+        self.assertEqual(self.run_lc(*release, "t1", "--reason", "Again.")[0], 11)                # already released
+        code, out = self.ingest_again("t1", dict(paths, audit_log=str(next((self.pd / "inputs").glob(
+            "audit_fixture_*t1.jsonl")))))
+        self.assertEqual(code, 11, out)                                                           # never ingested
+        self.assertIn("was released", out)
+        self.assertEqual(self.adjudicate("t2", [self.P1]), [0, 0], self.steps[-1][2])             # packed again
+        code, out = self.run_lc(*release, "t2", "--reason", "Invented.")
+        self.assertEqual(code, 11, out)                                                           # ingested
+        self.assertIn("was ingested", out)
+
+    # One test per documented rule of the model check, release and the CLAUDE.md records that the module did not yet
+    #   pin. Every word and model ID below is invented.
+    def packed_with_transcript(self, batch, records):
+        # pack + return + audit log + a transcript of the packed model, then the transcript replaced by `records`
+        #   (one JSON object per line): (paths, the transcript path)
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), batch, keys=[self.P1], ingest=False)
+        tx = next(Path(paths["transcripts_root"]).rglob(f"agent-{lc.DEMO_ADJ_AGENT}-{batch}.jsonl"))
+        os.chmod(tx, 0o644)
+        tx.write_text("".join(lc.json.dumps(r) + "\n" for r in records))
+        return paths, tx
+
+    @staticmethod
+    def asst(model, **extra):
+        return dict({"type": "assistant", "isSidechain": True, "message": {"model": model, "content": []}}, **extra)
+
+    def last_row(self):
+        return [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()][-1]
+
+    def test_model_check_skips_api_error_records(self):
+        # an API-error record naming another model is not a response of that model (the context-reporter rule)
+        self.attach((0, {}))
+        paths, _ = self.packed_with_transcript("t1", [self.asst("claude-invented-9", isApiErrorMessage=True),
+                                                      self.asst(lc.DEMO_ADJ_MODEL)])
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.last_row()["model_id_observed"], [lc.DEMO_ADJ_MODEL])
+
+    def test_model_check_skips_synthetic_records(self):
+        # a "<synthetic>" message.model is Claude Code's own record, never a model that ran
+        self.attach((0, {}))
+        paths, _ = self.packed_with_transcript("t1", [self.asst("<synthetic>"), self.asst(lc.DEMO_ADJ_MODEL)])
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.last_row()["model_id_observed"], [lc.DEMO_ADJ_MODEL])
+
+    def test_model_check_refuses_a_transcript_over_the_size_limit(self):
+        self.attach((0, {}))
+        paths, _ = self.packed_with_transcript("t1", [self.asst(lc.DEMO_ADJ_MODEL)])
+        n = len(self.table("citation_adjudications"))
+        with mock.patch.object(lc.lv, "TRANSCRIPT_MAX_BYTES", 10):
+            code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 8, out)
+        self.assertIn("larger than 512 MiB", out)
+        self.assertEqual(len(self.table("citation_adjudications")), n)                         # nothing written
+
+    def test_model_check_reads_only_a_regular_transcript(self):
+        # a symlink (even to a file naming the packed model) and a FIFO are refused as unreadable, at once (exit 8)
+        self.attach((0, {}))
+        paths, tx = self.packed_with_transcript("t1", [self.asst(lc.DEMO_ADJ_MODEL)])
+        elsewhere = self.root / "elsewhere.jsonl"
+        elsewhere.write_text(lc.json.dumps(self.asst(lc.DEMO_ADJ_MODEL)) + "\n")
+        tx.unlink()
+        tx.symlink_to(elsewhere)
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 8, out)                                                         # a symlink
+        self.assertIn("cannot be read", out)
+        tx.unlink()
+        os.mkfifo(tx)
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 8, out)                                                         # a FIFO, no wait
+        self.assertIn("not a regular file", out)
+        tx.unlink()
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+
+    def test_release_refuses_a_batch_whose_ledger_rows_exist(self):
+        # the ledger alone shows the batch was ingested (its ingest MANIFEST row no longer reads as one): never released
+        self.attach((0, {}))
+        self.assertEqual(self.adjudicate("t1", [self.P1]), [0, 0], self.steps[-1][2])
+        man = self.pd / "data" / "MANIFEST.jsonl"
+        lines = man.read_text().splitlines()
+        for i, x in enumerate(lines):
+            r = lc.json.loads(x)
+            if r.get("command") == "adjudications ingest" and r.get("batch_id") == "t1":
+                lines[i] = lc.json.dumps(dict(r, command="forged (test)"))
+        os.chmod(man, 0o644)
+        man.write_text("\n".join(lines) + "\n")
+        code, out = self.run_lc("adjudications", "release", self.pd, "--batch", "t1", "--reason", "Invented.")
+        self.assertEqual(code, 11, out)
+        self.assertIn("was ingested", out)
+
+    def test_pack_row_claude_md_must_match_the_pack_log(self):
+        # the pack's MANIFEST row alone names another CLAUDE.md (pack log and bundle intact): an integrity stop
+        self.attach((0, {}))
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        man = self.pd / "data" / "MANIFEST.jsonl"
+        lines = man.read_text().splitlines()
+        for i, x in enumerate(lines):
+            r = lc.json.loads(x)
+            if r.get("command") == "adjudications pack" and r.get("batch_id") == "t1":
+                lines[i] = lc.json.dumps(dict(r, claude_md_sha256="0" * 64))
+        os.chmod(man, 0o644)
+        man.write_text("\n".join(lines) + "\n")
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 9, out)
+        self.assertIn("the pack log and the pack's MANIFEST row disagree", out)
+
+    def test_pack_log_claude_md_must_be_a_sha256(self):
+        # a pack log printing a CLAUDE.md value that is neither a sha256 nor "none" is no completed pack run
+        self.attach((0, {}))
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        b = lc.json.loads((self.pd / "data" / "adjudication_bundles" / "t1.json").read_text())
+        self.rewrite_pack("t1", b, printed=dict(b, claude_md_sha256="xyz"))
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 10, out)
+        self.assertIn("no completed pack run", out)
+
+    def test_bundle_without_a_claude_md_field_warns_not_recorded(self):
+        # a bundle packed before the field existed (no claude_md_sha256 key; its pack log prints none): ingest says
+        #   CLAUDE.md was not recorded, never that it changed, and the batch counts as before
+        self.attach((0, {}))
+        paths = lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        b = lc.json.loads((self.pd / "data" / "adjudication_bundles" / "t1.json").read_text())
+        old = {k: v for k, v in b.items() if k != "claude_md_sha256"}
+        self.rewrite_pack("t1", old)
+        code, out = self.ingest_again("t1", paths)
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARNING: CLAUDE.md was not recorded at the pack", out)
+        self.assertNotIn("CLAUDE.md changed", out)
 
     def test_attach_verify_refuses_a_row_with_no_verdict(self):
         # review cycle 3 C1: a verify call that failed before grading writes a row with no verdict, which

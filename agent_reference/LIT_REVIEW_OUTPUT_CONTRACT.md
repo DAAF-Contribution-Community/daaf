@@ -10,7 +10,7 @@ builds on a finished review. The workflow that produces these files is in
 `.claude/skills/daaf-orchestrator/references/literature-review-mode.md`; the method is the
 `literature-review` skill.
 
-**Contract version: 0.4.0.**
+**Contract version: 0.5.0.**
 
 ---
 
@@ -204,8 +204,9 @@ fields of the row it supersedes. `current_ledger()` returns the current row per
 `cited_author`, `cited_year`, `rules_version`, `rules_version_stale`, `rule_verdict`,
 `retracted`, `selector_json`, `dimension_json`, `dimension_verdicts_json`, `verdict`,
 `effective_verdict`, `title_similarity_subtitle_aware`, `title_floor_applied`, `rationale`,
-`model_id`, `model_id_source`, `agent_name`, `evaluated_model_list_version`, `template_sha256`,
-`agent_file_sha256`, `agent_file_sha256_at_ingest`, `dispatch_id`, `adjudicated_at`,
+`model_id`, `model_id_source`, `model_id_observed`, `agent_name`, `evaluated_model_list_version`,
+`template_sha256`, `agent_file_sha256`, `agent_file_sha256_at_ingest`, `claude_md_sha256`,
+`claude_md_sha256_at_ingest`, `dispatch_id`, `adjudicated_at`,
 `human_decision`, `human_decider`, `human_decided_at`, `human_rationale`,
 `human_instruction_verbatim`, `human_binding`, `human_binding_basis`, `override_record_json`,
 `citation_status`, `superseded_by`, `recorded_version`.
@@ -232,6 +233,16 @@ and the agent file still hashed to the packed value at ingest. `adjudications in
 `lit_verify report` both call it, so the ledger and the report gate cannot disagree. A changed
 model, prompt, rubric or agent file is a different, unevaluated identity. A passed evaluation is
 recorded by the user as a new dated list version naming the identities evaluated.
+
+Three columns sit beside the identity without being part of it. `model_id_observed` lists the
+model IDs the adjudicator's own transcript recorded (comma-separated in the ledger; a list in the
+`adjudications ingest` MANIFEST row); `adjudications ingest` refuses a batch unless each is the
+packed `model_id`, so from contract 0.5.0 on, a ledger row's `model_id` is a model the
+adjudicator's transcript recorded (evidence, not proof: a file at that place could be written by a
+script). `claude_md_sha256` (as packed) and `claude_md_sha256_at_ingest` record CLAUDE.md, as
+`ADJUDICATOR_EVALUATED_CLAUDE_MD` does per list version; `evaluated_identity()` never reads them,
+so a changed CLAUDE.md never changes what counts. Rows written before contract 0.5.0 hold null in
+these three columns, and their `model_id` was never checked against a transcript.
 
 `lit_verify report` re-derives each paper's status from its current ledger row with
 `adjudication_status()`; a corpus status, ledger status or reference between them that it cannot

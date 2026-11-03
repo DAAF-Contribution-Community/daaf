@@ -103,7 +103,7 @@ conflict as a WARNING (§ Output Format).
 
 **Context the orchestrator MUST provide:**
 - [ ] The prompt exactly as `pack` rendered it: nothing added before or after it, nothing removed or reworded
-- [ ] The dispatch's `model` set to `"opus"`: the Agent tool takes tier aliases, not model IDs. `pack --model-id` records the exact model ID that alias resolves to, and the ledger takes its model ID from the pack log. `ingest` does not check which model actually ran; adding that check is part of preparing the adjudicator evaluation
+- [ ] The dispatch's `model` set to `"opus"`: the Agent tool takes tier aliases, not model IDs. `pack --model-id` records the exact model ID that alias resolves to, and the ledger takes its model ID from the pack log. `ingest` refuses the batch unless every model the adjudicator's own Claude Code transcript records is that packed model ID (`adj-model-check-v1`)
 - [ ] One bundle per dispatch
 
 **Context the orchestrator must NOT provide**, because any of it would let the
@@ -586,7 +586,9 @@ set `omitClaudeMd`: every DAAF agent stays bound by CLAUDE.md
 and the harness's other system reminders reach every dispatch, beside the
 fixed prompt. The evaluated identity (model ID, template sha256, rubric
 version, this file's sha256) does not include CLAUDE.md, so an edit to
-CLAUDE.md changes what the judge reads without voiding an evaluation. Whether
-the identity should also bind CLAUDE.md is decided while preparing the
-adjudicator evaluation. Step 1 treats that harness context as never a STOP
-and never a rule.
+CLAUDE.md changes what the judge reads without voiding an evaluation. The
+identity does not bind CLAUDE.md (user decision, 2026-11-02): its sha256 is
+recorded beside the identity (`ADJUDICATOR_EVALUATED_CLAUDE_MD`, the bundle,
+the ledger) and never decides whether a judgment counts; the mode's gate check
+warns when it differs. Step 1 treats that harness context as never a STOP and
+never a rule.

@@ -2,9 +2,9 @@
  "schema_version": "scholar-records-v1",
  "tool_version": "synthetic (lit_corpus demo)",
  "command": "find",
- "query": "adult reading clubs",
- "raw_artifact": "demo_find_e17e7f61.json",
- "raw_sha256": "3c7a117f9f43aa516e8b8934e95423612c4739d8da00493bf669ad7860244d33",
+ "query": "tutoring",
+ "raw_artifact": "demo_find_73155f71.json",
+ "raw_sha256": "94ec1b6119d276aad8e6f124f65eded8f12556942e8f4241200d918c29ab2155",
  "fusion": {
   "version": "fuse-v1"
  },

@@ -3,7 +3,7 @@
  "tool_version": "synthetic (lit_corpus demo)",
  "command": "cites",
  "query": "10.9999/fixture.0001",
- "raw_artifact": "demo_cites_49a42737.json",
+ "raw_artifact": "demo_cites_a0bb5afa.json",
  "raw_sha256": "f06ae9b8081cad29eef60593d7a1c9937bf8d626b12880f9cd64bb9009c2c450",
  "fusion": {
   "version": "fuse-v1"

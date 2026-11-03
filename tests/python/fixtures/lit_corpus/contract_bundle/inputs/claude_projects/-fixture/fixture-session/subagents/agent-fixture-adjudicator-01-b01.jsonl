@@ -1,0 +1,2 @@
+{"type": "attachment", "isSidechain": true, "agentId": "fixture-adjudicator-01-b01", "attachment": {"type": "model", "identity": {"modelId": "fixture-unevaluated-model"}}}
+{"type": "assistant", "isSidechain": true, "agentId": "fixture-adjudicator-01-b01", "message": {"model": "fixture-unevaluated-model", "content": [{"type": "text", "text": "Synthetic fixture."}]}}
